@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>2048</title>
+<style>
+  :root {
+    --tile-size: 88px;
+    --tile-gap: 12px;
+    --slide-duration: 130ms;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overscroll-behavior: none;
+  }
+  body {
+    font-family: 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #faf8ef;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #776e65;
+    min-height: 100%;
+  }
+  h1 { font-size: 56px; margin: 0 0 16px; line-height: 1; }
+  .header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .score {
+    background: #bbada0;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    text-align: center;
+    min-width: 76px;
+  }
+  .score-label { font-size: 11px; opacity: 0.8; letter-spacing: 1px; }
+  .score-value { font-size: 22px; }
+  button {
+    background: #8f7a66;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  button:hover { background: #7c6555; }
+
+  .board {
+    position: relative;
+    background: #bbada0;
+    padding: var(--tile-gap);
+    border-radius: 6px;
+    margin-bottom: 16px;
+    width: calc(4 * var(--tile-size) + 3 * var(--tile-gap));
+    height: calc(4 * var(--tile-size) + 3 * var(--tile-gap));
+    box-sizing: content-box;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cells {
+    display: grid;
+    grid-template-columns: repeat(4, var(--tile-size));
+    grid-template-rows: repeat(4, var(--tile-size));
+    gap: var(--tile-gap);
+  }
+  .cell {
+    background: rgba(238, 228, 218, 0.35);
+    border-radius: 4px;
+  }
+  .tile-layer {
+    position: absolute;
+    top: var(--tile-gap);
+    left: var(--tile-gap);
+    width: calc(4 * var(--tile-size) + 3 * var(--tile-gap));
+    height: calc(4 * var(--tile-size) + 3 * var(--tile-gap));
+    pointer-events: none;
+  }
+  .tile {
+    position: absolute;
+    width: var(--tile-size);
+    height: var(--tile-size);
+    transition: transform var(--slide-duration) ease-in-out;
+    will-change: transform;
+    transform: translate(
+      calc(var(--col, 0) * (var(--tile-size) + var(--tile-gap))),
+      calc(var(--row, 0) * (var(--tile-size) + var(--tile-gap)))
+    );
+  }
+  .tile-content {
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--tile-size) * 0.45);
+    font-weight: bold;
+    color: #776e65;
+  }
+  .tile-2    .tile-content { background: #eee4da; }
+  .tile-4    .tile-content { background: #ede0c8; }
+  .tile-8    .tile-content { background: #f2b179; color: #f9f6f2; }
+  .tile-16   .tile-content { background: #f59563; color: #f9f6f2; }
+  .tile-32   .tile-content { background: #f67c5f; color: #f9f6f2; }
+  .tile-64   .tile-content { background: #f65e3b; color: #f9f6f2; }
+  .tile-128  .tile-content { background: #edcf72; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.36); }
+  .tile-256  .tile-content { background: #edcc61; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.36); }
+  .tile-512  .tile-content { background: #edc850; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.36); }
+  .tile-1024 .tile-content { background: #edc53f; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.30); }
+  .tile-2048 .tile-content { background: #edc22e; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.30); box-shadow: 0 0 20px rgba(243, 215, 116, 0.8); }
+
+  .tile-new .tile-content {
+    animation: pop-in 200ms ease-out;
+  }
+  .tile-merged .tile-content {
+    animation: pop-merge 220ms ease;
+  }
+  @keyframes pop-in {
+    0%   { transform: scale(0); }
+    60%  { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+  @keyframes pop-merge {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.22); }
+    100% { transform: scale(1); }
+  }
+
+  .message {
+    font-size: 16px;
+    font-weight: bold;
+    min-height: 24px;
+    text-align: center;
+    padding: 0 8px;
+  }
+  .message.win { color: #f67c5f; }
+  .help {
+    max-width: 420px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.5;
+    opacity: 0.75;
+    margin: 8px 0 0;
+  }
+
+  /* 모바일·작은 화면: 보드를 화면 폭에 맞춤 */
+  @media (max-width: 520px), (max-height: 720px) {
+    :root {
+      --tile-gap: 8px;
+      /* 화면 폭에서 좌우 패딩과 보드 패딩 + 갭을 빼고 4 등분 */
+      --tile-size: min(
+        calc((100vw - 2 * 12px - 2 * var(--tile-gap) - 3 * var(--tile-gap)) / 4),
+        calc((100vh - 200px - 2 * var(--tile-gap) - 3 * var(--tile-gap)) / 4),
+        88px
+      );
+    }
+    body { padding: 16px 12px; }
+    h1 { font-size: 40px; margin-bottom: 10px; }
+    .header { margin-bottom: 10px; gap: 8px; }
+    .score { padding: 5px 12px; min-width: 66px; }
+    .score-value { font-size: 18px; }
+    button { padding: 8px 14px; font-size: 13px; }
+    .help { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+  <h1>2048</h1>
+  <div class="header">
+    <div class="score">
+      <div class="score-label">점수</div>
+      <div class="score-value" id="score">0</div>
+    </div>
+    <div class="score">
+      <div class="score-label">최고 점수</div>
+      <div class="score-value" id="best">0</div>
+    </div>
+    <button id="new-game">새 게임</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="cells">
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+    <div class="tile-layer" id="tile-layer"></div>
+  </div>
+
+  <div class="message" id="message"></div>
+  <p class="help">화살표 키 또는 화면을 <b>스와이프</b>해서 타일을 움직이세요.<br>같은 숫자가 만나면 합쳐집니다. 2048을 만들어 보세요!</p>
+
+<script>
+  const SIZE = 4;
+  const SLIDE_MS = 130;
+  const SWIPE_THRESHOLD = 24; // px
+
+  let tiles = [];
+  let nextId = 1;
+  let score = 0;
+  let best = Number(localStorage.getItem('best2048') || 0);
+  let gameOver = false;
+  let won = false;
+  let animating = false;
+
+  function tileAt(r, c) {
+    return tiles.find(t => t.row === r && t.col === c);
+  }
+
+  function showMessage(text, cls) {
+    const m = document.getElementById('message');
+    m.textContent = text;
+    m.className = 'message' + (cls ? ' ' + cls : '');
+  }
+
+  function newGame() {
+    document.getElementById('tile-layer').innerHTML = '';
+    tiles = [];
+    score = 0;
+    gameOver = false;
+    won = false;
+    animating = false;
+    showMessage('', '');
+    addRandomTile();
+    addRandomTile();
+    render();
+  }
+
+  function addRandomTile() {
+    const empty = [];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (!tileAt(r, c)) empty.push([r, c]);
+      }
+    }
+    if (empty.length === 0) return null;
+    const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+    const tile = {
+      id: nextId++,
+      row: r,
+      col: c,
+      value: Math.random() < 0.9 ? 2 : 4,
+      isNew: true
+    };
+    tiles.push(tile);
+    return tile;
+  }
+
+  function setTilePos(el, row, col) {
+    el.style.setProperty('--row', row);
+    el.style.setProperty('--col', col);
+  }
+
+  function render() {
+    const layer = document.getElementById('tile-layer');
+    const present = new Set(tiles.map(t => 't' + t.id));
+    for (const el of Array.from(layer.children)) {
+      if (!present.has(el.id)) el.remove();
+    }
+    for (const t of tiles) {
+      let el = document.getElementById('t' + t.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 't' + t.id;
+        el.className = 'tile tile-' + t.value;
+        const inner = document.createElement('div');
+        inner.className = 'tile-content';
+        inner.textContent = t.value;
+        el.appendChild(inner);
+        setTilePos(el, t.row, t.col);
+        layer.appendChild(el);
+      } else {
+        el.className = 'tile tile-' + t.value;
+        el.firstElementChild.textContent = t.value;
+        setTilePos(el, t.row, t.col);
+      }
+      if (t.isNew) {
+        el.classList.add('tile-new');
+        t.isNew = false;
+        setTimeout(() => el && el.classList.remove('tile-new'), 220);
+      }
+      if (t.justMerged) {
+        el.classList.add('tile-merged');
+        t.justMerged = false;
+        setTimeout(() => el && el.classList.remove('tile-merged'), 240);
+      }
+    }
+    document.getElementById('score').textContent = score;
+    if (score > best) {
+      best = score;
+      localStorage.setItem('best2048', String(best));
+    }
+    document.getElementById('best').textContent = best;
+  }
+
+  function applyTransforms() {
+    for (const t of tiles) {
+      const el = document.getElementById('t' + t.id);
+      if (el) setTilePos(el, t.row, t.col);
+    }
+  }
+
+  function computeMove(direction) {
+    const isHoriz = (direction === 'left' || direction === 'right');
+    const forward = (direction === 'left' || direction === 'up');
+    const merges = [];
+    const removals = [];
+    let moved = false;
+
+    for (let lane = 0; lane < SIZE; lane++) {
+      const laneTiles = tiles.filter(t => (isHoriz ? t.row : t.col) === lane);
+      laneTiles.sort((a, b) => {
+        const av = isHoriz ? a.col : a.row;
+        const bv = isHoriz ? b.col : b.row;
+        return forward ? av - bv : bv - av;
+      });
+      let write = forward ? 0 : SIZE - 1;
+      const step = forward ? 1 : -1;
+      let lastTile = null;
+      let lastValue = null;
+      let canMerge = false;
+
+      for (const t of laneTiles) {
+        const cur = isHoriz ? t.col : t.row;
+        if (canMerge && t.value === lastValue) {
+          if (isHoriz) t.col = lastTile.col;
+          else        t.row = lastTile.row;
+          removals.push(t.id);
+          merges.push({ absorberId: lastTile.id, newValue: lastValue * 2 });
+          canMerge = false;
+          moved = true;
+        } else {
+          if (cur !== write) {
+            if (isHoriz) t.col = write;
+            else        t.row = write;
+            moved = true;
+          }
+          lastTile = t;
+          lastValue = t.value;
+          canMerge = true;
+          write += step;
+        }
+      }
+    }
+    return { moved, merges, removals };
+  }
+
+  function move(direction) {
+    if (gameOver || animating) return;
+
+    const result = computeMove(direction);
+    if (!result.moved) return;
+
+    animating = true;
+    applyTransforms();
+
+    setTimeout(() => {
+      for (const m of result.merges) {
+        const absorber = tiles.find(t => t.id === m.absorberId);
+        if (absorber) {
+          absorber.value = m.newValue;
+          absorber.justMerged = true;
+          score += m.newValue;
+          if (m.newValue === 2048 && !won) {
+            won = true;
+            showMessage('2048 달성! 계속 진행해도 됩니다.', 'win');
+          }
+        }
+      }
+      const rmSet = new Set(result.removals);
+      tiles = tiles.filter(t => !rmSet.has(t.id));
+      addRandomTile();
+      render();
+      animating = false;
+
+      if (!hasMoves()) {
+        gameOver = true;
+        if (!won) showMessage('게임 끝! "새 게임"을 눌러 다시 시작하세요.', '');
+      }
+    }, SLIDE_MS);
+  }
+
+  function hasMoves() {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const t = tileAt(r, c);
+        if (!t) return true;
+        if (c < SIZE - 1) {
+          const right = tileAt(r, c + 1);
+          if (right && right.value === t.value) return true;
+        }
+        if (r < SIZE - 1) {
+          const down = tileAt(r + 1, c);
+          if (down && down.value === t.value) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // ---- 키보드 입력 ----
+  document.addEventListener('keydown', (e) => {
+    const map = {
+      ArrowLeft: 'left', ArrowRight: 'right',
+      ArrowUp: 'up', ArrowDown: 'down'
+    };
+    if (map[e.key]) {
+      e.preventDefault();
+      move(map[e.key]);
+    }
+  });
+
+  // ---- 터치 스와이프 입력 ----
+  let touchStart = null;
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { touchStart = null; return; }
+    const t = e.touches[0];
+    touchStart = { x: t.clientX, y: t.clientY, time: Date.now() };
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    const dt = Date.now() - touchStart.time;
+    touchStart = null;
+    if (dt > 800) return;
+    const absDx = Math.abs(dx), absDy = Math.abs(dy);
+    if (Math.max(absDx, absDy) < SWIPE_THRESHOLD) return;
+    if (absDx > absDy) move(dx > 0 ? 'right' : 'left');
+    else               move(dy > 0 ? 'down' : 'up');
+  }, { passive: true });
+
+  // 보드에서 시작한 스와이프는 페이지 스크롤로 이어지지 않게
+  document.getElementById('board').addEventListener('touchmove', (e) => {
+    e.preventDefault();
+  }, { passive: false });
+
+  document.getElementById('new-game').addEventListener('click', newGame);
+
+  newGame();
+</script>
+</body>
+</html>
