@@ -1,0 +1,12 @@
+{
+  "name": "2048",
+  "version": "1.0.0",
+  "description": "HTML/CSS/JavaScript로 만든 간단한 2048 게임. 키보드와 터치 스와이프 지원.",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8765"
+  },
+  "author": "seheemynamez",
+  "license": "MIT",
+  "keywords": ["game", "2048", "vanilla-js"]
+}

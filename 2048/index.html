@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>2048</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>2048</h1>
+
+  <div class="header">
+    <div class="score">
+      <div class="score-label">점수</div>
+      <div class="score-value" id="score">0</div>
+    </div>
+    <div class="score">
+      <div class="score-label">최고 점수</div>
+      <div class="score-value" id="best">0</div>
+    </div>
+    <button id="new-game">새 게임</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="cells">
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+    <div class="tile-layer" id="tile-layer"></div>
+  </div>
+
+  <div class="message" id="message"></div>
+
+  <p class="help">
+    화살표 키 또는 화면을 <b>스와이프</b>해서 타일을 움직이세요.<br>
+    같은 숫자가 만나면 합쳐집니다. 2048을 만들어 보세요!
+  </p>
+
+  <script src="game.js" defer></script>
+</body>
+</html>
