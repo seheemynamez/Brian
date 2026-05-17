@@ -21,11 +21,11 @@ const EMOTES = {
   hi:        { emoji: '👋', text: 'Hi' },
   tick_tock: { emoji: '⏰', text: 'Tick-tock' },
   hmm:       { emoji: '🤔', text: 'Hmm..' },
-  oops:      { emoji: '😬', text: 'Oops' },
+  oops:      { emoji: '🫢', text: 'Oops' },
   easy:      { emoji: '😏', text: 'Easy' },
   sure:      { emoji: '🤨', text: 'You sure?' },
   please:    { emoji: '🥺', text: 'Please..' },
-  wow:       { emoji: '🤯', text: 'WOW' },
+  wow:       { emoji: '😳', text: 'WOW' },
   gg:        { emoji: '🫡', text: 'GG' },
   again:     { emoji: '🔁', text: 'Again?' },
 };

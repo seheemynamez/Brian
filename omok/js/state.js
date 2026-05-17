@@ -14,11 +14,11 @@ export const EMOTES = [
   { key: 'hi',        emoji: '👋', text: 'Hi' },
   { key: 'tick_tock', emoji: '⏰', text: 'Tick-tock' },
   { key: 'hmm',       emoji: '🤔', text: 'Hmm..' },
-  { key: 'oops',      emoji: '😬', text: 'Oops' },
+  { key: 'oops',      emoji: '🫢', text: 'Oops' },
   { key: 'easy',      emoji: '😏', text: 'Easy' },
   { key: 'sure',      emoji: '🤨', text: 'You sure?' },
   { key: 'please',    emoji: '🥺', text: 'Please..' },
-  { key: 'wow',       emoji: '🤯', text: 'WOW' },
+  { key: 'wow',       emoji: '😳', text: 'WOW' },
   { key: 'gg',        emoji: '🫡', text: 'GG' },
   { key: 'again',     emoji: '🔁', text: 'Again?' },
 ];
