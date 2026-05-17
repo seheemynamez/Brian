@@ -7,7 +7,7 @@ import {
   showScreen, setLobbyError, showToast, updateConnStatus,
   setReconnectOverlay, updateOnlineCount, updatePlayerCards,
   updateTurnUI, updateSpectatorList, startTimerTick, stopTimerTick,
-  showGameOver, showGameOverNeutral,
+  showGameOver, showGameOverNeutral, updateRoomsList,
 } from './ui.js';
 import { playSound } from './sound.js';
 import { drawBoard } from './board.js';
@@ -55,6 +55,10 @@ export const connect = () => {
       // 매칭 대기 중에 연결이 끊겼다가 살아난 경우 — 큐에 다시 등록
       sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });
     }
+    // 로비에 있다면 방 목록 즉시 요청 (자동 푸시 전 초기 상태)
+    if (state.screenState === 'lobby') {
+      sendMessage({ type: 'request_rooms_list' });
+    }
   });
   state.ws.addEventListener('close', () => {
     state.connected = false;
@@ -98,6 +102,7 @@ const dispatch = (msg) => {
     case 'opponent_abandoned':    return onOpponentGone('상대가 돌아오지 않아 종료');
     case 'spectator_list':     return updateSpectatorList(msg.spectators);
     case 'online_count':       return updateOnlineCount(msg.n);
+    case 'rooms_list':         return updateRoomsList(msg.rooms);
     case 'error':              return onError(msg);
   }
 };

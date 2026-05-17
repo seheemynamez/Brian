@@ -200,6 +200,47 @@ export const showGameOverNeutral = (text) => {
   card.classList.remove('hidden');
 };
 
+// ---- 로비: 방 목록 ----
+const escapeText = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+
+export const updateRoomsList = (rooms) => {
+  state.roomsList = Array.isArray(rooms) ? rooms : [];
+  const wrap = $('rooms-list');
+  const count = $('rooms-count');
+  if (!wrap) return;
+  count.textContent = state.roomsList.length;
+  if (!state.roomsList.length) {
+    wrap.innerHTML = '<div class="rooms-empty">지금은 열려있는 방이 없어요</div>';
+    return;
+  }
+  const html = state.roomsList.map((r) => {
+    const black = escapeText(r.nicknames?.black || '');
+    const white = escapeText(r.nicknames?.white || '');
+    const isWaiting = r.status === 'waiting';
+    const statusLabel = isWaiting ? '대기 중' : '대전 중';
+    const players = isWaiting
+      ? `${black || '익명'} <span class="muted">— 상대 모집 중</span>`
+      : `${black || '익명'} <span class="muted">vs</span> ${white || '익명'}`;
+    const actionLabel = isWaiting ? '참가' : '관전';
+    return `
+      <div class="room-item" data-code="${escapeText(r.code)}" data-action="${isWaiting ? 'join' : 'spectate'}">
+        <div class="room-item-code">${escapeText(r.code)}</div>
+        <div class="room-item-body">
+          <div class="room-item-players">${players}</div>
+          <div class="room-item-meta">
+            <span class="room-item-status ${isWaiting ? 'waiting' : 'playing'}">${statusLabel}</span>
+            <span>👀 ${r.spectatorCount || 0}</span>
+          </div>
+        </div>
+        <button class="btn ${isWaiting ? 'primary' : 'ghost'} room-item-action">${actionLabel}</button>
+      </div>
+    `;
+  }).join('');
+  wrap.innerHTML = html;
+};
+
 // ---- 게임 초기화(로비 복귀) ----
 export const resetGameLocal = () => {
   state.board = emptyBoard();

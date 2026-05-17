@@ -24,6 +24,21 @@ const deleteRoom = (code) => {
   rooms.delete(code);
 };
 
+// 로비 표시용 방 목록 요약 — 'over' 는 곧 사라질 상태라 굳이 노출하지 않음
+const getRoomsList = () => {
+  const out = [];
+  for (const [code, room] of rooms) {
+    if (room.status !== 'waiting' && room.status !== 'playing') continue;
+    out.push({
+      code,
+      status: room.status,
+      nicknames: { black: room.nicknames[0] || '', white: room.nicknames[1] || '' },
+      spectatorCount: room.spectators.size,
+    });
+  }
+  return out;
+};
+
 const getSession  = (sid) => sessions.get(sid);
 const dropSession = (sid) => { if (sid) sessions.delete(sid); };
 
@@ -88,7 +103,7 @@ const attachSession = (ws, room, color) => {
 
 module.exports = {
   MAX_NICK_LEN,
-  getRoom, setRoom, deleteRoom,
+  getRoom, setRoom, deleteRoom, getRoomsList,
   getSession, dropSession,
   getQueue, enqueue, dequeue,
   incrementOnline, decrementOnline, getOnline,

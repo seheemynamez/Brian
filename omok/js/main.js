@@ -69,6 +69,22 @@ const setupLobby = () => {
   $('code-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') $('btn-join').click();
   });
+
+  // 방 목록 카드 클릭 → 대기 중이면 참가, 대전 중이면 관전
+  $('rooms-list').addEventListener('click', (e) => {
+    const item = e.target.closest('.room-item');
+    if (!item) return;
+    setLobbyError('');
+    if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
+    initAudio();
+    const code = item.dataset.code;
+    const action = item.dataset.action;
+    if (action === 'join') {
+      sendMessage({ type: 'join_room', code, nickname: state.myNick });
+    } else {
+      sendMessage({ type: 'spectate_room', code, nickname: state.myNick });
+    }
+  });
 };
 
 // ---- 대기 화면 ----

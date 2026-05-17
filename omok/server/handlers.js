@@ -3,7 +3,7 @@
 // ============================================================
 
 const {
-  getRoom, setRoom, deleteRoom,
+  getRoom, setRoom, deleteRoom, getRoomsList,
   getSession, dropSession,
   getQueue, enqueue, dequeue,
   getOnline,
@@ -35,6 +35,21 @@ const broadcastOnlineCount = () => {
   for (const c of wssRef.clients) {
     if (c.readyState === c.OPEN) c.send(payload);
   }
+};
+
+// 방 목록 변경 시 모든 연결된 클라에게 푸시.
+// 동시에 여러 변경이 일어나도 한 tick 으로 합쳐 보냄(부하 절약).
+let _roomsListPending = false;
+const broadcastRoomsList = () => {
+  if (!wssRef || _roomsListPending) return;
+  _roomsListPending = true;
+  setImmediate(() => {
+    _roomsListPending = false;
+    const payload = JSON.stringify({ type: 'rooms_list', rooms: getRoomsList() });
+    for (const c of wssRef.clients) {
+      if (c.readyState === c.OPEN) c.send(payload);
+    }
+  });
 };
 
 const colorIndex = (c) => (c === 'black' ? 0 : 1);
@@ -97,6 +112,7 @@ const addSpectator = (ws, room, nickname) => {
   room.spectators.add(ws);
   sendSpectatorState(ws, room);
   broadcastSpectators(room);
+  broadcastRoomsList();
 };
 
 const removeSpectator = (ws) => {
@@ -108,6 +124,7 @@ const removeSpectator = (ws) => {
   }
   ws.roomCode = null;
   ws.role = null;
+  broadcastRoomsList();
 };
 
 // ============================================================
@@ -141,6 +158,7 @@ const startGame = (room) => {
   for (const s of room.spectators) sendSpectatorState(s, room);
 
   startTurnTimer(room);
+  broadcastRoomsList();
 };
 
 // ============================================================
@@ -157,6 +175,8 @@ const handleMessage = (ws, msg) => {
     case 'move':           return onMove(ws, msg.row, msg.col);
     case 'rematch':        return onRematch(ws);
     case 'leave_room':     return onLeaveRoom(ws);
+    case 'request_rooms_list':
+      return send(ws, { type: 'rooms_list', rooms: getRoomsList() });
   }
 };
 
@@ -173,6 +193,7 @@ const onCreateRoom = (ws, msg) => {
   ws.nickname = room.nicknames[0];
   setRoom(code, room);
   send(ws, { type: 'room_created', code });
+  broadcastRoomsList();
 };
 
 const onJoinRoom = (ws, msg) => {
@@ -336,6 +357,7 @@ const onMove = (ws, row, col) => {
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
     broadcastRoom(room, { type: 'game_over', winner: ws.color, line: winLine });
+    broadcastRoomsList();
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
@@ -343,6 +365,7 @@ const onMove = (ws, row, col) => {
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
     broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null });
+    broadcastRoomsList();
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color, turn: room.turn });
@@ -411,6 +434,7 @@ const onLeaveRoom = (ws) => {
   dropSession(ws.sessionId); ws.sessionId = null;
   deleteRoom(room.code);
   ws.roomCode = null; ws.color = null; ws.role = null;
+  broadcastRoomsList();
 };
 
 // ============================================================
@@ -447,6 +471,7 @@ const finalizeAbandon = (room, color) => {
   clearTurnTimer(room);
   dropSession(room.sessionIds[colorIndex(color)]);
   room.sessionIds[colorIndex(color)] = null;
+  broadcastRoomsList();
 };
 
 module.exports = {

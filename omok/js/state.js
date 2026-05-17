@@ -42,6 +42,7 @@ export const state = {
 
   // 로비
   onlineCount: 0,
+  roomsList: [],
 
   // 영구 클라이언트 ID — 같은 브라우저는 같은 ID. 서버에서 자기 자신끼리 매칭되는 것을 막는 용도.
   clientId: (() => {
