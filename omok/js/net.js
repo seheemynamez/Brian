@@ -12,7 +12,18 @@ import {
 import { playSound } from './sound.js';
 import { drawBoard } from './board.js';
 
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+// ============================================================
+// WS 서버 URL 선택
+// - GitHub Pages(seheemynamez.github.io)에서 켜진 경우: Render의 외부 서버
+// - 그 외(로컬 개발, LAN, Render 직접 접속): 같은 origin
+// ============================================================
+// Render 배포 후 실제 URL로 교체 (예: wss://omok-server-xxxx.onrender.com/ws)
+const PROD_WS_URL = 'wss://REPLACE_ME.onrender.com/ws';
+
+const WS_URL = (() => {
+  if (location.hostname === 'seheemynamez.github.io') return PROD_WS_URL;
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+})();
 
 // ---- URL hash 세션 ----
 const setSessionInUrl = (id) => {

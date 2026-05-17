@@ -13,9 +13,20 @@ const handlers = require('./handlers');
 const PORT = Number(process.env.PORT) || 8080;
 const STATIC_ROOT = path.resolve(__dirname, '..'); // omok/
 
+// 프로덕션(Render 등)에선 Pages 도메인만 허용. 미설정 시(로컬 개발) 모두 허용.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 const httpServer = http.createServer(makeStaticHandler(STATIC_ROOT));
 
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+const wssOpts = { server: httpServer, path: '/ws' };
+if (ALLOWED_ORIGINS.length) {
+  wssOpts.verifyClient = ({ origin }, cb) => {
+    if (origin && ALLOWED_ORIGINS.includes(origin)) return cb(true);
+    cb(false, 403, 'Origin not allowed');
+  };
+}
+const wss = new WebSocketServer(wssOpts);
 handlers.init(wss);
 
 wss.on('connection', (ws) => {
@@ -55,4 +66,9 @@ httpServer.listen(PORT, () => {
   console.log(`[omok] HTTP   http://localhost:${PORT}`);
   console.log(`[omok] WS     ws://localhost:${PORT}/ws`);
   console.log(`[omok] online=${getOnline()}`);
+  if (ALLOWED_ORIGINS.length) {
+    console.log(`[omok] ALLOWED_ORIGINS=${ALLOWED_ORIGINS.join(',')}`);
+  } else {
+    console.log('[omok] ALLOWED_ORIGINS unset → 모든 origin 허용 (개발 모드)');
+  }
 });
