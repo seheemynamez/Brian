@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0a1f">
+  <meta name="color-scheme" content="dark">
+
+  <title>Sehee's Mini Games — 브라우저에서 바로 즐기는 미니게임 (2048 · 오목대전)</title>
+  <meta name="description" content="설치 없이 브라우저에서 바로 즐기는 미니게임 모음. 클래식 슬라이드 퍼즐 2048과 친구 또는 랜덤 상대와 즐기는 실시간 멀티플레이 오목대전을 무료로 플레이할 수 있습니다.">
+  <meta name="keywords" content="2048, 오목, 오목 온라인, 오목 게임, 실시간 멀티플레이 오목, 2048 게임, 무료 미니게임, 브라우저 게임, 보드게임, online gomoku, multiplayer omok, 2048 puzzle, Sehee, Sehee Jang">
+  <meta name="author" content="Sehee Jang">
+
+  <!-- 검색엔진 인덱싱 허용 -->
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="googlebot" content="index, follow">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://seheemynamez.github.io/Brian/">
+
+  <!-- Open Graph (카카오톡 · 페이스북 · 디스코드 등 미리보기) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sehee's Mini Games">
+  <meta property="og:title" content="Sehee's Mini Games — 2048 · 오목대전">
+  <meta property="og:description" content="설치 없이 브라우저에서 바로 즐기는 미니게임. 실시간 멀티플레이 오목과 클래식 2048을 무료로 플레이.">
+  <meta property="og:url" content="https://seheemynamez.github.io/Brian/">
+  <meta property="og:image" content="https://seheemynamez.github.io/Brian/og-image.svg">
+  <meta property="og:image:alt" content="Sehee's Mini Games — 2048과 오목대전">
+  <meta property="og:locale" content="ko_KR">
+  <meta property="og:locale:alternate" content="en_US">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sehee's Mini Games — 2048 · 오목대전">
+  <meta name="twitter:description" content="브라우저에서 바로 즐기는 무료 미니게임 — 실시간 멀티플레이 오목, 클래식 2048.">
+  <meta name="twitter:image" content="https://seheemynamez.github.io/Brian/og-image.svg">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="favicon.svg">
+
+  <!-- 검색엔진/LLM 추가 안내 -->
+  <link rel="alternate" type="text/plain" href="llms.txt" title="LLM-friendly summary">
+  <link rel="sitemap" type="application/xml" href="sitemap.xml">
+
+  <!-- JSON-LD 구조화 데이터: WebSite + ItemList(게임 두 개) + Person -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://seheemynamez.github.io/Brian/#website",
+        "url": "https://seheemynamez.github.io/Brian/",
+        "name": "Sehee's Mini Games",
+        "description": "브라우저에서 바로 즐기는 무료 미니게임 모음 — 2048과 실시간 멀티플레이 오목대전.",
+        "inLanguage": "ko",
+        "author": { "@id": "https://seheemynamez.github.io/Brian/#author" }
+      },
+      {
+        "@type": "Person",
+        "@id": "https://seheemynamez.github.io/Brian/#author",
+        "name": "Sehee Jang",
+        "url": "https://github.com/seheemynamez"
+      },
+      {
+        "@type": "ItemList",
+        "name": "Games",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "item": {
+              "@type": "Game",
+              "name": "오목대전",
+              "alternateName": ["Omok", "Gomoku"],
+              "description": "방 코드로 친구와, 또는 랜덤 매칭으로 즐기는 실시간 멀티플레이 오목. 관전 모드 지원.",
+              "url": "https://seheemynamez.github.io/Brian/omok/",
+              "inLanguage": "ko",
+              "genre": ["Board Game", "Strategy"],
+              "playMode": "MultiPlayer",
+              "numberOfPlayers": { "@type": "QuantitativeValue", "minValue": 2, "maxValue": 2 },
+              "applicationCategory": "Game",
+              "operatingSystem": "Web Browser"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "item": {
+              "@type": "Game",
+              "name": "2048",
+              "description": "같은 숫자 두 개를 합치며 2048 타일에 도달하는 클래식 슬라이드 퍼즐 게임. 키보드와 모바일 터치 스와이프 지원.",
+              "url": "https://seheemynamez.github.io/Brian/2048/",
+              "inLanguage": "ko",
+              "genre": ["Puzzle"],
+              "playMode": "SinglePlayer",
+              "numberOfPlayers": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 1 },
+              "applicationCategory": "Game",
+              "operatingSystem": "Web Browser"
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg-0: #0b0a1f;
+      --bg-1: #1a1340;
+      --surface: rgba(255, 255, 255, 0.06);
+      --surface-strong: rgba(255, 255, 255, 0.10);
+      --border: rgba(255, 255, 255, 0.10);
+      --border-strong: rgba(255, 255, 255, 0.20);
+      --ink: #e8e6ff;
+      --ink-muted: #b0a8d4;
+      --ink-faint: #7d76a0;
+      --accent-1: #00e5ff;
+      --accent-2: #ff43a8;
+      --accent-3: #b388ff;
+      --radius: 16px;
+      --radius-sm: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      background: radial-gradient(ellipse at top, var(--bg-1), var(--bg-0) 70%);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.5;
+    }
+    a { color: inherit; text-decoration: none; }
+    main {
+      width: 100%;
+      max-width: 920px;
+      padding: 48px 20px 40px;
+      flex: 1;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--ink-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+    .brand-mark {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-3) 55%, var(--accent-2));
+      box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
+    }
+    h1 {
+      font-size: clamp(40px, 7vw, 64px);
+      font-weight: 900;
+      margin: 0 0 14px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-3) 50%, var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      font-size: clamp(16px, 2.2vw, 19px);
+      color: var(--ink-muted);
+      margin: 0 0 40px;
+      max-width: 640px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(20px) saturate(140%);
+      transition: border 0.2s, background 0.2s, transform 0.15s;
+    }
+    .card:hover {
+      border-color: var(--border-strong);
+      background: var(--surface-strong);
+      transform: translateY(-2px);
+    }
+    .card-icon {
+      font-size: 30px;
+      width: 56px; height: 56px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+    }
+    .card h2 {
+      margin: 4px 0 0;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .card-sub {
+      color: var(--ink-muted);
+      font-size: 14px;
+      margin: 0;
+    }
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .tag {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--ink-muted);
+      font-weight: 600;
+    }
+    .card-cta {
+      margin-top: auto;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent-1), #4ad7ff);
+      color: #001624;
+      font-weight: 800;
+      text-align: center;
+      box-shadow: 0 0 24px rgba(0, 229, 255, 0.25);
+      transition: filter 0.15s;
+    }
+    .card:hover .card-cta { filter: brightness(1.08); }
+    .card-cta.pink {
+      background: linear-gradient(135deg, var(--accent-2), #ff6aae);
+      color: #29001a;
+      box-shadow: 0 0 24px rgba(255, 67, 168, 0.25);
+    }
+    section.about {
+      margin-top: 56px;
+      padding-top: 36px;
+      border-top: 1px solid var(--border);
+    }
+    section.about h2 {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      margin: 0 0 12px;
+    }
+    section.about p {
+      color: var(--ink-muted);
+      max-width: 720px;
+      margin: 0 0 12px;
+      font-size: 15px;
+    }
+    footer {
+      width: 100%;
+      max-width: 920px;
+      padding: 24px 20px 32px;
+      color: var(--ink-faint);
+      font-size: 13px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+    footer a {
+      color: var(--ink-muted);
+      border-bottom: 1px dashed transparent;
+    }
+    footer a:hover { border-bottom-color: var(--ink-muted); }
+    @media (max-width: 520px) {
+      main { padding: 32px 16px 24px; }
+      .card { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>SEHEE'S MINI GAMES</span>
+    </header>
+
+    <h1>2048 · 오목대전</h1>
+    <p class="lede">
+      설치 없이 브라우저에서 바로 즐기는 무료 미니게임 모음. 친구와 코드로 만나거나 누군가와 즉석 매칭해
+      실시간 멀티플레이 오목을 두고, 같은 숫자를 합치며 2048 타일을 만들어보세요.
+    </p>
+
+    <section class="cards" aria-label="게임 목록">
+      <a class="card" href="omok/" aria-label="오목대전 — 실시간 멀티플레이 오목 게임 시작">
+        <div class="card-icon" aria-hidden="true">●</div>
+        <h2>오목대전</h2>
+        <p class="card-sub">방 코드로 친구와, 또는 랜덤 매칭으로 즐기는 실시간 멀티플레이 오목. 관전 모드와 30초 차례 타이머 지원.</p>
+        <div class="card-tags">
+          <span class="tag">멀티플레이</span>
+          <span class="tag">실시간</span>
+          <span class="tag">관전 가능</span>
+          <span class="tag">한국어</span>
+        </div>
+        <div class="card-cta pink">▶ 게임 시작</div>
+      </a>
+
+      <a class="card" href="2048/" aria-label="2048 — 클래식 슬라이드 퍼즐 게임 시작">
+        <div class="card-icon" aria-hidden="true">2048</div>
+        <h2>2048</h2>
+        <p class="card-sub">같은 숫자 두 개를 합치며 2048 타일에 도달하는 클래식 슬라이드 퍼즐. 키보드 방향키와 모바일 터치 스와이프 모두 지원.</p>
+        <div class="card-tags">
+          <span class="tag">싱글 플레이</span>
+          <span class="tag">퍼즐</span>
+          <span class="tag">키보드 / 터치</span>
+        </div>
+        <div class="card-cta">▶ 게임 시작</div>
+      </a>
+    </section>
+
+    <section class="about">
+      <h2>About</h2>
+      <p>
+        Sehee's Mini Games 는 학습 겸 취미로 만든 정적 웹 기반 미니게임 모음입니다.
+        모든 게임은 별도 설치 없이 최신 브라우저에서 바로 실행되며, 한국어 인터페이스를 제공합니다.
+      </p>
+      <p>
+        오목대전은 Node.js · WebSocket 기반 실시간 서버를 사용하며,
+        2048은 100% 브라우저에서 동작하는 정적 페이지입니다.
+        제작 의도와 기술 스택은 <a href="https://github.com/seheemynamez/Brian#readme">GitHub 저장소 README</a>에서 확인할 수 있습니다.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <div>© <span id="year">2026</span> Sehee Jang · <a href="https://github.com/seheemynamez/Brian" rel="noopener">GitHub 저장소</a></div>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

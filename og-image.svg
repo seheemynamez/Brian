@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Sehee's Mini Games — 2048 · 오목대전">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0a1f"/>
+      <stop offset="100%" stop-color="#1a1340"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="55%" stop-color="#b388ff"/>
+      <stop offset="100%" stop-color="#ff43a8"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="50%" stop-color="#b388ff"/>
+      <stop offset="100%" stop-color="#ff43a8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <!-- 좌상단 그라데이션 마크 -->
+  <g transform="translate(96 96)">
+    <circle cx="44" cy="44" r="44" fill="url(#mark)"/>
+    <text x="120" y="58" font-family="-apple-system, 'SF Pro Display', system-ui, sans-serif" font-size="34" font-weight="800" fill="#e8e6ff" letter-spacing="2">SEHEE'S MINI GAMES</text>
+  </g>
+  <!-- 큰 제목 -->
+  <text x="96" y="340" font-family="-apple-system, 'SF Pro Display', system-ui, sans-serif" font-size="120" font-weight="900" fill="url(#title)">2048 · 오목대전</text>
+  <!-- 부제 -->
+  <text x="100" y="420" font-family="-apple-system, 'SF Pro Display', system-ui, sans-serif" font-size="34" font-weight="600" fill="#b0a8d4">브라우저에서 바로 즐기는 미니게임 모음</text>
+  <text x="100" y="470" font-family="-apple-system, 'SF Pro Display', system-ui, sans-serif" font-size="30" font-weight="500" fill="#7d76a0">실시간 멀티플레이 오목 · 클래식 2048 슬라이드 퍼즐</text>
+  <!-- 우하단 URL -->
+  <text x="96" y="570" font-family="'SF Mono', Menlo, monospace" font-size="24" font-weight="700" fill="#5a5380">seheemynamez.github.io/Brian</text>
+</svg>
