@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0b0a1f">
+  <title>오목대전</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/screens.css">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="brand">
+      <span class="brand-mark">●</span>
+      <span class="brand-text">오목대전</span>
+    </div>
+    <div class="top-right">
+      <div id="online-count" class="chip">🟢 0명 온라인</div>
+      <div id="conn-status" class="chip">연결 중...</div>
+      <button id="btn-mute" class="icon-btn" aria-label="음소거 토글">🔊</button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- 로비 -->
+    <section id="screen-lobby" class="screen">
+      <div class="hero">
+        <h1>오목대전</h1>
+        <p class="hero-sub">친구와 코드로, 누군가와 즉석 매칭, 혹은 관전</p>
+      </div>
+
+      <div class="card nick-card">
+        <label class="label">닉네임</label>
+        <input id="nick-input" class="input-nick" placeholder="최대 12자" maxlength="12" autocomplete="off" />
+      </div>
+
+      <div class="card-grid">
+        <div class="card action-card">
+          <div class="card-icon">🪄</div>
+          <h2>방 만들기</h2>
+          <p class="muted">코드를 친구에게 공유</p>
+          <button id="btn-create" class="btn primary">방 만들기</button>
+        </div>
+
+        <div class="card action-card">
+          <div class="card-icon">🔑</div>
+          <h2>코드로 참가/관전</h2>
+          <input id="code-input" class="input-code" placeholder="ABCD" maxlength="4" autocomplete="off" />
+          <div class="row" style="width:100%; justify-content: stretch;">
+            <button id="btn-join" class="btn" style="flex:1">참가</button>
+            <button id="btn-spectate" class="btn ghost" style="flex:1">관전</button>
+          </div>
+        </div>
+
+        <div class="card action-card">
+          <div class="card-icon">🎲</div>
+          <h2>랜덤 매칭</h2>
+          <p class="muted">누구와든 바로 한 판</p>
+          <button id="btn-queue" class="btn accent">매칭 시작</button>
+        </div>
+      </div>
+
+      <div id="lobby-error" class="error-line"></div>
+    </section>
+
+    <!-- 대기 -->
+    <section id="screen-waiting" class="screen hidden">
+      <div class="card waiting-card">
+        <h2 id="waiting-title">상대를 기다리는 중</h2>
+        <div id="waiting-code" class="room-code"></div>
+        <div id="waiting-detail" class="muted center"></div>
+        <div class="loader"><div></div><div></div><div></div></div>
+        <button id="btn-cancel" class="btn ghost">취소</button>
+      </div>
+    </section>
+
+    <!-- 게임 -->
+    <section id="screen-game" class="screen hidden">
+
+      <div class="players">
+        <div class="player-card" id="player-black">
+          <div class="player-color black" id="black-color">흑</div>
+          <div class="player-nick" id="black-nick">흑 플레이어</div>
+          <div class="player-me-badge hidden" id="black-me">나</div>
+        </div>
+        <div class="vs" id="vs-divider">VS</div>
+        <div class="player-card" id="player-white">
+          <div class="player-color white" id="white-color">백</div>
+          <div class="player-nick" id="white-nick">백 플레이어</div>
+          <div class="player-me-badge hidden" id="white-me">나</div>
+        </div>
+      </div>
+
+      <div class="spectator-badge hidden" id="spectator-badge">👀 관전 모드</div>
+
+      <div class="timer-row">
+        <div class="timer-bar" id="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+        <div class="timer-text" id="timer-text">30</div>
+      </div>
+
+      <div class="board-wrap">
+        <canvas id="board" width="600" height="600"></canvas>
+      </div>
+
+      <div class="room-info" id="room-code-display"></div>
+
+      <div class="spectator-list hidden" id="spectator-list">
+        <span class="spectator-list-title">👀 관전 중 (<span id="spectator-count">0</span>)</span>
+        <span id="spectator-chips"></span>
+      </div>
+
+      <div id="game-toast" class="toast hidden"></div>
+
+      <div id="game-over" class="hidden card result-card">
+        <div id="result-text" class="result"></div>
+        <div id="rematch-pending" class="muted hidden">상대의 다시 두기를 기다리는 중…</div>
+        <div class="row center">
+          <button id="btn-rematch" class="btn primary">다시 두기</button>
+          <button id="btn-leave" class="btn ghost">방 나가기</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 재연결 오버레이 -->
+  <div id="reconnect-overlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="loader-big"></div>
+      <div class="overlay-title" id="overlay-title">재연결 중...</div>
+      <div class="overlay-sub" id="overlay-sub"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

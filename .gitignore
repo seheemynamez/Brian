@@ -7,3 +7,6 @@
 
 # 로그
 *.log
+
+# Node
+node_modules/
