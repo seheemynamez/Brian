@@ -2,10 +2,10 @@
 // 진입점: 초기화 + 사용자 이벤트 바인딩
 // ============================================================
 
-import { state } from './state.js';
+import { state, EMOTES } from './state.js';
 import {
   showScreen, setLobbyError, updateConnStatus, updateMuteButton,
-  setReconnectOverlay, resetGameLocal, updateOnlineCount,
+  setReconnectOverlay, resetGameLocal, updateOnlineCount, setEmotePickerVisible,
 } from './ui.js';
 import { initAudio } from './sound.js';
 import { connect, sendMessage, readSessionFromUrl, setSessionInUrl } from './net.js';
@@ -151,12 +151,56 @@ const setupMute = () => {
     document.addEventListener(ev, initAudio, { once: true }));
 };
 
+// ---- 이모트 ----
+const setupEmote = () => {
+  const grid = $('emote-grid');
+  if (!grid) return;
+  // 피커 옵션 빌드
+  for (const e of EMOTES) {
+    const btn = document.createElement('button');
+    btn.className = 'emote-option';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', e.text);
+    const em = document.createElement('span');
+    em.className = 'emote-emoji';
+    em.textContent = e.emoji;
+    const lb = document.createElement('span');
+    lb.className = 'emote-label';
+    lb.textContent = e.text;
+    btn.appendChild(em);
+    btn.appendChild(lb);
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      sendMessage({ type: 'emote', key: e.key });
+      setEmotePickerVisible(false);
+    });
+    grid.appendChild(btn);
+  }
+  // FAB 토글
+  $('btn-emote').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const picker = $('emote-picker');
+    setEmotePickerVisible(picker.classList.contains('hidden'));
+  });
+  // 외부 클릭/ESC로 닫기
+  document.addEventListener('click', (e) => {
+    const picker = $('emote-picker');
+    if (!picker || picker.classList.contains('hidden')) return;
+    if (e.target.closest('#emote-picker') || e.target.closest('#btn-emote')) return;
+    setEmotePickerVisible(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setEmotePickerVisible(false);
+  });
+};
+
 // ---- 시작 ----
 setupNickname();
 setupLobby();
 setupWaiting();
 setupGame();
 setupMute();
+setupEmote();
 updateMuteButton();
 updateOnlineCount(0);
 showScreen('lobby');

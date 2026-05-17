@@ -215,3 +215,146 @@
   margin-top: 4px;
 }
 .overlay-actions .btn { flex: 1; }
+
+/* ============================================================
+   이모트 — FAB 버튼, 피커, 말풍선 (게임 중 짧은 상호작용)
+   ============================================================ */
+
+/* FAB (오른쪽 하단 떠있는 버튼) */
+.fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent-3));
+  color: white;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(255, 61, 138, 0.45), 0 0 0 1px rgba(255, 61, 138, 0.25);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s;
+}
+.fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 12px 32px rgba(255, 61, 138, 0.6);
+}
+.fab:active { transform: scale(0.92); }
+
+/* 피커 (FAB 위로 팝업) */
+.emote-picker {
+  position: fixed;
+  bottom: 92px;
+  right: 24px;
+  z-index: 30;
+  background: rgba(20, 14, 45, 0.92);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 12px;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  animation: pickerIn 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: bottom right;
+}
+@keyframes pickerIn {
+  from { opacity: 0; transform: scale(0.7) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.emote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  min-width: 280px;
+}
+.emote-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  text-align: left;
+  transition: transform 0.1s, background 0.15s, border 0.15s;
+}
+.emote-option:hover {
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.emote-option:active { transform: scale(0.96); }
+.emote-option .emote-emoji { font-size: 20px; line-height: 1; flex-shrink: 0; }
+.emote-option .emote-label { white-space: nowrap; }
+
+/* 말풍선 — 플레이어 카드 위로 잠시 떠올랐다 사라짐 */
+.emote-bubble {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent-3));
+  color: white;
+  padding: 8px 14px;
+  border-radius: 18px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.10);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  animation: emote-life 2200ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.emote-bubble .emote-emoji {
+  font-size: 18px;
+  display: inline-block;
+  animation: emote-emoji-wiggle 700ms ease-in-out infinite alternate;
+}
+.emote-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent-3));
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  z-index: -1;
+}
+
+/* 등장(살짝 위로 튀어 오름) → 안정 → 천천히 위로 표류 → 페이드아웃 */
+@keyframes emote-life {
+  0%   { opacity: 0; transform: translate(-50%, -60%) scale(0.4); }
+  12%  { opacity: 1; transform: translate(-50%, -108%) scale(1.15); }
+  22%  { transform: translate(-50%, -100%) scale(1); }
+  82%  { opacity: 1; transform: translate(-50%, -112%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -128%) scale(0.92); }
+}
+@keyframes emote-emoji-wiggle {
+  from { transform: translateY(0) rotate(-6deg); }
+  to   { transform: translateY(-3px) rotate(6deg); }
+}
+
+@media (max-width: 520px) {
+  .fab { width: 48px; height: 48px; bottom: 16px; right: 16px; font-size: 18px; }
+  .emote-picker { bottom: 76px; right: 16px; padding: 10px; }
+  .emote-grid { min-width: 240px; gap: 4px; }
+  .emote-option { padding: 8px 10px; font-size: 12px; }
+  .emote-option .emote-emoji { font-size: 18px; }
+  .emote-bubble { font-size: 12px; padding: 6px 12px; }
+  .emote-bubble .emote-emoji { font-size: 16px; }
+}

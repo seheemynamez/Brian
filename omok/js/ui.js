@@ -13,7 +13,13 @@ export const showScreen = (name) => {
   $('screen-lobby').classList.toggle('hidden', name !== 'lobby');
   $('screen-waiting').classList.toggle('hidden', name !== 'waiting');
   $('screen-game').classList.toggle('hidden', name !== 'game');
-  if (name !== 'game') $('game-over').classList.add('hidden');
+  if (name !== 'game') {
+    $('game-over').classList.add('hidden');
+    // 게임 화면을 떠나면 이모트 피커도 닫고 FAB도 숨김
+    setEmotePickerVisible(false);
+    const btnEmote = $('btn-emote');
+    if (btnEmote) btnEmote.classList.add('hidden');
+  }
 };
 
 export const setLobbyError = (text) => { $('lobby-error').textContent = text || ''; };
@@ -78,6 +84,10 @@ export const updatePlayerCards = () => {
 
   // 관전자 모드 표시
   $('spectator-badge').classList.toggle('hidden', state.role !== 'spectator');
+
+  // 이모트 FAB — 플레이어일 때만 노출 (관전자는 보내기 X, 받기는 O)
+  const btnEmote = $('btn-emote');
+  if (btnEmote) btnEmote.classList.toggle('hidden', state.role !== 'player');
 };
 
 export const updateTurnUI = () => {
@@ -251,4 +261,36 @@ export const resetGameLocal = () => {
   state.sessionId = null;
   state.role = null;
   state.spectators = [];
+};
+
+// ============================================================
+// 이모트 (FAB / 피커 / 말풍선)
+// ============================================================
+
+// 피커 열기/닫기
+export const setEmotePickerVisible = (visible) => {
+  const el = $('emote-picker');
+  if (el) el.classList.toggle('hidden', !visible);
+};
+
+// 상대(또는 본인) 이모트를 해당 색 플레이어 카드 위에 잠시 띄움.
+// 같은 카드에 이전 말풍선이 떠있으면 정리 후 새로 표시.
+export const showEmote = (color, emoji, text) => {
+  const cardId = color === 'black' ? 'player-black' : 'player-white';
+  const card = $(cardId);
+  if (!card) return;
+  card.querySelectorAll('.emote-bubble').forEach((el) => el.remove());
+  const bubble = document.createElement('div');
+  bubble.className = 'emote-bubble';
+  const e = document.createElement('span');
+  e.className = 'emote-emoji';
+  e.textContent = emoji;
+  const t = document.createElement('span');
+  t.className = 'emote-text';
+  t.textContent = text;
+  bubble.appendChild(e);
+  bubble.appendChild(t);
+  card.appendChild(bubble);
+  // animation 종료(2.2s) 후 자동 정리
+  setTimeout(() => bubble.remove(), 2200);
 };

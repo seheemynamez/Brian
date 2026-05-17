@@ -7,7 +7,7 @@ import {
   showScreen, setLobbyError, showToast, updateConnStatus,
   setReconnectOverlay, updateOnlineCount, updatePlayerCards,
   updateTurnUI, updateSpectatorList, startTimerTick, stopTimerTick,
-  showGameOver, showGameOverNeutral, updateRoomsList,
+  showGameOver, showGameOverNeutral, updateRoomsList, showEmote,
 } from './ui.js';
 import { playSound } from './sound.js';
 import { drawBoard } from './board.js';
@@ -107,6 +107,7 @@ const dispatch = (msg) => {
     case 'spectator_list':     return updateSpectatorList(msg.spectators);
     case 'online_count':       return updateOnlineCount(msg.n);
     case 'rooms_list':         return updateRoomsList(msg.rooms);
+    case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
     case 'error':              return onError(msg);
   }
 };
