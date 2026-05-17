@@ -1,0 +1,21 @@
+# Render Blueprint
+# 사용법: Render 대시보드 → New → Blueprint → Brian 레포 선택 → Connect
+# 이후 main에 push할 때마다 자동 재배포됩니다.
+
+services:
+  - type: web
+    name: omok-server
+    runtime: node
+    region: singapore         # 한국에서 가장 가까운 리전
+    plan: free                # 무료 (15분 무활동 시 sleep, 첫 접속 콜드스타트 ~30초)
+    rootDir: omok/server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        # 쉼표 구분. Pages 도메인만 허용.
+        value: https://seheemynamez.github.io
