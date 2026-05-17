@@ -94,6 +94,9 @@ const setupWaiting = () => {
     else if (state.waitingMode === 'room') sendMessage({ type: 'leave_room' });
     state.currentRoomCode = null;
     state.waitingMode = null;
+    // 방 만들기에서 발급된 sessionId 정리 (자동 resume 방지)
+    state.sessionId = null;
+    setSessionInUrl(null);
     showScreen('lobby');
   });
 };

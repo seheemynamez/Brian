@@ -192,7 +192,9 @@ const onCreateRoom = (ws, msg) => {
   ws.role = 'player';
   ws.nickname = room.nicknames[0];
   setRoom(code, room);
-  send(ws, { type: 'room_created', code });
+  // 방장에게도 sessionId 부여 — 대기 중 끊김 발생 시 resume_session 으로 복구 가능하게 함 (이슈 #9)
+  const sid = attachSession(ws, room, 'black');
+  send(ws, { type: 'room_created', code, sessionId: sid });
   broadcastRoomsList();
 };
 
@@ -208,6 +210,10 @@ const onJoinRoom = (ws, msg) => {
     onQueueLeave(ws);
     addSpectator(ws, room, msg.nickname);
     return;
+  }
+  // 방장이 잠시 끊긴 상태(자리 비움)면 join 거부 — grace 끝나기를 기다림
+  if (!room.players[0]) {
+    return send(ws, { type: 'error', message: '방장이 잠시 자리를 비웠어요. 잠시 후 다시 시도해주세요' });
   }
   onQueueLeave(ws);
   room.players[1] = ws;
@@ -439,6 +445,12 @@ const onLeaveRoom = (ws) => {
 
 // ============================================================
 // 연결 끊김 처리 (30초 grace, 관전자는 즉시 제거)
+// ----------------------------------------------------------------
+// playing : 기존대로 — 상대에게 opponent_disconnected, grace 후 finalizeAbandon
+// waiting : 방장만 있는 상태에서 끊김 — 방은 유지, grace 후 폐쇄.
+//           (다른 탭/네트워크 회복 후 resume_session 으로 복귀 가능)
+// over    : 게임 끝나고 재대국 대기 중 — 방 유지, grace 후 폐쇄.
+//           (재연결되면 결과 화면 그대로 복귀)
 // ============================================================
 const onPlayerDisconnect = (ws) => {
   if (!ws.roomCode) return;
@@ -448,30 +460,55 @@ const onPlayerDisconnect = (ws) => {
   }
   const room = getRoom(ws.roomCode);
   if (!room) return;
-  if (room.status !== 'playing') {
+  if (room.status !== 'playing' && room.status !== 'waiting' && room.status !== 'over') {
     onLeaveRoom(ws);
     return;
   }
   const myColor = ws.color;
+  const deadline = Date.now() + DISCONNECT_GRACE_MS;
+  // 진행 중이든 대기/종료든 상대(있다면) + 관전자에게는 동일한 신호 — 표시는 클라가 알아서.
   for (const p of room.players) {
-    if (p && p !== ws) send(p, { type: 'opponent_disconnected', color: myColor, deadline: Date.now() + DISCONNECT_GRACE_MS });
+    if (p && p !== ws) send(p, { type: 'opponent_disconnected', color: myColor, deadline });
   }
   for (const s of room.spectators) {
-    send(s, { type: 'opponent_disconnected', color: myColor, deadline: Date.now() + DISCONNECT_GRACE_MS });
+    send(s, { type: 'opponent_disconnected', color: myColor, deadline });
   }
   room.players[colorIndex(myColor)] = null;
+  if (room.disconnectTimers[myColor]) clearTimeout(room.disconnectTimers[myColor]);
   room.disconnectTimers[myColor] = setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS);
 };
 
 const finalizeAbandon = (room, color) => {
-  if (room.status !== 'playing') return;
-  room.status = 'over';
-  for (const p of room.players) if (p) send(p, { type: 'opponent_abandoned', color });
-  for (const s of room.spectators) send(s, { type: 'opponent_abandoned', color });
-  clearTurnTimer(room);
-  dropSession(room.sessionIds[colorIndex(color)]);
-  room.sessionIds[colorIndex(color)] = null;
-  broadcastRoomsList();
+  // 게임 중에 안 돌아온 경우 — 기존 동작 유지 (opponent_abandoned 알림, status='over' 로 전환)
+  if (room.status === 'playing') {
+    room.status = 'over';
+    for (const p of room.players) if (p) send(p, { type: 'opponent_abandoned', color });
+    for (const s of room.spectators) send(s, { type: 'opponent_abandoned', color });
+    clearTurnTimer(room);
+    dropSession(room.sessionIds[colorIndex(color)]);
+    room.sessionIds[colorIndex(color)] = null;
+    broadcastRoomsList();
+    return;
+  }
+  // 대기 중(waiting) 또는 종료 후(over) 에 grace 동안 안 돌아온 경우 — 방 자체를 닫음.
+  // 남은 상대(있다면)와 관전자들에게 opponent_left 통보하고 방 폐쇄.
+  if (room.status === 'waiting' || room.status === 'over') {
+    const opp = room.players[colorIndex(otherColor(color))];
+    if (opp) {
+      send(opp, { type: 'opponent_left' });
+      opp.roomCode = null; opp.color = null; opp.role = null;
+      dropSession(opp.sessionId); opp.sessionId = null;
+    }
+    for (const s of room.spectators) {
+      send(s, { type: 'opponent_left' });
+      s.roomCode = null; s.role = null;
+    }
+    if (room.disconnectTimers.black) { clearTimeout(room.disconnectTimers.black); room.disconnectTimers.black = null; }
+    if (room.disconnectTimers.white) { clearTimeout(room.disconnectTimers.white); room.disconnectTimers.white = null; }
+    clearTurnTimer(room);
+    deleteRoom(room.code);
+    broadcastRoomsList();
+  }
 };
 
 module.exports = {

@@ -50,9 +50,13 @@ export const connect = () => {
     state.connected = true;
     updateConnStatus();
     if (state.sessionId) {
+      // 게임 중 / 방 만들기 대기 중 / 재대국 대기 중 — 어느 상태이든 세션 복구 시도
       sendMessage({ type: 'resume_session', sessionId: state.sessionId, nickname: state.myNick });
+    } else if (state.role === 'spectator' && state.currentRoomCode && state.screenState === 'game') {
+      // 관전 중 끊김 → 같은 방으로 자동 재관전 (이슈 #9)
+      sendMessage({ type: 'spectate_room', code: state.currentRoomCode, nickname: state.myNick });
     } else if (state.waitingMode === 'queue' && state.screenState === 'waiting') {
-      // 매칭 대기 중에 연결이 끊겼다가 살아난 경우 — 큐에 다시 등록
+      // 랜덤 매칭 대기 중 끊김 — 큐에 다시 등록
       sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });
     }
     // 로비에 있다면 방 목록 즉시 요청 (자동 푸시 전 초기 상태)
@@ -65,8 +69,8 @@ export const connect = () => {
     updateConnStatus();
     if (state.sessionId && state.screenState === 'game' && !state.gameOver) {
       setReconnectOverlay(true, '연결이 끊겨 다시 연결하고 있어요...');
-    } else if (state.waitingMode === 'queue' && state.screenState === 'waiting') {
-      // 매칭 대기 중 연결 끊김 — 화면 자체는 그대로 두되, 안내 문구 갱신
+    } else if (state.screenState === 'waiting') {
+      // 대기 화면(랜덤 매칭 / 방 만들기) — 안내 문구로 상황 표시
       const detail = document.getElementById('waiting-detail');
       if (detail) detail.textContent = '연결이 끊겨 다시 시도하는 중…';
     }
@@ -111,6 +115,12 @@ const dispatch = (msg) => {
 const onRoomCreated = (msg) => {
   state.currentRoomCode = msg.code;
   state.waitingMode = 'room';
+  // 방장에게 발급된 sessionId 를 URL 해시에 저장해두면, 다른 탭/네트워크 끊김 후
+  // 자동으로 resume_session 으로 복구된다 (이슈 #9).
+  if (msg.sessionId) {
+    state.sessionId = msg.sessionId;
+    setSessionInUrl(msg.sessionId);
+  }
   document.getElementById('waiting-title').textContent = '상대를 기다리는 중';
   document.getElementById('waiting-code').textContent = msg.code;
   document.getElementById('waiting-detail').textContent = '이 코드를 친구에게 공유하세요';
@@ -210,8 +220,21 @@ const onResumeSuccess = (msg) => {
   setSessionInUrl(state.sessionId);
   state.turnDeadline = msg.turnDeadline || null;
   updateSpectatorList(msg.spectators || []);
-  document.getElementById('room-code-display').textContent = state.currentRoomCode ? '방 코드 · ' + state.currentRoomCode : '';
   setReconnectOverlay(false);
+
+  // 상대 모집 중 (status=waiting) 에 끊겼다가 복구된 경우 — 대기 화면으로 (게임 화면 X)
+  if (msg.status === 'waiting') {
+    state.waitingMode = 'room';
+    document.getElementById('waiting-title').textContent = '상대를 기다리는 중';
+    document.getElementById('waiting-code').textContent = state.currentRoomCode || '';
+    document.getElementById('waiting-detail').textContent = '이 코드를 친구에게 공유하세요';
+    showScreen('waiting');
+    return;
+  }
+
+  // playing 또는 over — 게임 화면으로 복귀
+  state.waitingMode = null;
+  document.getElementById('room-code-display').textContent = state.currentRoomCode ? '방 코드 · ' + state.currentRoomCode : '';
   updatePlayerCards();
   showScreen('game');
   drawBoard();
