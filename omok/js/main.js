@@ -61,7 +61,7 @@ const setupLobby = () => {
     setLobbyError('');
     if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
     initAudio();
-    sendMessage({ type: 'queue_join', nickname: state.myNick });
+    sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });
   });
   $('code-input').addEventListener('input', (e) => {
     e.target.value = e.target.value.toUpperCase();

@@ -51,6 +51,9 @@ export const connect = () => {
     updateConnStatus();
     if (state.sessionId) {
       sendMessage({ type: 'resume_session', sessionId: state.sessionId, nickname: state.myNick });
+    } else if (state.waitingMode === 'queue' && state.screenState === 'waiting') {
+      // 매칭 대기 중에 연결이 끊겼다가 살아난 경우 — 큐에 다시 등록
+      sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });
     }
   });
   state.ws.addEventListener('close', () => {
@@ -58,6 +61,10 @@ export const connect = () => {
     updateConnStatus();
     if (state.sessionId && state.screenState === 'game' && !state.gameOver) {
       setReconnectOverlay(true, '연결이 끊겨 다시 연결하고 있어요...');
+    } else if (state.waitingMode === 'queue' && state.screenState === 'waiting') {
+      // 매칭 대기 중 연결 끊김 — 화면 자체는 그대로 두되, 안내 문구 갱신
+      const detail = document.getElementById('waiting-detail');
+      if (detail) detail.textContent = '연결이 끊겨 다시 시도하는 중…';
     }
     setTimeout(connect, 1500);
   });
@@ -74,6 +81,7 @@ const dispatch = (msg) => {
   switch (msg.type) {
     case 'room_created':       return onRoomCreated(msg);
     case 'queue_waiting':      return onQueueWaiting();
+    case 'queue_canceled':     return onQueueCanceled();
     case 'matched':            return onMatched(msg);
     case 'game_start':         return onGameStart(msg);
     case 'spectate_success':   return onSpectateSuccess(msg);
@@ -110,6 +118,14 @@ const onQueueWaiting = () => {
   document.getElementById('waiting-code').textContent = '';
   document.getElementById('waiting-detail').textContent = '누구와든 곧 매칭됩니다';
   showScreen('waiting');
+};
+
+const onQueueCanceled = () => {
+  // 서버에서 큐 등록을 취소했음 (예: 같은 브라우저에서 새 매칭 요청이 들어와 이전 등록을 정리)
+  // 사용자가 다른 탭에서 매칭 다시 누른 경우이므로 조용히 로비로 복귀
+  state.waitingMode = null;
+  state.currentRoomCode = null;
+  showScreen('lobby');
 };
 
 const onMatched = (msg) => {

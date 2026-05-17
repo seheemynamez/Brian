@@ -212,8 +212,31 @@ const onSpectateRoom = (ws, msg) => {
 const onQueueJoin = (ws, msg) => {
   if (ws.roomCode) return send(ws, { type: 'error', message: '이미 방에 있어요' });
   ws.nickname = sanitizeNick(msg.nickname) || '익명';
+  // 클라이언트 식별자 (같은 브라우저에서 온 요청 dedupe 용도)
+  ws.clientId = typeof msg.clientId === 'string' && msg.clientId.length <= 64 ? msg.clientId : null;
+
   const q = getQueue();
-  const idx = q.findIndex((w) => w !== ws && w.readyState === w.OPEN);
+
+  // 같은 clientId 의 좀비 ws 가 큐에 남아 있으면 정리.
+  // (이슈 #5/#6: 같은 사용자가 새 탭/재연결로 다시 매칭을 누른 경우, 이전 ws 와 자기 자신이 매칭되는 사태 방지)
+  if (ws.clientId) {
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (q[i] !== ws && q[i].clientId === ws.clientId) {
+        const stale = q.splice(i, 1)[0];
+        stale.inQueue = false;
+        if (stale.readyState === stale.OPEN) {
+          send(stale, { type: 'queue_canceled', reason: 'replaced' });
+        }
+      }
+    }
+  }
+
+  // 매칭 상대 찾기 — readyState OPEN 이고, 같은 clientId 가 아닌 사람
+  const idx = q.findIndex((w) =>
+    w !== ws &&
+    w.readyState === w.OPEN &&
+    !(ws.clientId && w.clientId && w.clientId === ws.clientId)
+  );
   if (idx >= 0) {
     const opponent = q.splice(idx, 1)[0];
     opponent.inQueue = false;

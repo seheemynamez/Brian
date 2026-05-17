@@ -42,4 +42,14 @@ export const state = {
 
   // 로비
   onlineCount: 0,
+
+  // 영구 클라이언트 ID — 같은 브라우저는 같은 ID. 서버에서 자기 자신끼리 매칭되는 것을 막는 용도.
+  clientId: (() => {
+    let id = localStorage.getItem('omok_client_id');
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2));
+      localStorage.setItem('omok_client_id', id);
+    }
+    return id;
+  })(),
 };
