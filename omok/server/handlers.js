@@ -3,7 +3,7 @@
 // ============================================================
 
 const {
-  getRoom, setRoom, deleteRoom,
+  getRoom, setRoom, deleteRoom, getRoomsList,
   getSession, dropSession,
   getQueue, enqueue, dequeue,
   getOnline,
@@ -35,6 +35,21 @@ const broadcastOnlineCount = () => {
   for (const c of wssRef.clients) {
     if (c.readyState === c.OPEN) c.send(payload);
   }
+};
+
+// 방 목록 변경 시 모든 연결된 클라에게 푸시.
+// 동시에 여러 변경이 일어나도 한 tick 으로 합쳐 보냄(부하 절약).
+let _roomsListPending = false;
+const broadcastRoomsList = () => {
+  if (!wssRef || _roomsListPending) return;
+  _roomsListPending = true;
+  setImmediate(() => {
+    _roomsListPending = false;
+    const payload = JSON.stringify({ type: 'rooms_list', rooms: getRoomsList() });
+    for (const c of wssRef.clients) {
+      if (c.readyState === c.OPEN) c.send(payload);
+    }
+  });
 };
 
 const colorIndex = (c) => (c === 'black' ? 0 : 1);
@@ -97,6 +112,7 @@ const addSpectator = (ws, room, nickname) => {
   room.spectators.add(ws);
   sendSpectatorState(ws, room);
   broadcastSpectators(room);
+  broadcastRoomsList();
 };
 
 const removeSpectator = (ws) => {
@@ -108,6 +124,7 @@ const removeSpectator = (ws) => {
   }
   ws.roomCode = null;
   ws.role = null;
+  broadcastRoomsList();
 };
 
 // ============================================================
@@ -141,6 +158,7 @@ const startGame = (room) => {
   for (const s of room.spectators) sendSpectatorState(s, room);
 
   startTurnTimer(room);
+  broadcastRoomsList();
 };
 
 // ============================================================
@@ -157,6 +175,8 @@ const handleMessage = (ws, msg) => {
     case 'move':           return onMove(ws, msg.row, msg.col);
     case 'rematch':        return onRematch(ws);
     case 'leave_room':     return onLeaveRoom(ws);
+    case 'request_rooms_list':
+      return send(ws, { type: 'rooms_list', rooms: getRoomsList() });
   }
 };
 
@@ -173,6 +193,7 @@ const onCreateRoom = (ws, msg) => {
   ws.nickname = room.nicknames[0];
   setRoom(code, room);
   send(ws, { type: 'room_created', code });
+  broadcastRoomsList();
 };
 
 const onJoinRoom = (ws, msg) => {
@@ -212,8 +233,31 @@ const onSpectateRoom = (ws, msg) => {
 const onQueueJoin = (ws, msg) => {
   if (ws.roomCode) return send(ws, { type: 'error', message: '이미 방에 있어요' });
   ws.nickname = sanitizeNick(msg.nickname) || '익명';
+  // 클라이언트 식별자 (같은 브라우저에서 온 요청 dedupe 용도)
+  ws.clientId = typeof msg.clientId === 'string' && msg.clientId.length <= 64 ? msg.clientId : null;
+
   const q = getQueue();
-  const idx = q.findIndex((w) => w !== ws && w.readyState === w.OPEN);
+
+  // 같은 clientId 의 좀비 ws 가 큐에 남아 있으면 정리.
+  // (이슈 #5/#6: 같은 사용자가 새 탭/재연결로 다시 매칭을 누른 경우, 이전 ws 와 자기 자신이 매칭되는 사태 방지)
+  if (ws.clientId) {
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (q[i] !== ws && q[i].clientId === ws.clientId) {
+        const stale = q.splice(i, 1)[0];
+        stale.inQueue = false;
+        if (stale.readyState === stale.OPEN) {
+          send(stale, { type: 'queue_canceled', reason: 'replaced' });
+        }
+      }
+    }
+  }
+
+  // 매칭 상대 찾기 — readyState OPEN 이고, 같은 clientId 가 아닌 사람
+  const idx = q.findIndex((w) =>
+    w !== ws &&
+    w.readyState === w.OPEN &&
+    !(ws.clientId && w.clientId && w.clientId === ws.clientId)
+  );
   if (idx >= 0) {
     const opponent = q.splice(idx, 1)[0];
     opponent.inQueue = false;
@@ -313,6 +357,7 @@ const onMove = (ws, row, col) => {
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
     broadcastRoom(room, { type: 'game_over', winner: ws.color, line: winLine });
+    broadcastRoomsList();
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
@@ -320,6 +365,7 @@ const onMove = (ws, row, col) => {
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
     broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null });
+    broadcastRoomsList();
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color, turn: room.turn });
@@ -362,18 +408,33 @@ const onLeaveRoom = (ws) => {
   if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
 
   const opp = room.players[colorIndex(otherColor(ws.color))];
+
+  // 대전 중에 나가면 → 상대 승리로 처리
+  if (room.status === 'playing') {
+    const winnerColor = otherColor(ws.color);
+    room.status = 'over';
+    room.winner = winnerColor;
+    if (opp) send(opp, { type: 'game_over', winner: winnerColor, line: null, reason: 'opponent_left' });
+    for (const s of room.spectators) {
+      send(s, { type: 'game_over', winner: winnerColor, line: null, reason: 'opponent_left' });
+    }
+  } else {
+    // 대기/종료 상태에서 나감 → 기존대로 상대만 통보
+    if (opp) send(opp, { type: 'opponent_left' });
+    for (const s of room.spectators) send(s, { type: 'opponent_left' });
+  }
+
   if (opp) {
-    send(opp, { type: 'opponent_left' });
     opp.roomCode = null; opp.color = null; opp.role = null;
     dropSession(opp.sessionId); opp.sessionId = null;
   }
   for (const s of room.spectators) {
-    send(s, { type: 'opponent_left' });
     s.roomCode = null; s.role = null;
   }
   dropSession(ws.sessionId); ws.sessionId = null;
   deleteRoom(room.code);
   ws.roomCode = null; ws.color = null; ws.role = null;
+  broadcastRoomsList();
 };
 
 // ============================================================
@@ -410,6 +471,7 @@ const finalizeAbandon = (room, color) => {
   clearTurnTimer(room);
   dropSession(room.sessionIds[colorIndex(color)]);
   room.sessionIds[colorIndex(color)] = null;
+  broadcastRoomsList();
 };
 
 module.exports = {

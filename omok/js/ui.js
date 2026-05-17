@@ -152,17 +152,23 @@ function tickTimer() {
 export { startTimerTick };
 
 // ---- 게임 종료 UI ----
-export const showGameOver = (winner) => {
+export const showGameOver = (winner, reason) => {
   const card = $('game-over');
   const text = $('result-text');
   $('rematch-pending').classList.add('hidden');
   $('btn-rematch').classList.remove('hidden');
+  // 상대가 도중에 나간 경우(opponent_left)는 재대국 불가 — 방이 사라졌음
+  const opponentLeft = reason === 'opponent_left';
+  if (opponentLeft) $('btn-rematch').classList.add('hidden');
   if (state.role === 'spectator') {
     // 관전자: 누가 이겼는지만 표시, 재대국 버튼 숨김
     $('btn-rematch').classList.add('hidden');
     if (winner === 'draw') {
       text.textContent = '무승부';
       text.className = 'result draw';
+    } else if (opponentLeft) {
+      text.textContent = (winner === 'black' ? '흑' : '백') + ' 승 (상대 포기)';
+      text.className = 'result neutral';
     } else {
       text.textContent = (winner === 'black' ? '흑' : '백') + ' 승';
       text.className = 'result neutral';
@@ -172,7 +178,7 @@ export const showGameOver = (winner) => {
     text.className = 'result draw';
     playSound('draw');
   } else if (winner === state.myColor) {
-    text.textContent = '🏆 승리';
+    text.textContent = opponentLeft ? '🏆 상대 포기 → 승리' : '🏆 승리';
     text.className = 'result win';
     playSound('win');
   } else {
@@ -192,6 +198,47 @@ export const showGameOverNeutral = (text) => {
   $('rematch-pending').classList.add('hidden');
   $('btn-rematch').classList.add('hidden');
   card.classList.remove('hidden');
+};
+
+// ---- 로비: 방 목록 ----
+const escapeText = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+
+export const updateRoomsList = (rooms) => {
+  state.roomsList = Array.isArray(rooms) ? rooms : [];
+  const wrap = $('rooms-list');
+  const count = $('rooms-count');
+  if (!wrap) return;
+  count.textContent = state.roomsList.length;
+  if (!state.roomsList.length) {
+    wrap.innerHTML = '<div class="rooms-empty">지금은 열려있는 방이 없어요</div>';
+    return;
+  }
+  const html = state.roomsList.map((r) => {
+    const black = escapeText(r.nicknames?.black || '');
+    const white = escapeText(r.nicknames?.white || '');
+    const isWaiting = r.status === 'waiting';
+    const statusLabel = isWaiting ? '대기 중' : '대전 중';
+    const players = isWaiting
+      ? `${black || '익명'} <span class="muted">— 상대 모집 중</span>`
+      : `${black || '익명'} <span class="muted">vs</span> ${white || '익명'}`;
+    const actionLabel = isWaiting ? '참가' : '관전';
+    return `
+      <div class="room-item" data-code="${escapeText(r.code)}" data-action="${isWaiting ? 'join' : 'spectate'}">
+        <div class="room-item-code">${escapeText(r.code)}</div>
+        <div class="room-item-body">
+          <div class="room-item-players">${players}</div>
+          <div class="room-item-meta">
+            <span class="room-item-status ${isWaiting ? 'waiting' : 'playing'}">${statusLabel}</span>
+            <span>👀 ${r.spectatorCount || 0}</span>
+          </div>
+        </div>
+        <button class="btn ${isWaiting ? 'primary' : 'ghost'} room-item-action">${actionLabel}</button>
+      </div>
+    `;
+  }).join('');
+  wrap.innerHTML = html;
 };
 
 // ---- 게임 초기화(로비 복귀) ----

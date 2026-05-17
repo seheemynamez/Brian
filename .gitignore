@@ -4,6 +4,7 @@
 # 에디터/IDE
 .vscode/
 .idea/
+.claude/
 
 # 로그
 *.log
