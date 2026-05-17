@@ -1,8 +1,0 @@
-# Sehee's Mini Games — https://seheemynamez.github.io/Brian/
-# 모든 검색엔진 / LLM 크롤러 허용.
-
-User-agent: *
-Allow: /
-
-# 사이트맵 위치 (도메인 루트가 아니므로 절대 URL 로 명시)
-Sitemap: https://seheemynamez.github.io/Brian/sitemap.xml
