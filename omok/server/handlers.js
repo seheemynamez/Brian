@@ -362,13 +362,27 @@ const onLeaveRoom = (ws) => {
   if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
 
   const opp = room.players[colorIndex(otherColor(ws.color))];
+
+  // 대전 중에 나가면 → 상대 승리로 처리
+  if (room.status === 'playing') {
+    const winnerColor = otherColor(ws.color);
+    room.status = 'over';
+    room.winner = winnerColor;
+    if (opp) send(opp, { type: 'game_over', winner: winnerColor, line: null, reason: 'opponent_left' });
+    for (const s of room.spectators) {
+      send(s, { type: 'game_over', winner: winnerColor, line: null, reason: 'opponent_left' });
+    }
+  } else {
+    // 대기/종료 상태에서 나감 → 기존대로 상대만 통보
+    if (opp) send(opp, { type: 'opponent_left' });
+    for (const s of room.spectators) send(s, { type: 'opponent_left' });
+  }
+
   if (opp) {
-    send(opp, { type: 'opponent_left' });
     opp.roomCode = null; opp.color = null; opp.role = null;
     dropSession(opp.sessionId); opp.sessionId = null;
   }
   for (const s of room.spectators) {
-    send(s, { type: 'opponent_left' });
     s.roomCode = null; s.role = null;
   }
   dropSession(ws.sessionId); ws.sessionId = null;

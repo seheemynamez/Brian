@@ -83,17 +83,40 @@ const setupWaiting = () => {
 };
 
 // ---- 게임 화면 ----
+const leaveRoomAndGoLobby = () => {
+  sendMessage({ type: 'leave_room' });
+  resetGameLocal();
+  setSessionInUrl(null);
+  showScreen('lobby');
+};
+
+const showLeaveConfirm = (show) => {
+  $('leave-confirm-overlay').classList.toggle('hidden', !show);
+};
+
 const setupGame = () => {
   $('board').addEventListener('click', onBoardClick);
   $('btn-rematch').addEventListener('click', () => {
     sendMessage({ type: 'rematch' });
     $('rematch-pending').classList.remove('hidden');
   });
-  $('btn-leave').addEventListener('click', () => {
-    sendMessage({ type: 'leave_room' });
-    resetGameLocal();
-    setSessionInUrl(null);
-    showScreen('lobby');
+  // 게임오버 카드 안의 "방 나가기" — 게임이 이미 끝났으므로 바로 나감
+  $('btn-leave').addEventListener('click', leaveRoomAndGoLobby);
+
+  // 항상 보이는 "방 나가기" (관전/대전 중 모두)
+  $('btn-leave-game').addEventListener('click', () => {
+    // 관전 중이거나 게임이 이미 끝났으면 즉시 나감
+    if (state.role === 'spectator' || state.gameOver) {
+      leaveRoomAndGoLobby();
+      return;
+    }
+    // 대전 중 → 확인 모달
+    showLeaveConfirm(true);
+  });
+  $('btn-leave-cancel').addEventListener('click', () => showLeaveConfirm(false));
+  $('btn-leave-confirm').addEventListener('click', () => {
+    showLeaveConfirm(false);
+    leaveRoomAndGoLobby();
   });
 };
 

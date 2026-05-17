@@ -105,7 +105,10 @@
         <canvas id="board" width="600" height="600"></canvas>
       </div>
 
-      <div class="room-info" id="room-code-display"></div>
+      <div class="room-info-row">
+        <div class="room-info" id="room-code-display"></div>
+        <button id="btn-leave-game" class="btn ghost btn-small">🚪 방 나가기</button>
+      </div>
 
       <div class="spectator-list hidden" id="spectator-list">
         <span class="spectator-list-title">👀 관전 중 (<span id="spectator-count">0</span>)</span>
@@ -132,6 +135,18 @@
       <div class="loader-big"></div>
       <div class="overlay-title" id="overlay-title">재연결 중...</div>
       <div class="overlay-sub" id="overlay-sub"></div>
+    </div>
+  </div>
+
+  <!-- 대전 중 나가기 확인 모달 -->
+  <div id="leave-confirm-overlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="overlay-title">정말 나가시겠어요?</div>
+      <div class="overlay-sub">대전 중에 나가면 <strong>상대방의 승리</strong>로 처리됩니다.</div>
+      <div class="overlay-actions">
+        <button id="btn-leave-cancel" class="btn ghost">취소</button>
+        <button id="btn-leave-confirm" class="btn accent">나가기</button>
+      </div>
     </div>
   </div>
 

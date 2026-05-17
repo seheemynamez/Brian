@@ -51,6 +51,7 @@
 }
 .btn.ghost:hover { color: var(--ink); background: var(--surface); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+.btn.btn-small { padding: 6px 12px; font-size: 12px; }
 
 .icon-btn {
   width: 36px; height: 36px;
@@ -207,3 +208,10 @@
 }
 .overlay-title { font-weight: 800; font-size: 18px; }
 .overlay-sub { color: var(--ink-muted); font-size: 14px; }
+.overlay-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+.overlay-actions .btn { flex: 1; }

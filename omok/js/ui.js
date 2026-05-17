@@ -152,17 +152,23 @@ function tickTimer() {
 export { startTimerTick };
 
 // ---- 게임 종료 UI ----
-export const showGameOver = (winner) => {
+export const showGameOver = (winner, reason) => {
   const card = $('game-over');
   const text = $('result-text');
   $('rematch-pending').classList.add('hidden');
   $('btn-rematch').classList.remove('hidden');
+  // 상대가 도중에 나간 경우(opponent_left)는 재대국 불가 — 방이 사라졌음
+  const opponentLeft = reason === 'opponent_left';
+  if (opponentLeft) $('btn-rematch').classList.add('hidden');
   if (state.role === 'spectator') {
     // 관전자: 누가 이겼는지만 표시, 재대국 버튼 숨김
     $('btn-rematch').classList.add('hidden');
     if (winner === 'draw') {
       text.textContent = '무승부';
       text.className = 'result draw';
+    } else if (opponentLeft) {
+      text.textContent = (winner === 'black' ? '흑' : '백') + ' 승 (상대 포기)';
+      text.className = 'result neutral';
     } else {
       text.textContent = (winner === 'black' ? '흑' : '백') + ' 승';
       text.className = 'result neutral';
@@ -172,7 +178,7 @@ export const showGameOver = (winner) => {
     text.className = 'result draw';
     playSound('draw');
   } else if (winner === state.myColor) {
-    text.textContent = '🏆 승리';
+    text.textContent = opponentLeft ? '🏆 상대 포기 → 승리' : '🏆 승리';
     text.className = 'result win';
     playSound('win');
   } else {

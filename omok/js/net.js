@@ -246,7 +246,7 @@ const onGameOver = (msg) => {
   state.winLine = msg.line;
   stopTimerTick();
   drawBoard();
-  showGameOver(msg.winner);
+  showGameOver(msg.winner, msg.reason);
 };
 
 const onRematchPending = (msg) => {
