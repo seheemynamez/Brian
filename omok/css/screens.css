@@ -254,11 +254,8 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 12px;
   align-items: center;
-  /* 이모트 말풍선이 카드 위로 떠도 탑바와 겹치지 않게 호흡 공간 */
-  margin-top: 32px;
 }
 .player-card {
-  position: relative; /* 이모트 말풍선이 카드 위에 절대 위치로 떠야 함 */
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -267,7 +264,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  overflow: visible; /* 말풍선이 카드 밖으로 튀어나옴 (.player-nick 자체의 ellipsis는 그 자체 overflow:hidden 으로 유지됨) */
+  overflow: hidden;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: border 0.2s, box-shadow 0.2s;

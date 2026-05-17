@@ -273,24 +273,43 @@ export const setEmotePickerVisible = (visible) => {
   if (el) el.classList.toggle('hidden', !visible);
 };
 
-// 상대(또는 본인) 이모트를 해당 색 플레이어 카드 위에 잠시 띄움.
-// 같은 카드에 이전 말풍선이 떠있으면 정리 후 새로 표시.
+// 보드 아래에서 위로 둥실 떠올라 보드 최하단 두 줄(~85%) 지점에서 사라지는 말풍선.
+// 다수가 동시에 떠있어도 자연스럽게 (색별 X 베이스 + 랜덤 흔들기로 분산).
+// 보드 좌표는 getBoundingClientRect로 매번 측정 → 화면 크기에 자동 대응.
 export const showEmote = (color, emoji, text) => {
-  const cardId = color === 'black' ? 'player-black' : 'player-white';
-  const card = $(cardId);
-  if (!card) return;
-  card.querySelectorAll('.emote-bubble').forEach((el) => el.remove());
+  const board = document.querySelector('.board-wrap');
+  if (!board) return;
+  const rect = board.getBoundingClientRect();
+  // 시작: 보드 바로 아래
+  const startY = rect.bottom + 30;
+  // 끝: 보드 최하단 두 줄 라인(보드 위에서 ~85% 지점) — 여기서 opacity 0
+  const endY = rect.top + rect.height * 0.85;
+  // 자연 계산값 그대로 — 화면 크기에 맞춰 자동 스케일. 최소 30px만 안전장치.
+  const travel = Math.max(30, startY - endY);
+
+  // 색별 시작 X 위치(센터 기준 좌/우 약간) + 약간의 랜덤
+  const baseX = color === 'black' ? -52 : 52;
+  const randX = Math.floor(Math.random() * 28) - 14;
+  const startX = baseX + randX;
+
   const bubble = document.createElement('div');
-  bubble.className = 'emote-bubble';
-  const e = document.createElement('span');
-  e.className = 'emote-emoji';
-  e.textContent = emoji;
+  bubble.className = `emote-bubble emote-bubble-${color}`;
+  bubble.style.setProperty('--start-y', `${startY}px`);
+  bubble.style.setProperty('--start-x', `${startX}px`);
+  bubble.style.setProperty('--travel', `${travel}px`);
+
+  const dot = document.createElement('span');
+  dot.className = 'emote-bubble-color';
+  const emo = document.createElement('span');
+  emo.className = 'emote-emoji';
+  emo.textContent = emoji;
   const t = document.createElement('span');
   t.className = 'emote-text';
   t.textContent = text;
-  bubble.appendChild(e);
-  bubble.appendChild(t);
-  card.appendChild(bubble);
-  // animation 종료(2.2s) 후 자동 정리
-  setTimeout(() => bubble.remove(), 2200);
+  bubble.append(dot, emo, t);
+
+  document.body.appendChild(bubble);
+  // animation 끝나면 자동 정리, 만일을 대비해 폴백 타이머도 걸어둠
+  bubble.addEventListener('animationend', () => bubble.remove(), { once: true });
+  setTimeout(() => { if (bubble.isConnected) bubble.remove(); }, 4500);
 };

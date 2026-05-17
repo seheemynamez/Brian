@@ -298,51 +298,51 @@
 .emote-option .emote-emoji { font-size: 20px; line-height: 1; flex-shrink: 0; }
 .emote-option .emote-label { white-space: nowrap; }
 
-/* 말풍선 — 플레이어 카드 위로 잠시 떠올랐다 사라짐 */
+/* 말풍선 — 보드 아래에서 위로 둥실 떠올라 보드 최하단 두 줄 지점에서 사라짐.
+   position: fixed + JS가 매번 계산해주는 --start-y / --start-x / --travel CSS 변수로 동작. */
 .emote-bubble {
-  position: absolute;
-  top: -8px;
+  position: fixed;
+  top: var(--start-y, 70vh);
   left: 50%;
-  background: linear-gradient(135deg, var(--accent-2), var(--accent-3));
-  color: white;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 14px;
   border-radius: 18px;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent-3));
+  color: white;
   font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.10);
   z-index: 25;
-  display: flex;
-  align-items: center;
-  gap: 6px;
   pointer-events: none;
-  animation: emote-life 2200ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity;
+  animation: emote-float-up 3800ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 .emote-bubble .emote-emoji {
   font-size: 18px;
   display: inline-block;
   animation: emote-emoji-wiggle 700ms ease-in-out infinite alternate;
 }
-.emote-bubble::after {
-  content: '';
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
+/* 보낸 사람 표시(작은 원) — 검정/흰 */
+.emote-bubble-color {
   width: 12px;
   height: 12px;
-  background: linear-gradient(135deg, var(--accent-2), var(--accent-3));
-  transform: translateX(-50%) rotate(45deg);
-  border-radius: 2px;
-  z-index: -1;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
+.emote-bubble-black .emote-bubble-color { background: #0c0c0c; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45); }
+.emote-bubble-white .emote-bubble-color { background: #fff;    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.20); }
 
-/* 등장(살짝 위로 튀어 오름) → 안정 → 천천히 위로 표류 → 페이드아웃 */
-@keyframes emote-life {
-  0%   { opacity: 0; transform: translate(-50%, -60%) scale(0.4); }
-  12%  { opacity: 1; transform: translate(-50%, -108%) scale(1.15); }
-  22%  { transform: translate(-50%, -100%) scale(1); }
-  82%  { opacity: 1; transform: translate(-50%, -112%) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -128%) scale(0.92); }
+/* 둥실둥실 위로 — 좌우로도 살짝 흔들리며 위로 표류, 끝에서 fade-out */
+@keyframes emote-float-up {
+  0%   { opacity: 0;   transform: translate(calc(-50% + var(--start-x, 0px) + 0px),  20px) scale(0.7); }
+  8%   { opacity: 1;   transform: translate(calc(-50% + var(--start-x, 0px) + 0px),  0px) scale(1); }
+  30%  { opacity: 1;   transform: translate(calc(-50% + var(--start-x, 0px) + 8px),  calc(-1 * var(--travel, 200px) * 0.28)) scale(1); }
+  55%  { opacity: 1;   transform: translate(calc(-50% + var(--start-x, 0px) - 6px),  calc(-1 * var(--travel, 200px) * 0.55)) scale(1); }
+  78%  { opacity: 0.7; transform: translate(calc(-50% + var(--start-x, 0px) + 5px),  calc(-1 * var(--travel, 200px) * 0.82)) scale(1); }
+  100% { opacity: 0;   transform: translate(calc(-50% + var(--start-x, 0px) + 0px),  calc(-1 * var(--travel, 200px))) scale(0.95); }
 }
 @keyframes emote-emoji-wiggle {
   from { transform: translateY(0) rotate(-6deg); }
