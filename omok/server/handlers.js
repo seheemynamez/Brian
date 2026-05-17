@@ -18,14 +18,16 @@ const EMOTE_COOLDOWN_MS     = Number(process.env.EMOTE_COOLDOWN_MS)     || 800;
 
 // 게임 중 짧은 상호작용 이모트. 키는 클라/서버 합의된 화이트리스트만 허용.
 const EMOTES = {
-  easy:     { emoji: '😏', text: 'Easy' },
-  cute:     { emoji: '🥺', text: 'Cute move' },
-  nice_try: { emoji: '😅', text: 'Nice try' },
-  sure:     { emoji: '🤔', text: 'You sure?' },
-  gg:       { emoji: '🫡', text: 'GG' },
-  again:    { emoji: '🔁', text: 'Again?' },
-  try_me:   { emoji: '😤', text: 'Try me' },
-  free_win: { emoji: '💸', text: 'Free win?' },
+  hi:        { emoji: '👋', text: 'Hi' },
+  tick_tock: { emoji: '⏰', text: 'Tick-tock' },
+  hmm:       { emoji: '🤔', text: 'Hmm..' },
+  oops:      { emoji: '🫢', text: 'Oops' },
+  easy:      { emoji: '😏', text: 'Easy' },
+  sure:      { emoji: '🤨', text: 'You sure?' },
+  please:    { emoji: '🥺', text: 'Please..' },
+  wow:       { emoji: '😳', text: 'WOW' },
+  gg:        { emoji: '🫡', text: 'GG' },
+  again:     { emoji: '🔁', text: 'Again?' },
 };
 
 let wssRef = null;

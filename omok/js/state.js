@@ -9,15 +9,18 @@ export const emptyBoard = () =>
 
 // 게임 중 상호작용 이모트 — 서버 화이트리스트와 동일 (key 기준 검증).
 // 표시용 emoji/text는 클라가 가지고 있어서 picker UI 빌드에 사용.
+// 순서가 picker에 그대로 노출됨 — 인사 → 견제 → 게임 중 반응 → 마무리 흐름.
 export const EMOTES = [
-  { key: 'easy',     emoji: '😏', text: 'Easy' },
-  { key: 'cute',     emoji: '🥺', text: 'Cute move' },
-  { key: 'nice_try', emoji: '😅', text: 'Nice try' },
-  { key: 'sure',     emoji: '🤔', text: 'You sure?' },
-  { key: 'gg',       emoji: '🫡', text: 'GG' },
-  { key: 'again',    emoji: '🔁', text: 'Again?' },
-  { key: 'try_me',   emoji: '😤', text: 'Try me' },
-  { key: 'free_win', emoji: '💸', text: 'Free win?' },
+  { key: 'hi',        emoji: '👋', text: 'Hi' },
+  { key: 'tick_tock', emoji: '⏰', text: 'Tick-tock' },
+  { key: 'hmm',       emoji: '🤔', text: 'Hmm..' },
+  { key: 'oops',      emoji: '🫢', text: 'Oops' },
+  { key: 'easy',      emoji: '😏', text: 'Easy' },
+  { key: 'sure',      emoji: '🤨', text: 'You sure?' },
+  { key: 'please',    emoji: '🥺', text: 'Please..' },
+  { key: 'wow',       emoji: '😳', text: 'WOW' },
+  { key: 'gg',        emoji: '🫡', text: 'GG' },
+  { key: 'again',     emoji: '🔁', text: 'Again?' },
 ];
 
 export const state = {
