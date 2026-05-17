@@ -14,6 +14,19 @@ const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
 
 const TURN_TIMEOUT_MS       = Number(process.env.TURN_TIMEOUT_MS)       || 30000;
 const DISCONNECT_GRACE_MS   = Number(process.env.DISCONNECT_GRACE_MS)   || 30000;
+const EMOTE_COOLDOWN_MS     = Number(process.env.EMOTE_COOLDOWN_MS)     || 800;
+
+// 게임 중 짧은 상호작용 이모트. 키는 클라/서버 합의된 화이트리스트만 허용.
+const EMOTES = {
+  easy:     { emoji: '😏', text: 'Easy' },
+  cute:     { emoji: '🥺', text: 'Cute move' },
+  nice_try: { emoji: '😅', text: 'Nice try' },
+  sure:     { emoji: '🤔', text: 'You sure?' },
+  gg:       { emoji: '🫡', text: 'GG' },
+  again:    { emoji: '🔁', text: 'Again?' },
+  try_me:   { emoji: '😤', text: 'Try me' },
+  free_win: { emoji: '💸', text: 'Free win?' },
+};
 
 let wssRef = null;
 
@@ -175,9 +188,31 @@ const handleMessage = (ws, msg) => {
     case 'move':           return onMove(ws, msg.row, msg.col);
     case 'rematch':        return onRematch(ws);
     case 'leave_room':     return onLeaveRoom(ws);
+    case 'emote':          return onEmote(ws, msg);
     case 'request_rooms_list':
       return send(ws, { type: 'rooms_list', rooms: getRoomsList() });
   }
+};
+
+// 플레이어가 보낸 이모트를 방 전체(상대 + 관전자)에 브로드캐스트.
+// 진행 중(playing) 또는 종료 후(over)에만 허용. 같은 ws의 너무 잦은 송신은 쿨다운으로 무시.
+const onEmote = (ws, msg) => {
+  if (!ws.roomCode || ws.role !== 'player') return;
+  const room = getRoom(ws.roomCode);
+  if (!room) return;
+  if (room.status !== 'playing' && room.status !== 'over') return;
+  const e = EMOTES[msg.key];
+  if (!e) return;
+  const now = Date.now();
+  if (ws.lastEmoteAt && now - ws.lastEmoteAt < EMOTE_COOLDOWN_MS) return;
+  ws.lastEmoteAt = now;
+  broadcastRoom(room, {
+    type: 'emote',
+    from: ws.color,
+    key: msg.key,
+    emoji: e.emoji,
+    text: e.text,
+  });
 };
 
 const onCreateRoom = (ws, msg) => {

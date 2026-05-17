@@ -13,7 +13,13 @@ export const showScreen = (name) => {
   $('screen-lobby').classList.toggle('hidden', name !== 'lobby');
   $('screen-waiting').classList.toggle('hidden', name !== 'waiting');
   $('screen-game').classList.toggle('hidden', name !== 'game');
-  if (name !== 'game') $('game-over').classList.add('hidden');
+  if (name !== 'game') {
+    $('game-over').classList.add('hidden');
+    // 게임 화면을 떠나면 이모트 피커도 닫고 FAB도 숨김
+    setEmotePickerVisible(false);
+    const btnEmote = $('btn-emote');
+    if (btnEmote) btnEmote.classList.add('hidden');
+  }
 };
 
 export const setLobbyError = (text) => { $('lobby-error').textContent = text || ''; };
@@ -78,6 +84,10 @@ export const updatePlayerCards = () => {
 
   // 관전자 모드 표시
   $('spectator-badge').classList.toggle('hidden', state.role !== 'spectator');
+
+  // 이모트 FAB — 플레이어일 때만 노출 (관전자는 보내기 X, 받기는 O)
+  const btnEmote = $('btn-emote');
+  if (btnEmote) btnEmote.classList.toggle('hidden', state.role !== 'player');
 };
 
 export const updateTurnUI = () => {
@@ -251,4 +261,55 @@ export const resetGameLocal = () => {
   state.sessionId = null;
   state.role = null;
   state.spectators = [];
+};
+
+// ============================================================
+// 이모트 (FAB / 피커 / 말풍선)
+// ============================================================
+
+// 피커 열기/닫기
+export const setEmotePickerVisible = (visible) => {
+  const el = $('emote-picker');
+  if (el) el.classList.toggle('hidden', !visible);
+};
+
+// 보드 아래에서 위로 둥실 떠올라 보드 최하단 두 줄(~85%) 지점에서 사라지는 말풍선.
+// 다수가 동시에 떠있어도 자연스럽게 (색별 X 베이스 + 랜덤 흔들기로 분산).
+// 보드 좌표는 getBoundingClientRect로 매번 측정 → 화면 크기에 자동 대응.
+export const showEmote = (color, emoji, text) => {
+  const board = document.querySelector('.board-wrap');
+  if (!board) return;
+  const rect = board.getBoundingClientRect();
+  // 시작: 보드 바로 아래
+  const startY = rect.bottom + 30;
+  // 끝: 보드 최하단 두 줄 라인(보드 위에서 ~85% 지점) — 여기서 opacity 0
+  const endY = rect.top + rect.height * 0.85;
+  // 자연 계산값 그대로 — 화면 크기에 맞춰 자동 스케일. 최소 30px만 안전장치.
+  const travel = Math.max(30, startY - endY);
+
+  // 색별 시작 X 위치(센터 기준 좌/우 약간) + 약간의 랜덤
+  const baseX = color === 'black' ? -52 : 52;
+  const randX = Math.floor(Math.random() * 28) - 14;
+  const startX = baseX + randX;
+
+  const bubble = document.createElement('div');
+  bubble.className = `emote-bubble emote-bubble-${color}`;
+  bubble.style.setProperty('--start-y', `${startY}px`);
+  bubble.style.setProperty('--start-x', `${startX}px`);
+  bubble.style.setProperty('--travel', `${travel}px`);
+
+  const dot = document.createElement('span');
+  dot.className = 'emote-bubble-color';
+  const emo = document.createElement('span');
+  emo.className = 'emote-emoji';
+  emo.textContent = emoji;
+  const t = document.createElement('span');
+  t.className = 'emote-text';
+  t.textContent = text;
+  bubble.append(dot, emo, t);
+
+  document.body.appendChild(bubble);
+  // animation 끝나면 자동 정리, 만일을 대비해 폴백 타이머도 걸어둠
+  bubble.addEventListener('animationend', () => bubble.remove(), { once: true });
+  setTimeout(() => { if (bubble.isConnected) bubble.remove(); }, 4500);
 };

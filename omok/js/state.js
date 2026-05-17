@@ -7,6 +7,19 @@ export const BOARD_SIZE = 15;
 export const emptyBoard = () =>
   Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
 
+// 게임 중 상호작용 이모트 — 서버 화이트리스트와 동일 (key 기준 검증).
+// 표시용 emoji/text는 클라가 가지고 있어서 picker UI 빌드에 사용.
+export const EMOTES = [
+  { key: 'easy',     emoji: '😏', text: 'Easy' },
+  { key: 'cute',     emoji: '🥺', text: 'Cute move' },
+  { key: 'nice_try', emoji: '😅', text: 'Nice try' },
+  { key: 'sure',     emoji: '🤔', text: 'You sure?' },
+  { key: 'gg',       emoji: '🫡', text: 'GG' },
+  { key: 'again',    emoji: '🔁', text: 'Again?' },
+  { key: 'try_me',   emoji: '😤', text: 'Try me' },
+  { key: 'free_win', emoji: '💸', text: 'Free win?' },
+];
+
 export const state = {
   ws: null,
   connected: false,
