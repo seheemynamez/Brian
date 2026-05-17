@@ -6,7 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0b0a1f">
   <title>오목대전</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/screens.css">
 </head>
 <body>
   <header class="top-bar">
@@ -15,6 +17,7 @@
       <span class="brand-text">오목대전</span>
     </div>
     <div class="top-right">
+      <div id="online-count" class="chip">🟢 0명 온라인</div>
       <div id="conn-status" class="chip">연결 중...</div>
       <button id="btn-mute" class="icon-btn" aria-label="음소거 토글">🔊</button>
     </div>
@@ -26,7 +29,7 @@
     <section id="screen-lobby" class="screen">
       <div class="hero">
         <h1>오목대전</h1>
-        <p class="hero-sub">친구를 코드로 부르거나, 누군가와 즉석 매칭</p>
+        <p class="hero-sub">친구와 코드로, 누군가와 즉석 매칭, 혹은 관전</p>
       </div>
 
       <div class="card nick-card">
@@ -44,11 +47,12 @@
 
         <div class="card action-card">
           <div class="card-icon">🔑</div>
-          <h2>코드로 참가</h2>
-          <div class="row">
-            <input id="code-input" class="input-code" placeholder="ABCD" maxlength="4" autocomplete="off" />
+          <h2>코드로 참가/관전</h2>
+          <input id="code-input" class="input-code" placeholder="ABCD" maxlength="4" autocomplete="off" />
+          <div class="row" style="width:100%; justify-content: stretch;">
+            <button id="btn-join" class="btn" style="flex:1">참가</button>
+            <button id="btn-spectate" class="btn ghost" style="flex:1">관전</button>
           </div>
-          <button id="btn-join" class="btn">참가</button>
         </div>
 
         <div class="card action-card">
@@ -77,18 +81,20 @@
     <section id="screen-game" class="screen hidden">
 
       <div class="players">
-        <div class="player-card" id="player-self">
-          <div class="player-color" id="self-color"></div>
-          <div class="player-nick" id="self-nick">나</div>
-          <div class="player-turn-indicator" id="self-turn-ind"></div>
+        <div class="player-card" id="player-black">
+          <div class="player-color black" id="black-color">흑</div>
+          <div class="player-nick" id="black-nick">흑 플레이어</div>
+          <div class="player-me-badge hidden" id="black-me">나</div>
         </div>
-        <div class="vs">VS</div>
-        <div class="player-card" id="player-opp">
-          <div class="player-color" id="opp-color"></div>
-          <div class="player-nick" id="opp-nick">상대</div>
-          <div class="player-turn-indicator" id="opp-turn-ind"></div>
+        <div class="vs" id="vs-divider">VS</div>
+        <div class="player-card" id="player-white">
+          <div class="player-color white" id="white-color">백</div>
+          <div class="player-nick" id="white-nick">백 플레이어</div>
+          <div class="player-me-badge hidden" id="white-me">나</div>
         </div>
       </div>
+
+      <div class="spectator-badge hidden" id="spectator-badge">👀 관전 모드</div>
 
       <div class="timer-row">
         <div class="timer-bar" id="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
@@ -100,6 +106,11 @@
       </div>
 
       <div class="room-info" id="room-code-display"></div>
+
+      <div class="spectator-list hidden" id="spectator-list">
+        <span class="spectator-list-title">👀 관전 중 (<span id="spectator-count">0</span>)</span>
+        <span id="spectator-chips"></span>
+      </div>
 
       <div id="game-toast" class="toast hidden"></div>
 
@@ -124,6 +135,6 @@
     </div>
   </div>
 
-  <script src="game.js" defer></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
