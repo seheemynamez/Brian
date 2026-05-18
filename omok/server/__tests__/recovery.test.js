@@ -756,6 +756,51 @@ test('B4: 정상 queue_leave → bot_offer 안 옴', async () => {
 });
 
 // ============================================================
+// Phase 4+5 — JSON 직렬화 가능한 room state
+// ============================================================
+
+test('J1: getSerializableRoomState 출력에 비-직렬화 타입 없음', async () => {
+  // 직접 module 을 require 해서 state shape 확인. server 와 같은 cwd 라 가능.
+  const rooms = require('../rooms');
+  const room = rooms.createRoom('JSON');
+  rooms.setRoom('JSON', room);
+  rooms.createPlayerSession(room, 'black', {
+    type: 'human', ws: null, clientId: 'cid-x', nickname: 'X',
+  });
+  rooms.createPlayerSession(room, 'white', {
+    type: 'bot', ws: null, clientId: '_bot_hard', playerId: '_bot_hard', nickname: 'Hard Bot', difficulty: 'hard',
+  });
+  room.spectatorSessionIds.add('sess-A');
+  room.spectatorSessionIds.add('sess-B');
+  room.rematchVotes.add('black');
+  const ser = rooms.getSerializableRoomState(room);
+  // 직렬화 시 throw 안 해야 + 결과에 banned types 없어야
+  const json = JSON.stringify(ser);
+  assert(typeof json === 'string' && json.length > 0, 'JSON.stringify failed');
+  const parsed = JSON.parse(json);
+  assert(parsed.code === 'JSON');
+  assert(parsed.players.black?.clientId === 'cid-x');
+  assert(parsed.players.white?.type === 'bot' && parsed.players.white?.difficulty === 'hard');
+  assert(Array.isArray(parsed.spectatorSessionIds) && parsed.spectatorSessionIds.length === 2);
+  assert(Array.isArray(parsed.rematchVotes) && parsed.rematchVotes.includes('black'));
+  // 비-직렬화 키들이 root 에 없어야
+  for (const banned of ['turnTimer', 'botMoveTimer', 'botOfferTimer', 'disconnectTimers']) {
+    assert(!(banned in parsed), `unexpected ${banned} in serialized state`);
+  }
+  rooms.deleteRoom('JSON');
+});
+
+test('J2: room 자체에도 timer field 가 없음 (runtime 분리)', async () => {
+  const rooms = require('../rooms');
+  const room = rooms.createRoom('NOTM');
+  rooms.setRoom('NOTM', room);
+  for (const banned of ['turnTimer', 'botMoveTimer', 'botOfferTimer', 'disconnectTimers']) {
+    assert(!(banned in room), `room should not have ${banned} (moved to room-runtime)`);
+  }
+  rooms.deleteRoom('NOTM');
+});
+
+// ============================================================
 // runner
 // ============================================================
 (async () => {

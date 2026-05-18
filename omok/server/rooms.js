@@ -115,34 +115,56 @@ const sanitizeNick = (nick) => {
 };
 
 // ---- 방 객체 / 세션 부착 ----
-// 이슈 #31 Phase 1: room.players 가 ws 가 아니라 metadata object 만 보유.
-// 도메인 상태 (room) 와 transport (ws) 분리. JSON 직렬화 가능한 shape 으로 한 걸음 더.
+// 이슈 #31 Phase 1+4+5:
+//   - players 는 ws 가 아니라 metadata object.
+//   - timer handle, worker handle 같은 직렬화 불가능한 객체는 room-runtime.js 에 분리.
+//   - room 자체는 (rematchVotes Set, spectatorSessionIds Set 만 제외하면) JSON 직렬화 가능.
 const createRoom = (code) => ({
   code,
   // gameId — startGame 시마다 새로 발급. 재대국마다 변경. 랭킹/통계 사전 작업.
   gameId: null,
   // 플레이어 슬롯 — color → PlayerSlot | null.
-  //   PlayerSlot = {
-  //     sessionId, playerId, clientId, nickname, type: 'human'|'bot', difficulty?
-  //   }
+  //   PlayerSlot = { sessionId, playerId, clientId, nickname, type, difficulty? }
   // 송신은 sendToPlayer(room, color, msg) → connections.getWsBySessionId 으로 매번 resolve.
   players: { black: null, white: null },
-  // 관전자 sessionId 단독. 같은 clientId 의 멀티탭은 attachSpectatorSession 이 동일 sessionId
-  // 1개로만 카운트.
+  // 관전자 sessionId 단독. 같은 clientId 의 멀티탭은 attachSpectatorSession 이 동일 sessionId 1개로만 카운트.
   spectatorSessionIds: new Set(),
   board: emptyBoard(),
   turn: 'black',
   turnDeadline: 0,
-  turnTimer: null,
   status: 'waiting',              // waiting | playing | over
   winner: null,
   winLine: null,
   lastMove: null,
   rematchVotes: new Set(),
   loser: null,                    // 다음 판 선공 결정용
-  disconnectTimers: { black: null, white: null },
-  // 봇 게임 표시 — 봇이 들어있는 방. 사람만의 게임은 false.
   hasBot: false,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+});
+
+// Valkey 같은 store 에 저장하기 위한 직렬화 가능 형태로 변환.
+// Set 들은 array 로 풀고, 비-직렬화 필드 (있다면) 는 제외.
+const getSerializableRoomState = (room) => ({
+  code: room.code,
+  gameId: room.gameId,
+  players: {
+    black: room.players.black ? { ...room.players.black } : null,
+    white: room.players.white ? { ...room.players.white } : null,
+  },
+  spectatorSessionIds: Array.from(room.spectatorSessionIds || []),
+  board: room.board,
+  turn: room.turn,
+  turnDeadline: room.turnDeadline || 0,
+  status: room.status,
+  winner: room.winner,
+  winLine: room.winLine,
+  lastMove: room.lastMove,
+  rematchVotes: Array.from(room.rematchVotes || []),
+  loser: room.loser,
+  hasBot: !!room.hasBot,
+  createdAt: room.createdAt || 0,
+  updatedAt: room.updatedAt || 0,
 });
 
 // 새 게임 시작마다 발급. 랭킹·통계 키.
@@ -233,4 +255,5 @@ module.exports = {
   incrementOnline, decrementOnline, getOnline,
   genCode, genSessionId, genGameId, sanitizeNick,
   createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
+  getSerializableRoomState,
 };

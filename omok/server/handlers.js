@@ -11,6 +11,7 @@ const {
   createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
 } = require('./rooms');
 const connections = require('./connections');
+const roomRuntime = require('./room-runtime');
 const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
 const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('./renju');
 const {
@@ -174,11 +175,10 @@ const scheduleBotMove = (room) => {
   if (!botColor) return;
   const bot = room.players[botColor];
   if (room.turn !== botColor) return;
-  if (room.botMoveTimer) clearTimeout(room.botMoveTimer);
   const delay = thinkTimeMs(bot.difficulty);
   const code = room.code;
-  room.botMoveTimer = setTimeout(() => {
-    room.botMoveTimer = null;
+  roomRuntime.setTimer(code, 'botMoveTimer', setTimeout(() => {
+    roomRuntime.clearTimer(code, 'botMoveTimer');
     if (room.status !== 'playing') return;
     if (room.turn !== botColor) return;
     // 보드 스냅샷을 워커로 보내 비동기로 계산. 메인 이벤트 루프는 그동안 자유.
@@ -195,18 +195,14 @@ const scheduleBotMove = (room) => {
     }).catch((err) => {
       console.error('[bot] generateMoveAsync 실패:', err && err.message);
     });
-  }, delay);
+  }, delay));
 };
 
 const cancelBotTimers = (room) => {
-  if (room && room.botMoveTimer) {
-    clearTimeout(room.botMoveTimer);
-    room.botMoveTimer = null;
-  }
-  if (room && room.botOfferTimer) {
-    clearTimeout(room.botOfferTimer);
-    room.botOfferTimer = null;
-  }
+  if (!room) return;
+  roomRuntime.clearTimer(room.code, 'botMoveTimer');
+  // room.botOfferTimer 는 옛 코드의 잔재 (실제 set 안 됨) — 안전하게 정리.
+  roomRuntime.clearTimer(room.code, 'botOfferTimer');
 };
 
 // 매 성공적인 move 직후 호출 — 봇 게임이면 emote / 다음 봇 차례 처리.
@@ -234,13 +230,12 @@ const afterSuccessfulMove = (room, movedByBot) => {
 const startTurnTimer = (room) => {
   clearTurnTimer(room);
   room.turnDeadline = Date.now() + TURN_TIMEOUT_MS;
-  room.turnTimer = setTimeout(() => onTurnTimeout(room), TURN_TIMEOUT_MS);
+  roomRuntime.setTimer(room.code, 'turnTimer', setTimeout(() => onTurnTimeout(room), TURN_TIMEOUT_MS));
   broadcastRoom(room, { type: 'turn_started', turn: room.turn, deadline: room.turnDeadline });
 };
 
 const clearTurnTimer = (room) => {
-  if (room.turnTimer) clearTimeout(room.turnTimer);
-  room.turnTimer = null;
+  roomRuntime.clearTimer(room.code, 'turnTimer');
   room.turnDeadline = 0;
 };
 
@@ -746,10 +741,7 @@ const onResumeSession = (ws, msg) => {
     // 옛 slot 이 사라진 비정상 상황 (방 폐쇄 직전 등) — 실패로 처리.
     return send(ws, { type: 'resume_failed', reason: 'not_found' });
   }
-  if (room.disconnectTimers[sess.color]) {
-    clearTimeout(room.disconnectTimers[sess.color]);
-    room.disconnectTimers[sess.color] = null;
-  }
+  roomRuntime.clearDisconnectTimer(room.code, sess.color);
   ws.roomCode = room.code;
   ws.color = sess.color;
   ws.role = 'player';
@@ -907,8 +899,7 @@ const onLeaveRoom = (ws) => {
   // 플레이어가 나감 → 방 폐쇄, 모두에게 알림
   clearTurnTimer(room);
   cancelBotTimers(room);
-  if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
-  if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
+  roomRuntime.clearAllDisconnectTimers(room.code);
 
   const oppColor = otherColor(ws.color);
   const oppSlot = room.players[oppColor];
@@ -935,6 +926,7 @@ const onLeaveRoom = (ws) => {
   forEachSpectatorWs(room, (s) => { s.roomCode = null; s.role = null; });
   ws.sessionId = null;
   // deleteRoom 이 양쪽 슬롯 + spectator sessions 모두 dropSession 처리.
+  roomRuntime.dispose(room.code);
   deleteRoom(room.code);
   ws.roomCode = null; ws.color = null; ws.role = null;
   broadcastRoomsList();
@@ -964,8 +956,8 @@ const onPlayerDisconnect = (ws) => {
     room.status = 'over';
     cancelBotTimers(room);
     clearTurnTimer(room);
-    if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
-    if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
+    roomRuntime.clearAllDisconnectTimers(room.code);
+    roomRuntime.dispose(room.code);
     ws.sessionId = null;
     deleteRoom(room.code);  // 양쪽 slot 의 session 정리 포함
     broadcastRoomsList();
@@ -983,8 +975,7 @@ const onPlayerDisconnect = (ws) => {
   // 로 끊겨 sendToSession 은 자연히 no-op.
   sendToPlayer(room, otherColor(myColor), { type: 'opponent_disconnected', color: myColor, deadline });
   forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_disconnected', color: myColor, deadline }));
-  if (room.disconnectTimers[myColor]) clearTimeout(room.disconnectTimers[myColor]);
-  room.disconnectTimers[myColor] = setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS);
+  roomRuntime.setDisconnectTimer(room.code, myColor, setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS));
 };
 
 const finalizeAbandon = (room, color) => {
@@ -1016,9 +1007,9 @@ const finalizeAbandon = (room, color) => {
       send(s, { type: 'opponent_left' });
       s.roomCode = null; s.role = null;
     });
-    if (room.disconnectTimers.black) { clearTimeout(room.disconnectTimers.black); room.disconnectTimers.black = null; }
-    if (room.disconnectTimers.white) { clearTimeout(room.disconnectTimers.white); room.disconnectTimers.white = null; }
+    roomRuntime.clearAllDisconnectTimers(room.code);
     clearTurnTimer(room);
+    roomRuntime.dispose(room.code);
     deleteRoom(room.code);
     broadcastRoomsList();
   }
