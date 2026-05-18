@@ -8,7 +8,7 @@ import {
   setReconnectOverlay, resetGameLocal, updateOnlineCount, setEmotePickerVisible,
 } from './ui.js';
 import { initAudio } from './sound.js';
-import { connect, sendMessage, readSessionFromUrl, setSessionInUrl } from './net.js';
+import { connect, sendMessage, getSession, setSession, setRoomInUrl, getRoomFromUrl } from './net.js';
 import { drawBoard, getBoardCoord } from './board.js';
 
 const $ = (id) => document.getElementById(id);
@@ -96,7 +96,8 @@ const setupWaiting = () => {
     state.waitingMode = null;
     // 방 만들기에서 발급된 sessionId 정리 (자동 resume 방지)
     state.sessionId = null;
-    setSessionInUrl(null);
+    setSession(null);
+    setRoomInUrl(null);
     showScreen('lobby');
   });
 };
@@ -105,7 +106,8 @@ const setupWaiting = () => {
 const leaveRoomAndGoLobby = () => {
   sendMessage({ type: 'leave_room' });
   resetGameLocal();
-  setSessionInUrl(null);
+  setSession(null);
+  setRoomInUrl(null);
   showScreen('lobby');
 };
 
@@ -124,12 +126,14 @@ const setupGame = () => {
 
   // 항상 보이는 "방 나가기" (관전/대전 중 모두)
   $('btn-leave-game').addEventListener('click', () => {
-    // 관전 중이거나 게임이 이미 끝났으면 즉시 나감
-    if (state.role === 'spectator' || state.gameOver) {
+    // forfeit 경고는 '대전 중인 플레이어' 일 때만.
+    // role / myColor / gameOver 세 가지 신호를 모두 사용해 어떤 이상 상태에서도
+    // 관전자가 플레이어 취급되지 않게 한다.
+    const isActivePlayer = state.role === 'player' && state.myColor && !state.gameOver;
+    if (!isActivePlayer) {
       leaveRoomAndGoLobby();
       return;
     }
-    // 대전 중 → 확인 모달
     showLeaveConfirm(true);
   });
   $('btn-leave-cancel').addEventListener('click', () => showLeaveConfirm(false));
@@ -137,6 +141,118 @@ const setupGame = () => {
     showLeaveConfirm(false);
     leaveRoomAndGoLobby();
   });
+};
+
+// ---- 초대 링크 복사 ----
+// 두 위치(대기 화면 큰 버튼, 게임 화면 작은 버튼)에서 같은 동작을 한다.
+// 현재 URL (이미 ?room=XXXX 포함)을 그대로 복사하면 곧바로 공유 링크가 된다.
+const copyInviteLink = async (btn) => {
+  const url = location.href;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      // 보안 컨텍스트(https/localhost)가 아닌 LAN 테스트 등에서는 execCommand 폴백
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    const label = btn.querySelector('.copy-label');
+    const original = label ? label.textContent : btn.textContent;
+    btn.classList.add('copied');
+    if (label) label.textContent = '복사됨!';
+    else btn.textContent = '✓ 복사됨';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      if (label) label.textContent = original;
+      else btn.textContent = '🔗 링크 복사';
+    }, 1500);
+  } catch {
+    // 복사 실패 — prompt 로 폴백해서 사용자가 직접 복사 가능하게
+    prompt('아래 링크를 복사해서 공유하세요', url);
+  }
+};
+
+const setupCopyLinks = () => {
+  $('btn-copy-waiting').addEventListener('click', (e) => copyInviteLink(e.currentTarget));
+  $('btn-copy-game').addEventListener('click', (e) => copyInviteLink(e.currentTarget));
+};
+
+// ---- 직접 링크(?room=XXXX) 진입 모달 ----
+// 닉네임을 입력받아 사용자가 '참가' 또는 '관전' 의도를 명시적으로 선택.
+// 비워두면 형용사+동물 자동 부여 (당근마켓·카카오 오픈채팅 류 패턴).
+//   - 참가: join_room — 빈 자리가 있으면 플레이어, 없으면 서버가 자동으로 관전 처리
+//   - 관전: spectate_room — 항상 관전 (의도가 보호됨)
+
+// 형용사·동물 풀 — 모든 조합이 서버 MAX_NICK_LEN(12자) 안에 들어오도록 6자 이하만.
+// 30 × 30 = 900 조합. 친근하고 귀여운 톤으로 큐레이션 (당근/토스/오픈채팅 참조).
+const NICK_ADJECTIVES = [
+  '귀여운', '멋진', '다정한', '슬기로운', '용감한', '신비한', '행복한', '따뜻한',
+  '친절한', '똑똑한', '든든한', '발랄한', '깜찍한', '부드러운', '솔직한', '게으른',
+  '졸린', '수줍은', '어설픈', '비밀스런', '엉뚱한', '자유로운', '평화로운', '빛나는',
+  '외로운', '배고픈', '진지한', '도도한', '신중한', '느긋한',
+];
+const NICK_ANIMALS = [
+  '너구리', '고양이', '강아지', '토끼', '다람쥐', '펭귄', '곰', '여우',
+  '늑대', '거북이', '햄스터', '판다', '쿼카', '미어캣', '수달', '라쿤',
+  '사슴', '알파카', '코알라', '캥거루', '오리', '부엉이', '두루미', '매',
+  '까치', '참새', '박쥐', '개구리', '도마뱀', '사자',
+];
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const genGuestNick = () => pick(NICK_ADJECTIVES) + pick(NICK_ANIMALS);
+
+const setupDirectJoinModal = () => {
+  const overlay = $('direct-join-overlay');
+  const codeEl = $('direct-join-code');
+  const nickInput = $('direct-join-nick');
+
+  const hide = () => overlay.classList.add('hidden');
+
+  const submit = (asSpectator) => {
+    const code = (codeEl.textContent || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{4}$/.test(code)) { hide(); return; }
+    let nick = nickInput.value.trim();
+    if (!nick) nick = genGuestNick();
+    state.myNick = nick;
+    localStorage.setItem('omok_nick', nick);
+    // 로비 입력 칸과 동기화 — 모달 닫힌 뒤 사용자가 로비를 봤을 때 일관성 유지
+    $('nick-input').value = nick;
+
+    initAudio();
+    const payload = asSpectator
+      ? { type: 'spectate_room', code, nickname: nick }
+      : { type: 'join_room',     code, nickname: nick };
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      sendMessage(payload);
+    } else {
+      // WS 가 아직 열리지 않았으면 net.js 의 open 핸들러가 이걸 보고 보낸다.
+      state.pendingDirectJoin = payload;
+    }
+    hide();
+  };
+
+  $('btn-direct-confirm').addEventListener('click', () => submit(false));
+  $('btn-direct-spectate').addEventListener('click', () => submit(true));
+  $('btn-direct-cancel').addEventListener('click', () => {
+    setRoomInUrl(null);
+    hide();
+  });
+  // Enter 는 기본 액션(참가)으로 — 가장 흔한 경로를 빠르게.
+  nickInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit(false);
+  });
+};
+
+const showDirectJoinModal = (code) => {
+  $('direct-join-code').textContent = code;
+  $('direct-join-nick').value = localStorage.getItem('omok_nick') || '';
+  $('direct-join-overlay').classList.remove('hidden');
+  setTimeout(() => $('direct-join-nick').focus(), 50);
 };
 
 // ---- 음소거 ----
@@ -199,6 +315,8 @@ setupNickname();
 setupLobby();
 setupWaiting();
 setupGame();
+setupCopyLinks();
+setupDirectJoinModal();
 setupMute();
 setupEmote();
 updateMuteButton();
@@ -207,11 +325,16 @@ showScreen('lobby');
 drawBoard();
 updateConnStatus();
 
-// URL hash에 세션이 있으면 자동 복구
-const urlSession = readSessionFromUrl();
+// sessionStorage 에 세션이 있으면 자동 복구
+const urlSession = getSession();
 if (urlSession) {
   state.sessionId = urlSession;
   setReconnectOverlay(true, '이전 게임을 복구하는 중...');
+} else {
+  // 직접 링크(?room=XXXX) 로 들어왔으면 닉네임 모달 노출.
+  // 세션 복구가 우선 — 그쪽이 성공하면 URL 의 ?room= 은 onResumeSuccess 에서 정합화된다.
+  const urlRoom = getRoomFromUrl();
+  if (urlRoom) showDirectJoinModal(urlRoom);
 }
 
 connect();

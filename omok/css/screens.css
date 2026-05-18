@@ -147,6 +147,24 @@
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
 }
+
+/* 크로스 프로모션 — 호스트 게이트웨이로 보내는 작고 옅은 보조 링크 */
+.other-games {
+  display: inline-block;
+  align-self: center;
+  margin-top: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  border-bottom: 1px dashed transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.other-games:hover {
+  color: var(--ink-muted);
+  border-bottom-color: currentColor;
+}
 .room-item {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -241,7 +259,31 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  margin: 6px 0;
+  margin: 6px 0 2px;
+}
+
+/* 초대 링크 복사 버튼 — 대기 화면(방장)에서 코드 아래에 노출 */
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  font-size: 13px;
+  padding: 8px 16px;
+  margin-bottom: 4px;
+  transition: border 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.copy-btn:hover {
+  border-color: var(--accent-1);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+}
+.copy-btn .copy-icon { font-size: 14px; line-height: 1; }
+.copy-btn.copied {
+  background: rgba(74, 250, 163, 0.18);
+  border-color: rgba(74, 250, 163, 0.45);
+  color: var(--good);
 }
 
 /* ============================================================

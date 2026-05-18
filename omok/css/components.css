@@ -216,6 +216,26 @@
 }
 .overlay-actions .btn { flex: 1; }
 
+/* 직접 링크 입장 모달의 방 코드 강조 표시 */
+.direct-join-code {
+  font-family: 'SF Mono', Menlo, monospace;
+  font-weight: 900;
+  letter-spacing: 4px;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 직접 링크 입장 모달의 안내 텍스트 */
+.direct-join-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+  text-align: center;
+  padding: 0 4px;
+}
+
 /* ============================================================
    이모트 — FAB 버튼, 피커, 말풍선 (게임 중 짧은 상호작용)
    ============================================================ */
@@ -233,7 +253,7 @@
   border: none;
   font-size: 22px;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(255, 61, 138, 0.45), 0 0 0 1px rgba(255, 61, 138, 0.25);
+  box-shadow: 0 8px 24px rgba(255, 67, 168, 0.45), 0 0 0 1px rgba(255, 67, 168, 0.25);
   z-index: 30;
   display: flex;
   align-items: center;
@@ -243,7 +263,7 @@
 }
 .fab:hover {
   transform: scale(1.08);
-  box-shadow: 0 12px 32px rgba(255, 61, 138, 0.6);
+  box-shadow: 0 12px 32px rgba(255, 67, 168, 0.6);
 }
 .fab:active { transform: scale(0.92); }
 

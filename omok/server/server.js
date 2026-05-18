@@ -11,7 +11,11 @@ const { incrementOnline, decrementOnline, getOnline } = require('./rooms');
 const handlers = require('./handlers');
 
 const PORT = Number(process.env.PORT) || 8080;
-const STATIC_ROOT = path.resolve(__dirname, '..'); // omok/
+// 기본: omok/ — 운영(Render) 배포와 동일
+// 로컬 LAN 테스트에서 2048 등 형제 디렉토리까지 같이 띄우려면 STATIC_ROOT=../.. 로 실행.
+const STATIC_ROOT = process.env.STATIC_ROOT
+  ? path.resolve(process.env.STATIC_ROOT)
+  : path.resolve(__dirname, '..');
 
 // 프로덕션(Render 등)에선 Pages 도메인만 허용. 미설정 시(로컬 개발) 모두 허용.
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')

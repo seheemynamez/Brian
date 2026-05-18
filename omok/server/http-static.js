@@ -19,7 +19,9 @@ const makeStaticHandler = (root) => {
   const rootResolved = path.resolve(root);
   return (req, res) => {
     let urlPath = (req.url || '/').split('?')[0];
-    if (urlPath === '/') urlPath = '/index.html';
+    // 디렉토리 경로(끝이 '/')는 해당 디렉토리의 index.html 로 매핑.
+    // 예) /2048/ → /2048/index.html, /omok/ → /omok/index.html
+    if (urlPath.endsWith('/')) urlPath += 'index.html';
     const filePath = path.normalize(path.join(rootResolved, urlPath));
     // 경로 탈출 방지
     if (!filePath.startsWith(rootResolved + path.sep) && filePath !== rootResolved) {
