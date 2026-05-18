@@ -12,6 +12,7 @@ const { incrementOnline, decrementOnline, getOnline } = require('./rooms');
 const handlers = require('./handlers');
 const { validateMessage, MAX_MESSAGE_BYTES } = require('./validators');
 const { checkRateLimit } = require('./rate-limit');
+const log = require('./log');
 
 const PORT = Number(process.env.PORT) || 8080;
 const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 30000;
@@ -62,6 +63,7 @@ wss.on('connection', (ws) => {
 
   incrementOnline();
   handlers.broadcastOnlineCount();
+  log.event('ws_connected', { online: getOnline() });
 
   ws.on('message', (raw) => {
     // 너무 큰 payload 는 parse 자체를 건너뛴다 — 메모리·CPU 방어.
@@ -86,6 +88,7 @@ wss.on('connection', (ws) => {
     if (!v.ok) return;
     // 액션별 rate limit — 초과 시 1회성 안내 후 무시.
     if (!checkRateLimit(ws, msg.type)) {
+      log.event('rate_limited', { action: msg.type, client: log.mask(ws.clientId), nick: ws.nickname || undefined });
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: '잠시 후 다시 시도해주세요' }));
       }
@@ -106,6 +109,7 @@ wss.on('connection', (ws) => {
     handlers.onPlayerDisconnect(ws);
     decrementOnline();
     handlers.broadcastOnlineCount();
+    log.event('ws_disconnected', { online: getOnline(), client: log.mask(ws.clientId), nick: ws.nickname || undefined });
   });
 });
 
@@ -115,6 +119,7 @@ wss.on('connection', (ws) => {
 const heartbeatTimer = setInterval(() => {
   for (const ws of wss.clients) {
     if (ws.isAlive === false) {
+      log.event('heartbeat_terminate', { client: log.mask(ws.clientId), nick: ws.nickname || undefined });
       try { ws.terminate(); } catch {}
       continue;
     }
@@ -126,12 +131,9 @@ heartbeatTimer.unref?.();
 wss.on('close', () => clearInterval(heartbeatTimer));
 
 httpServer.listen(PORT, () => {
-  console.log(`[omok] HTTP   http://localhost:${PORT}`);
-  console.log(`[omok] WS     ws://localhost:${PORT}/ws`);
-  console.log(`[omok] online=${getOnline()}`);
-  if (ALLOWED_ORIGINS.length) {
-    console.log(`[omok] ALLOWED_ORIGINS=${ALLOWED_ORIGINS.join(',')}`);
-  } else {
-    console.log('[omok] ALLOWED_ORIGINS unset → 모든 origin 허용 (개발 모드)');
-  }
+  log.event('server_start', {
+    port: PORT,
+    heartbeat_ms: HEARTBEAT_INTERVAL_MS,
+    allowed_origins: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS.join(',') : 'any',
+  });
 });
