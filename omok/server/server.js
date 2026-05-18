@@ -12,6 +12,7 @@ const { incrementOnline, decrementOnline, getOnline } = require('./rooms');
 const handlers = require('./handlers');
 
 const PORT = Number(process.env.PORT) || 8080;
+const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 30000;
 // 기본: omok/ — 운영(Render) 배포와 동일
 // 로컬 LAN 테스트에서 2048 등 형제 디렉토리까지 같이 띄우려면 STATIC_ROOT=../.. 로 실행.
 const STATIC_ROOT = process.env.STATIC_ROOT
@@ -53,6 +54,9 @@ wss.on('connection', (ws) => {
   ws.inQueue = false;
   ws.sessionId = null;
   ws.nickname = '';
+  // heartbeat: 직전 ping 사이클에 pong(또는 client app-ping)을 받았는가
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
 
   incrementOnline();
   handlers.broadcastOnlineCount();
@@ -61,6 +65,17 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (!msg || typeof msg.type !== 'string') return;
+    // 클라이언트 app-level ping은 즉시 pong 으로 응답하고 살아있다고 표시.
+    // 모바일 브라우저(WebSocket protocol ping 다루기 어려움)에서 백업 채널 역할.
+    if (msg.type === 'ping') {
+      ws.isAlive = true;
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'pong' }));
+      return;
+    }
+    if (msg.type === 'pong') {
+      ws.isAlive = true;
+      return;
+    }
     try {
       handlers.handleMessage(ws, msg);
     } catch (e) {
@@ -78,6 +93,22 @@ wss.on('connection', (ws) => {
     handlers.broadcastOnlineCount();
   });
 });
+
+// 좀비 연결 청소: 한 사이클 동안 pong/메시지가 전혀 없으면 강제 종료.
+// 정상 종료한 연결은 즉시 'close' 가 발생해 online/queue/session 정리가 일어나지만,
+// 모바일 백그라운드·네트워크 단절은 socket 이 그대로 떠 있어 카운트가 누적되는 원인이 됨.
+const heartbeatTimer = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) {
+      try { ws.terminate(); } catch {}
+      continue;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  }
+}, HEARTBEAT_INTERVAL_MS);
+heartbeatTimer.unref?.();
+wss.on('close', () => clearInterval(heartbeatTimer));
 
 httpServer.listen(PORT, () => {
   console.log(`[omok] HTTP   http://localhost:${PORT}`);

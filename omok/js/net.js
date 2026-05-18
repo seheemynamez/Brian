@@ -89,11 +89,49 @@ export const sendMessage = (obj) => {
   }
 };
 
+// ---- 재연결 백오프 + app-level heartbeat ----
+// 고정 간격 재연결은 서버 다운/cold start 시 과한 요청을 만든다.
+// 1s → 2s → 4s → 8s → 16s → 30s 의 지수 백오프 + 동일 시점 동시 재연결을 분산시키는 jitter.
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_MAX_MS  = 30000;
+const RECONNECT_JITTER_MS = 500;
+// 서버 heartbeat(30s)보다 약간 짧게 보내, 네트워크가 죽었으면 서버가 더 빨리 알아채게 한다.
+const APP_PING_INTERVAL_MS = 25000;
+
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+let appPingTimer = null;
+
+const clearReconnectTimer = () => {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+};
+const clearAppPingTimer = () => {
+  if (appPingTimer) { clearInterval(appPingTimer); appPingTimer = null; }
+};
+
+const scheduleReconnect = () => {
+  clearReconnectTimer();
+  const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempt), RECONNECT_MAX_MS)
+              + Math.floor(Math.random() * RECONNECT_JITTER_MS);
+  reconnectAttempt += 1;
+  reconnectTimer = setTimeout(connect, delay);
+};
+
 // ---- 연결 ----
 export const connect = () => {
+  clearReconnectTimer();
   state.ws = new WebSocket(WS_URL);
   state.ws.addEventListener('open', () => {
     state.connected = true;
+    reconnectAttempt = 0;
+    // app-level ping: 모바일 브라우저는 WebSocket protocol-level ping 노출이 어렵다.
+    // 일정 간격으로 {type:'ping'} 을 직접 보내 서버가 살아있다고 판단하게 한다.
+    clearAppPingTimer();
+    appPingTimer = setInterval(() => {
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        try { state.ws.send(JSON.stringify({ type: 'ping' })); } catch {}
+      }
+    }, APP_PING_INTERVAL_MS);
     updateConnStatus();
     // 로비 닉네임과 안정 식별자(clientId)를 서버에 알려둠 — 온라인 목록 + 차후 랭킹 기록용.
     if (state.myNick) sendMessage({ type: 'set_nickname', nickname: state.myNick, clientId: state.clientId });
@@ -118,6 +156,7 @@ export const connect = () => {
   });
   state.ws.addEventListener('close', () => {
     state.connected = false;
+    clearAppPingTimer();
     updateConnStatus();
     if (state.sessionId && state.screenState === 'game' && !state.gameOver) {
       setReconnectOverlay(true, '연결이 끊겨 다시 연결하고 있어요...');
@@ -126,12 +165,14 @@ export const connect = () => {
       const detail = document.getElementById('waiting-detail');
       if (detail) detail.textContent = '연결이 끊겨 다시 시도하는 중…';
     }
-    setTimeout(connect, 1500);
+    scheduleReconnect();
   });
   state.ws.addEventListener('error', () => {});
   state.ws.addEventListener('message', (e) => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
+    // 서버 pong 은 별도 액션 없음 — 메시지 수신 자체가 연결 살아있음을 의미.
+    if (msg.type === 'pong') return;
     dispatch(msg);
   });
 };
