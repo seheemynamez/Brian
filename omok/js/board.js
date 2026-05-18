@@ -85,10 +85,12 @@ export const drawBoard = () => {
     ctx.shadowBlur = 0;
   }
 
-  // 렌주 금수 표시 — 흑 차례에만 빈 칸 중 금수 위치에 × 오버레이.
-  // 게임 종료 / 백 차례 / 보드 비어있을 땐 표시 안 함 (시각적 노이즈 줄이기).
-  if (!state.gameOver && state.currentTurn === 'black') {
-    // 매 차례 보드 상태 변경되므로 매번 계산. 15x15 + 패턴 검사 = 빠름.
+  // 렌주 금수 표시 — 흑 플레이어 본인 화면에만 노출.
+  //   - 백/관전자 화면엔 표시 안 함 (상대 측 정보를 UI 로 흘리지 않기 위함)
+  //   - 흑 차례 여부와 무관하게 게임이 진행 중이면 항상 노출 → 흑이 미리 수읽기 가능
+  const isBlackPlayer = state.role === 'player' && state.myColor === 'black';
+  if (!state.gameOver && isBlackPlayer) {
+    // 매번 계산 — 15x15 + 패턴 검사로 비용 작음.
     const forbidden = findForbiddenSpots(state.board, 'black');
     if (forbidden.length) {
       ctx.save();
