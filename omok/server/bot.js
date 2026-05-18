@@ -302,11 +302,13 @@ const searchBestMove = (board, color, depth, topK) => {
 //     즉시 승리수도 자동으로 발견 (searchBestMove 내부 winLine 처리).
 const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 20);
 
-// 중: 3-ply 미니맥스, top 20 후보
-const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 20);
+// 중: 4-ply × top 12 — depth +1 로 상대 응수 / 자기 응수까지 한 단계 더 깊이.
+//     폭은 12 로 좁혀도 루트 무브 정렬로 핵심 후보는 우선 탐색.
+const generateMoveMedium = (board, color) => searchBestMove(board, color, 4, 12);
 
-// 상: 4-ply 미니맥스, top 15 후보 + 루트에서 무브 정렬
-const generateMoveHard = (board, color) => searchBestMove(board, color, 4, 15);
+// 상: 5-ply × top 8 — 깊이 한 단계 더 올려 자기 콤보·상대 강제 응수를 2수 더 깊이 추적.
+//     폭은 8 로 좁혀 α-β 가지치기 효율 ↑.
+const generateMoveHard = (board, color) => searchBestMove(board, color, 5, 8);
 
 const GENERATORS = {
   easy:   generateMoveEasy,
