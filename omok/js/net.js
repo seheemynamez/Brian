@@ -185,8 +185,8 @@ const dispatch = (msg) => {
     case 'turn_skipped':       return onTurnSkipped(msg);
     case 'game_over':          return onGameOver(msg);
     case 'rematch_pending':    return onRematchPending(msg);
-    case 'opponent_disconnected': return onOpponentDisconnected();
-    case 'opponent_reconnected':  return onOpponentReconnected();
+    case 'opponent_disconnected': return onOpponentDisconnected(msg);
+    case 'opponent_reconnected':  return onOpponentReconnected(msg);
     case 'opponent_left':         return onOpponentGone('상대가 방을 나갔어요');
     case 'opponent_abandoned':    return onOpponentGone('상대가 돌아오지 않아 종료');
     case 'spectator_list':     return updateSpectatorList(msg.spectators);
@@ -195,6 +195,7 @@ const dispatch = (msg) => {
     case 'rooms_list':         return updateRoomsList(msg.rooms);
     case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
     case 'bot_offer':          return onBotOffer();
+    case 'player_replaced':    return onPlayerReplaced();
     case 'error':              return onError(msg);
   }
 };
@@ -241,6 +242,7 @@ const onGameStart = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
   state.myNick = msg.nicknames[msg.you];
+  state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
   state.winLine = null;
@@ -269,14 +271,22 @@ const onSpectateSuccess = (msg) => {
   state.role = 'spectator';
   state.myColor = null;
   state.nicknames = msg.nicknames;
+  state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
   state.winLine = msg.line || null;
   state.lastMove = msg.lastMove || null;
   state.gameOver = msg.status === 'over';
   state.currentRoomCode = msg.code;
-  state.sessionId = null;
-  setSession(null);
+  // 관전자도 sessionId 발급 — 새로고침/네트워크 끊김 후 resume_session 으로 재합류.
+  // (이슈 #31 Phase 2)
+  if (msg.sessionId) {
+    state.sessionId = msg.sessionId;
+    setSession(msg.sessionId);
+  } else {
+    state.sessionId = null;
+    setSession(null);
+  }
   setRoomInUrl(msg.code);
   state.turnDeadline = msg.turnDeadline || null;
   updateSpectatorList(msg.spectators || []);
@@ -300,6 +310,7 @@ const onResumeSuccess = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
   state.myNick = msg.nicknames[msg.you];
+  state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
   state.winLine = msg.line || null;
@@ -392,11 +403,19 @@ const onRematchPending = (msg) => {
   else document.getElementById('rematch-pending').classList.remove('hidden');
 };
 
-const onOpponentDisconnected = () => {
+const onOpponentDisconnected = (msg) => {
+  if (msg && msg.color && state.playerStatus) {
+    state.playerStatus[msg.color] = 'offline';
+    updatePlayerCards();
+  }
   showToast('상대 연결 끊김 — 30초 안에 돌아오지 않으면 게임 종료');
 };
 
-const onOpponentReconnected = () => {
+const onOpponentReconnected = (msg) => {
+  if (msg && msg.color && state.playerStatus) {
+    state.playerStatus[msg.color] = 'online';
+    updatePlayerCards();
+  }
   showToast('상대 재연결됨');
 };
 
@@ -414,6 +433,23 @@ const onOpponentGone = (text) => {
 // 서버가 큐에서 N초 동안 매칭 못 잡으면 보내주는 봇 제안 — main.js 가 설치한 모달 오프너 호출.
 const onBotOffer = () => {
   if (state.openBotGameModal) state.openBotGameModal('offer');
+};
+
+// 다른 탭/기기에서 같은 clientId 로 같은 방 player 자리를 가져갔을 때.
+// 이 ws 는 player 자격 잃고 로비로 떨어짐.
+const onPlayerReplaced = () => {
+  state.gameOver = true;
+  stopTimerTick();
+  state.sessionId = null;
+  setSession(null);
+  state.currentRoomCode = null;
+  setRoomInUrl(null);
+  state.role = null;
+  state.myColor = null;
+  state.waitingMode = null;
+  setReconnectOverlay(false);
+  showScreen('lobby');
+  setLobbyError('다른 탭/기기에서 게임을 이어가고 있어요');
 };
 
 const onError = (msg) => {

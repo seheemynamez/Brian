@@ -1,35 +1,54 @@
 // ============================================================
-// 액션별 rate limit — per-connection sliding window
+// 액션별 rate limit — sliding window
 // ============================================================
 // 정상 플레이에서는 절대 안 걸리는 수준으로 설정한 안전망.
 // move 는 게임 턴 로직이 이미 막아주지만(자기 차례 아닐 때 거부) 메시지 자체를
 // 폭주시키는 케이스(자동화·악성 클라)에 대한 1차 차단으로 둔다.
 // emote 는 handlers.js 에 800ms 쿨다운이 이미 있어 여기서는 제외.
 //
-// 이슈 #31: state 는 connectionId 로 keyed. ws 객체에 _rl 을 매달지 않음.
-// 연결이 끊기면 server.js 의 close 핸들러가 clearForConnection 으로 정리.
+// 키 우선순위 (이슈 #31 Phase 3):
+//   1) clientId (브라우저 사용자 후보 단위) — primary. 새로고침해도 같은 키 유지.
+//   2) sessionId (방 안 역할 단위) — clientId 가 없을 때 폴백.
+//   3) connectionId (현재 ws 연결) — 둘 다 없을 때 최후의 폴백.
+//
+// 의도: 같은 사용자가 새로고침으로 한도를 우회하지 못하게 하는 것.
+// 단, clientId 는 localStorage 기반이라 강한 보안 식별자는 아님. 클리어/조작
+// 가능. 큰 남용에는 별도 IP rate-limit 또는 cloudflare 같은 layer 필요.
 
+// 정책: 일반 플레이엔 절대 안 걸리는 수준 + 자명한 어뷰징만 차단.
+// (이슈 #31 후속: 기존 정책이 사용자 체감으로 너무 빡빡했음.)
 const POLICIES = {
-  move:                { limit: 3, windowMs: 1000 },
-  request_rooms_list:  { limit: 1, windowMs: 3000 },
-  request_online_list: { limit: 1, windowMs: 5000 },
-  create_room:         { limit: 3, windowMs: 10000 },
-  join_room:           { limit: 5, windowMs: 10000 },
-  queue_join:          { limit: 3, windowMs: 10000 },
-  create_bot_game:     { limit: 3, windowMs: 10000 },
+  move:                { limit: 20, windowMs: 1000 },   // 1초 20회 (모바일 빠른 탭 + 봇 게임 빠른 응수)
+  request_rooms_list:  { limit: 10, windowMs: 3000 },   // 로비에서 새로고침/스크롤 등 잦은 갱신 허용
+  request_online_list: { limit: 5,  windowMs: 5000 },
+  create_room:         { limit: 30, windowMs: 60000 },  // 1분 30개 — 일반 사용자엔 의미 없음
+  join_room:           { limit: 30, windowMs: 60000 },
+  queue_join:          { limit: 30, windowMs: 60000 },
+  create_bot_game:     { limit: 30, windowMs: 60000 },
 };
 
-// connectionId → { action: number[] } (window 안의 timestamp 들)
+// bucketKey → { action: number[] } (window 안의 timestamp 들)
+// 각 bucketKey 는 'c:CLIENTID' / 's:SESSIONID' / 'n:CONNECTIONID' prefix 로 namespace 분리.
 const buckets = new Map();
 
-const checkRateLimit = (connectionId, action) => {
+const resolveKey = (identity) => {
+  if (!identity) return null;
+  if (identity.clientId) return 'c:' + identity.clientId;
+  if (identity.sessionId) return 's:' + identity.sessionId;
+  if (identity.connectionId) return 'n:' + identity.connectionId;
+  return null;
+};
+
+// identity: { clientId, sessionId, connectionId } 중 하나 이상.
+const checkRateLimit = (identity, action) => {
   const p = POLICIES[action];
   if (!p) return true;
-  if (!connectionId) return true;  // 방어적 — register 전엔 미체크
-  let actions = buckets.get(connectionId);
+  const key = resolveKey(identity);
+  if (!key) return true;  // 모든 키가 없는 초기 윈도우 — 미체크 (set_nickname 이전 짧은 순간).
+  let actions = buckets.get(key);
   if (!actions) {
     actions = {};
-    buckets.set(connectionId, actions);
+    buckets.set(key, actions);
   }
   const arr = actions[action] || (actions[action] = []);
   const cutoff = Date.now() - p.windowMs;
@@ -39,9 +58,11 @@ const checkRateLimit = (connectionId, action) => {
   return true;
 };
 
-// 연결 종료 시 호출 — 그 connection 의 모든 rate-limit state 정리.
+// 연결 종료 시 호출 — 그 connection 의 bucket 만 정리.
+// clientId 단위 bucket 은 다음 연결에서 이어 쓰므로 정리하지 않음
+// (새로고침으로 한도 우회되는 동작 방지).
 const clearForConnection = (connectionId) => {
-  if (connectionId) buckets.delete(connectionId);
+  if (connectionId) buckets.delete('n:' + connectionId);
 };
 
 module.exports = { checkRateLimit, clearForConnection, POLICIES };

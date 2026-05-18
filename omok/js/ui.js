@@ -94,6 +94,13 @@ export const updatePlayerCards = () => {
   $('black-me').classList.toggle('hidden', state.myColor !== 'black');
   $('white-me').classList.toggle('hidden', state.myColor !== 'white');
 
+  // 온라인 상태 indicator — 자기 자신은 게임 화면 보고 있으니 항상 online.
+  // 빈 슬롯은 indicator 숨김. 봇은 서버가 'online' 으로 보내줌.
+  const statusBlack = state.myColor === 'black' ? 'online' : (state.playerStatus?.black || 'online');
+  const statusWhite = state.myColor === 'white' ? 'online' : (state.playerStatus?.white || 'online');
+  $('player-black').classList.toggle('offline', !blackEmpty && statusBlack === 'offline');
+  $('player-white').classList.toggle('offline', !whiteEmpty && statusWhite === 'offline');
+
   // 관전자 모드 표시
   $('spectator-badge').classList.toggle('hidden', state.role !== 'spectator');
 
