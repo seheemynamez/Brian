@@ -18,6 +18,7 @@ const {
 } = require('./bot');
 // generateMove 는 워커 풀의 async 래퍼 사용 — 메인 이벤트 루프 블로킹 회피.
 const { generateMoveAsync } = require('./bot-pool');
+const log = require('./log');
 
 const TURN_TIMEOUT_MS       = Number(process.env.TURN_TIMEOUT_MS)       || 30000;
 const DISCONNECT_GRACE_MS   = Number(process.env.DISCONNECT_GRACE_MS)   || 30000;
@@ -283,6 +284,12 @@ const startGame = (room) => {
 
   startTurnTimer(room);
   broadcastRoomsList();
+  log.event('game_started', {
+    code: room.code,
+    black: room.nicknames[0],
+    white: room.nicknames[1],
+    bot: !!room.hasBot,
+  });
 };
 
 // ============================================================
@@ -375,6 +382,7 @@ const onCreateRoom = (ws, msg) => {
   const sid = attachSession(ws, room, 'black');
   send(ws, { type: 'room_created', code, sessionId: sid });
   broadcastRoomsList();
+  log.event('room_created', { code, by: ws.nickname });
 };
 
 const onJoinRoom = (ws, msg) => {
@@ -462,6 +470,7 @@ const onQueueJoin = (ws, msg) => {
     // 자동매칭 후에도 방 코드 부여 (관전자 모집용)
     send(opponent, { type: 'matched', code });
     send(ws,       { type: 'matched', code });
+    log.event('queue_matched', { code, a: opponent.nickname, b: ws.nickname });
     startGame(room);
   } else {
     enqueue(ws);
@@ -591,6 +600,7 @@ const onResumeSession = (ws, msg) => {
     turnDeadline: room.turnDeadline || null,
     spectators: getSpectatorNames(room),
   });
+  log.event('session_resumed', { sid: log.mask(sid), code: room.code, color: sess.color });
 };
 
 const onMove = (ws, row, col) => {
@@ -632,6 +642,7 @@ const onMove = (ws, row, col) => {
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
     broadcastRoom(room, { type: 'game_over', winner: ws.color, line: winLine, playerIds: room.playerIds });
     broadcastRoomsList();
+    log.event('game_over', { code: room.code, winner: ws.color, reason: 'five' });
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
@@ -640,6 +651,7 @@ const onMove = (ws, row, col) => {
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
     broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null, playerIds: room.playerIds });
     broadcastRoomsList();
+    log.event('game_over', { code: room.code, winner: 'draw', reason: 'draw' });
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color, turn: room.turn });
@@ -707,6 +719,7 @@ const onLeaveRoom = (ws) => {
     for (const s of room.spectators) {
       send(s, { type: 'game_over', winner: winnerColor, line: null, reason: 'opponent_left' });
     }
+    log.event('game_over', { code: room.code, winner: winnerColor, reason: 'opponent_left' });
   } else {
     // 대기/종료 상태에서 나감 → 기존대로 상대만 통보
     if (opp) send(opp, { type: 'opponent_left' });
