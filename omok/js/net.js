@@ -42,7 +42,6 @@ export const buildShareUrl = (code, nick) => {
 // URL 해시(#session=...) 대신 sessionStorage 에 저장한다.
 //   - 공유 가능한 URL 에 세션 ID 가 노출되지 않음
 //   - 탭 단위 격리: 같은 도메인이라도 다른 탭에선 자동 복구되지 않음 (의도된 동작)
-// 이전 버전 사용자 호환: hash 에 session 이 남아있다면 한 번 읽어 sessionStorage 로 옮기고 hash 정리.
 const SESSION_KEY = 'omok_session';
 
 const setSession = (id) => {
@@ -53,13 +52,6 @@ const setSession = (id) => {
 };
 
 export const getSession = () => {
-  const m = location.hash.match(/session=([^&]+)/);
-  if (m) {
-    const fromHash = decodeURIComponent(m[1]);
-    try { sessionStorage.setItem(SESSION_KEY, fromHash); } catch {}
-    history.replaceState(null, '', location.pathname + location.search);
-    return fromHash;
-  }
   try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; }
 };
 

@@ -8,10 +8,11 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const { makeStaticHandler } = require('./http-static');
 const { makeShareHandler } = require('./share');
-const { incrementOnline, decrementOnline, getOnline } = require('./rooms');
+const { incrementOnline, decrementOnline, getOnline, touchSession } = require('./rooms');
+const connections = require('./connections');
 const handlers = require('./handlers');
 const { validateMessage, MAX_MESSAGE_BYTES } = require('./validators');
-const { checkRateLimit } = require('./rate-limit');
+const { checkRateLimit, clearForConnection } = require('./rate-limit');
 const log = require('./log');
 
 const PORT = Number(process.env.PORT) || 8080;
@@ -61,9 +62,12 @@ wss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
+  // 도메인 코드가 ws 객체를 직접 unique key 로 안 쓰게 — connectionId 발급 (이슈 #31).
+  connections.register(ws);
+
   incrementOnline();
   handlers.broadcastOnlineCount();
-  log.event('ws_connected', { online: getOnline() });
+  log.event('ws_connected', { online: getOnline(), conn: ws.connectionId });
 
   ws.on('message', (raw) => {
     // 너무 큰 payload 는 parse 자체를 건너뛴다 — 메모리·CPU 방어.
@@ -76,18 +80,22 @@ wss.on('connection', (ws) => {
     // schema 검증·rate limit 이전에 가로채 — 빈도 높고 비용 절약.
     if (msg.type === 'ping') {
       ws.isAlive = true;
+      if (ws.sessionId) touchSession(ws.sessionId);
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'pong' }));
       return;
     }
     if (msg.type === 'pong') {
       ws.isAlive = true;
+      if (ws.sessionId) touchSession(ws.sessionId);
       return;
     }
     // schema 검증 — 형식 어긋난 payload 는 조용히 무시(스팸 답신 방지).
     const v = validateMessage(msg);
     if (!v.ok) return;
-    // 액션별 rate limit — 초과 시 1회성 안내 후 무시.
-    if (!checkRateLimit(ws, msg.type)) {
+    // 세션 활성 신호 — 메시지 도착 자체로 lastSeenAt 갱신.
+    if (ws.sessionId) touchSession(ws.sessionId);
+    // 액션별 rate limit — 초과 시 1회성 안내 후 무시. (이슈 #31: connectionId 기반)
+    if (!checkRateLimit(ws.connectionId, msg.type)) {
       log.event('rate_limited', { action: msg.type, client: log.mask(ws.clientId), nick: ws.nickname || undefined });
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: '잠시 후 다시 시도해주세요' }));
@@ -107,6 +115,11 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     handlers.onQueueLeave(ws);
     handlers.onPlayerDisconnect(ws);
+    // rate-limit bucket 정리. unregister 보다 먼저 — connectionId 가 아직 살아있을 때.
+    clearForConnection(ws.connectionId);
+    // connectionId / clientId / sessionId 매핑 정리. session 자체는 grace 동안 유지될 수 있어서
+    // 여기서 dropSession 은 하지 않음 — wsBySessionId 매핑만 제거.
+    connections.unregister(ws);
     decrementOnline();
     handlers.broadcastOnlineCount();
     log.event('ws_disconnected', { online: getOnline(), client: log.mask(ws.clientId), nick: ws.nickname || undefined });
