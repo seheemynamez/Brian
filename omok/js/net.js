@@ -7,7 +7,7 @@ import {
   showScreen, setLobbyError, showToast, updateConnStatus,
   setReconnectOverlay, updateOnlineCount, updatePlayerCards,
   updateTurnUI, updateSpectatorList, startTimerTick, stopTimerTick,
-  showGameOver, showGameOverNeutral, updateRoomsList, showEmote,
+  showGameOver, showGameOverNeutral, updateRoomsList, showEmote, showOnlineList,
 } from './ui.js';
 import { playSound } from './sound.js';
 import { drawBoard } from './board.js';
@@ -82,6 +82,8 @@ export const connect = () => {
   state.ws.addEventListener('open', () => {
     state.connected = true;
     updateConnStatus();
+    // 로비 닉네임을 서버에도 알려둬서 온라인 목록에 표시되게 한다.
+    if (state.myNick) sendMessage({ type: 'set_nickname', nickname: state.myNick });
     if (state.sessionId) {
       // 게임 중 / 방 만들기 대기 중 / 재대국 대기 중 — 어느 상태이든 세션 복구 시도
       sendMessage({ type: 'resume_session', sessionId: state.sessionId, nickname: state.myNick });
@@ -143,6 +145,7 @@ const dispatch = (msg) => {
     case 'opponent_abandoned':    return onOpponentGone('상대가 돌아오지 않아 종료');
     case 'spectator_list':     return updateSpectatorList(msg.spectators);
     case 'online_count':       return updateOnlineCount(msg.n);
+    case 'online_list':        return showOnlineList(msg.nicknames);
     case 'rooms_list':         return updateRoomsList(msg.rooms);
     case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
     case 'error':              return onError(msg);

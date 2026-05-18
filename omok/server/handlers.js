@@ -191,9 +191,36 @@ const handleMessage = (ws, msg) => {
     case 'rematch':        return onRematch(ws);
     case 'leave_room':     return onLeaveRoom(ws);
     case 'emote':          return onEmote(ws, msg);
+    case 'set_nickname':   return onSetNickname(ws, msg);
     case 'request_rooms_list':
       return send(ws, { type: 'rooms_list', rooms: getRoomsList() });
+    case 'request_online_list':
+      return onRequestOnlineList(ws);
   }
+};
+
+// 로비에서 닉네임만 동기화 — 방에 들어가기 전에도 온라인 목록에 표시되도록.
+// 방 안에서는 room.nicknames 가 이미 잡혀 있으므로 ws.nickname 만 갱신.
+const onSetNickname = (ws, msg) => {
+  const next = sanitizeNick(msg.nickname);
+  if (!next) return;
+  ws.nickname = next;
+};
+
+// 접속자 닉네임 목록 — 닉이 설정된 연결만, 같은 닉(멀티탭)은 1개로 dedupe.
+const onRequestOnlineList = (ws) => {
+  if (!wssRef) return;
+  const seen = new Set();
+  const nicknames = [];
+  for (const c of wssRef.clients) {
+    if (c.readyState !== c.OPEN) continue;
+    if (!c.nickname) continue;
+    if (seen.has(c.nickname)) continue;
+    seen.add(c.nickname);
+    nicknames.push(c.nickname);
+  }
+  nicknames.sort((a, b) => a.localeCompare(b, 'ko'));
+  send(ws, { type: 'online_list', nicknames });
 };
 
 // 플레이어가 보낸 이모트를 방 전체(상대 + 관전자)에 브로드캐스트.

@@ -255,6 +255,31 @@ export const updateRoomsList = (rooms) => {
   wrap.innerHTML = html;
 };
 
+// ---- 온라인 사용자 목록 팝업 ----
+export const showOnlineList = (nicknames) => {
+  const overlay = $('online-list-overlay');
+  if (!overlay) return;
+  const list = Array.isArray(nicknames) ? nicknames : [];
+  $('online-list-count').textContent = list.length;
+  const items = $('online-list-items');
+  items.innerHTML = '';
+  if (!list.length) {
+    const empty = document.createElement('li');
+    empty.className = 'online-list-empty';
+    empty.textContent = '아직 닉네임을 설정한 사용자가 없어요';
+    items.appendChild(empty);
+  } else {
+    const myNick = state.myNick;
+    for (const n of list) {
+      const li = document.createElement('li');
+      li.textContent = n;
+      if (n === myNick) li.classList.add('me');
+      items.appendChild(li);
+    }
+  }
+  overlay.classList.remove('hidden');
+};
+
 // ---- 게임 초기화(로비 복귀) ----
 export const resetGameLocal = () => {
   state.board = emptyBoard();
