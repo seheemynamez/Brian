@@ -181,6 +181,12 @@ const onTurnTimeout = (room) => {
   room.turn = otherColor(room.turn);
   broadcastRoom(room, { type: 'turn_skipped', skipped, turn: room.turn });
   startTurnTimer(room);
+  // 봇 게임에서 사람이 시간 초과되면 봇 차례로 넘어가는데, 봇이 깨어나지 않던 버그.
+  // afterSuccessfulMove 경로가 아닌 곳에서도 봇 차례면 즉시 스케줄.
+  if (room.hasBot) {
+    const bot = room.players.find((p) => p && p.isBot);
+    if (bot && room.turn === bot.color) scheduleBotMove(room);
+  }
 };
 
 // ============================================================

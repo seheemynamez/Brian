@@ -97,47 +97,104 @@ const getCandidatesWithFallback = (board, color) => {
 };
 
 // ============================================================
-// 평가 함수 — 보드에 대한 한 색의 점수
+// 평가 함수 — 패턴 인식 기반
 // ============================================================
-// 한 라인 패턴 점수
-const scoreLine = (len, openCount) => {
-  if (len >= 5) return 100000;            // 승리 (or 장목 — 흑이면 forbidden 으로 미리 걸러짐)
-  if (len === 4) return openCount === 2 ? 10000 : (openCount === 1 ? 1000 : 50);
-  if (len === 3) return openCount === 2 ? 500   : (openCount === 1 ? 50   : 5);
-  if (len === 2) return openCount === 2 ? 20    : (openCount === 1 ? 5    : 1);
-  if (len === 1) return openCount === 2 ? 2     : (openCount === 1 ? 1    : 0);
-  return 0;
-};
+// 4 방향 전체 라인을 1D 문자열(`#OO.X.O#` 류, # = 보드 경계)로 추출 후 패턴 매칭.
+// 패턴 점수표는 위협 강도순:
+//   열린4(.OOOO.) 50K — 막을 수 없음, 사실상 승
+//   단4 / 점프4 10K — 한 수에 5목 가능 (막아도 다른 방향 + 콤보)
+//   열린3(.OOO.) 5K — 다음 수에 열린4 형성, 반드시 응수 필요
+//   점프 열린3 4K — 동일 위협
+//   단3 / 열린2 / 점프2 작은 점수
+// 본인 점수와 상대 점수의 차로 포지션을 평가.
 
-// (r,c) 가 (dr,dc) 방향 연속 라인의 시작점인지 — 라인 중복 카운트 방지용
-const isLineStart = (board, r, c, dr, dc, me) => {
-  const pr = r - dr, pc = c - dc;
-  if (pr < 0 || pr >= SIZE || pc < 0 || pc >= SIZE) return true;
-  return board[pr][pc] !== me;
+const PATTERN_SCORES = [
+  // [pattern, score]
+  // 5목 (참고용 — 미니맥스에서 winLine 으로 먼저 처리되긴 함)
+  ['OOOOO', 100000],
+
+  // 열린 4 — 사실상 승리 (양 끝으로 5목 가능)
+  ['.OOOO.', 50000],
+
+  // 단4 — 한 수에 5목 가능. 양 끝 중 한쪽 막힘.
+  ['XOOOO.', 10000], ['.OOOOX', 10000],
+  ['#OOOO.', 10000], ['.OOOO#', 10000],
+  // 점프 4 — 가운데 빈 칸 메우면 5목.
+  ['O.OOO',  10000], ['OO.OO',  10000], ['OOO.O', 10000],
+
+  // 열린 3 — 다음 수에 열린4 형성. 상대가 막아야 함.
+  ['.OOO.',   5000],
+  // 점프 열린 3 — 가운데 빈 칸 메우면 열린4. 강한 위협.
+  ['.O.OO.',  4000], ['.OO.O.',  4000],
+
+  // 단 3 — 한쪽 막힘. 다음 수에 단4 가능.
+  ['XOOO.',    500], ['.OOOX',    500],
+  ['#OOO.',    500], ['.OOO#',    500],
+
+  // 열린 2 — 발전 가능성.
+  ['.OO.',     200],
+  // 점프 열린 2 — 약한 발전.
+  ['.O.O.',    150],
+];
+
+// 4 방향 각각의 전체 라인을 # 센티넬과 함께 1D 문자열로 수집.
+const getAllLines = (board, color) => {
+  const me = colorNumOf(color);
+  const opp = me === 1 ? 2 : 1;
+  const lines = [];
+  const ch = (r, c) => {
+    if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return '#';
+    if (board[r][c] === me) return 'O';
+    if (board[r][c] === opp) return 'X';
+    return '.';
+  };
+
+  // 가로
+  for (let r = 0; r < SIZE; r++) {
+    let s = '#';
+    for (let c = 0; c < SIZE; c++) s += ch(r, c);
+    lines.push(s + '#');
+  }
+  // 세로
+  for (let c = 0; c < SIZE; c++) {
+    let s = '#';
+    for (let r = 0; r < SIZE; r++) s += ch(r, c);
+    lines.push(s + '#');
+  }
+  // 대각 \ — 왼쪽 위 → 오른쪽 아래
+  for (let i = 0; i < SIZE; i++) {
+    let s = '#', r = 0, c = i;
+    while (r < SIZE && c < SIZE) { s += ch(r, c); r++; c++; }
+    if (s.length >= 6) lines.push(s + '#');  // 5목 가능한 길이만
+  }
+  for (let i = 1; i < SIZE; i++) {
+    let s = '#', r = i, c = 0;
+    while (r < SIZE && c < SIZE) { s += ch(r, c); r++; c++; }
+    if (s.length >= 6) lines.push(s + '#');
+  }
+  // 대각 / — 왼쪽 아래 → 오른쪽 위
+  for (let i = 0; i < SIZE; i++) {
+    let s = '#', r = 0, c = i;
+    while (r < SIZE && c >= 0) { s += ch(r, c); r++; c--; }
+    if (s.length >= 6) lines.push(s + '#');
+  }
+  for (let i = 1; i < SIZE; i++) {
+    let s = '#', r = i, c = SIZE - 1;
+    while (r < SIZE && c >= 0) { s += ch(r, c); r++; c--; }
+    if (s.length >= 6) lines.push(s + '#');
+  }
+  return lines;
 };
 
 const scoreFor = (board, color) => {
-  const me = colorNumOf(color);
+  const lines = getAllLines(board, color);
   let total = 0;
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      if (board[r][c] !== me) continue;
-      for (const [dr, dc] of DIRS) {
-        if (!isLineStart(board, r, c, dr, dc, me)) continue;
-        // 연속 길이 측정
-        let len = 0;
-        let rr = r, cc = c;
-        while (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE && board[rr][cc] === me) {
-          len++;
-          rr += dr; cc += dc;
-        }
-        // 양 끝 개방 여부
-        const beforeR = r - dr, beforeC = c - dc;
-        const afterR = rr, afterC = cc;
-        const openLeft = (beforeR >= 0 && beforeR < SIZE && beforeC >= 0 && beforeC < SIZE && board[beforeR][beforeC] === 0);
-        const openRight = (afterR >= 0 && afterR < SIZE && afterC >= 0 && afterC < SIZE && board[afterR][afterC] === 0);
-        const openCount = (openLeft ? 1 : 0) + (openRight ? 1 : 0);
-        total += scoreLine(len, openCount);
+  for (const line of lines) {
+    for (const [pattern, score] of PATTERN_SCORES) {
+      let idx = 0;
+      while ((idx = line.indexOf(pattern, idx)) !== -1) {
+        total += score;
+        idx += 1;  // 겹치는 점프 패턴까지 잡도록 1씩 전진
       }
     }
   }
@@ -148,32 +205,49 @@ const evaluatePosition = (board, myColor) =>
   scoreFor(board, myColor) - scoreFor(board, otherColor(myColor));
 
 // ============================================================
-// 미니맥스 + 알파베타
+// 무브 정렬 — 빠른 1-ply 평가로 후보를 점수순 정렬, 상위 K 개만 채택.
+// α-β 가지치기 효율이 극적으로 향상되어 같은 시간 안에 더 깊이 탐색 가능.
 // ============================================================
-const minimax = (board, depth, color, myColor, alpha, beta) => {
-  // 즉시 승리 / 패배 빠른 종결 — 마지막 수가 5목이면 큰 점수
-  // (검사 비용 줄이려 depth=0 일 때만 평가)
+const orderCandidates = (board, color, myColor, topK) => {
+  const me = colorNumOf(color);
+  const cands = getCandidates(board, color, 2);
+  if (cands.length <= 1) return cands;
+  const scored = cands.map(([r, c]) => {
+    board[r][c] = me;
+    const winLine = checkWinRenju(board, r, c, color);
+    let s;
+    if (winLine) s = (color === myColor) ? 1e9 : -1e9;
+    else s = evaluatePosition(board, myColor);
+    board[r][c] = 0;
+    return { rc: [r, c], s };
+  });
+  // 자기 차례면 점수 높은 순, 상대 차례면 자기 입장 점수 낮은 순
+  scored.sort((a, b) => (color === myColor ? b.s - a.s : a.s - b.s));
+  return scored.slice(0, topK).map((x) => x.rc);
+};
+
+// ============================================================
+// 미니맥스 + 알파베타 (정렬된 상위 K 후보만 탐색)
+// ============================================================
+const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
   if (depth === 0) return evaluatePosition(board, myColor);
 
-  const cands = getCandidates(board, color, 2);
+  const cands = orderCandidates(board, color, myColor, topK);
   if (!cands.length) return evaluatePosition(board, myColor);
-
-  // 휴리스틱: 평가가 높은 순으로 정렬 → 알파베타 가지치기 효율 향상
-  cands.sort(() => Math.random() - 0.5);  // 가벼운 셔플로 동률 시 결정성 깨기
 
   const me = colorNumOf(color);
   const isMaximizing = (color === myColor);
   let best = isMaximizing ? -Infinity : Infinity;
+
   for (const [r, c] of cands) {
     board[r][c] = me;
-    // 즉시 승리하면 깊게 안 들어가도 됨 (성능 + 정확도)
     const winLine = checkWinRenju(board, r, c, color);
     let score;
     if (winLine) {
-      score = isMaximizing ? 100000 - (3 - depth) : -100000 + (3 - depth);
-      // depth 보정: 같은 100000 이라도 깊이가 얕을수록 더 좋은 / 나쁜 수.
+      // depth 보정 — 같은 승리라도 빨리 이기는/지는 게 더 좋은/나쁜 결과
+      score = isMaximizing ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
     } else {
-      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta);
+      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta, topK);
     }
     board[r][c] = 0;
     if (isMaximizing) {
@@ -188,35 +262,16 @@ const minimax = (board, depth, color, myColor, alpha, beta) => {
   return best;
 };
 
-// ============================================================
-// 난이도별 generator
-// ============================================================
-const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-// 하: 이웃 ±2 빈 칸 중 (흑이면 금수 제외) 랜덤 1개
-const generateMoveEasy = (board, color) => {
-  const cands = getCandidatesWithFallback(board, color);
-  if (!cands.length) return null;
-  return pickRandom(cands);
-};
-
-// 중: 2-ply 미니맥스
-const generateMoveMedium = (board, color) => {
-  return searchBestMove(board, color, 2);
-};
-
-// 상: 3-ply 미니맥스
-const generateMoveHard = (board, color) => {
-  return searchBestMove(board, color, 3);
-};
-
-const searchBestMove = (board, color, depth) => {
-  const cands = getCandidatesWithFallback(board, color);
-  if (!cands.length) return null;
+const searchBestMove = (board, color, depth, topK) => {
+  const cands = orderCandidates(board, color, color, topK);
+  if (!cands.length) {
+    const fb = getCandidatesWithFallback(board, color);
+    return fb[0] || null;
+  }
   if (cands.length === 1) return cands[0];
 
   const me = colorNumOf(color);
-  let bestMove = null;
+  let bestMove = cands[0];
   let bestScore = -Infinity;
   let alpha = -Infinity, beta = Infinity;
 
@@ -227,7 +282,7 @@ const searchBestMove = (board, color, depth) => {
     if (winLine) {
       score = 100000;
     } else {
-      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta);
+      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta, topK);
     }
     board[r][c] = 0;
     if (score > bestScore) {
@@ -236,8 +291,53 @@ const searchBestMove = (board, color, depth) => {
     }
     if (score > alpha) alpha = score;
   }
-  return bestMove || cands[0];
+  return bestMove;
 };
+
+// ============================================================
+// 난이도별 generator
+// ============================================================
+// 하: 즉시 승리수가 있으면 그것, 상대의 즉시 승리 위협이 있으면 차단, 그 외 1-ply
+//     상위 3개 중 랜덤 (블런더 없이 약간의 변주).
+const generateMoveEasy = (board, color) => {
+  const cands = getCandidatesWithFallback(board, color);
+  if (!cands.length) return null;
+  const me = colorNumOf(color);
+  const opp = otherColor(color);
+  const oppMe = colorNumOf(opp);
+
+  // 1) 내가 둬서 즉시 이기는 수가 있으면 그 수.
+  for (const [r, c] of cands) {
+    board[r][c] = me;
+    const win = checkWinRenju(board, r, c, color);
+    board[r][c] = 0;
+    if (win) return [r, c];
+  }
+  // 2) 상대가 그 자리에 두면 즉시 이기는 위협이 있으면 차단.
+  for (const [r, c] of cands) {
+    board[r][c] = oppMe;
+    const win = checkWinRenju(board, r, c, opp);
+    board[r][c] = 0;
+    if (win) return [r, c];
+  }
+  // 3) 1-ply 평가 후 상위 3개 중 랜덤 — 약하지만 멍청하진 않음.
+  const scored = cands.map(([r, c]) => {
+    board[r][c] = me;
+    const win = checkWinRenju(board, r, c, color);
+    const s = win ? 1e9 : evaluatePosition(board, color);
+    board[r][c] = 0;
+    return { rc: [r, c], s };
+  });
+  scored.sort((a, b) => b.s - a.s);
+  const pool = scored.slice(0, Math.min(3, scored.length));
+  return pool[Math.floor(Math.random() * pool.length)].rc;
+};
+
+// 중: 3-ply 미니맥스, top 20 후보
+const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 20);
+
+// 상: 4-ply 미니맥스, top 15 후보 + 루트에서 무브 정렬
+const generateMoveHard = (board, color) => searchBestMove(board, color, 4, 15);
 
 const GENERATORS = {
   easy:   generateMoveEasy,
@@ -355,10 +455,12 @@ const recordBotEmote = (emoteState, key, now) => {
 // ============================================================
 // 착수 자연 딜레이 — 난이도별 사고시간 시뮬레이션
 // ============================================================
+// 사람 느낌의 사고시간 — 실제 탐색 시간이 이보다 길면 자연스럽게 그만큼 걸림.
+// 짧은 쪽은 "생각하는 척" 최소 딜레이, 긴 쪽은 자연스러운 최대.
 const BOT_THINK_MS_RANGE = {
   easy:   [400, 900],
-  medium: [800, 1800],
-  hard:   [1200, 2500],
+  medium: [900, 1800],
+  hard:   [1400, 2800],
 };
 const thinkTimeMs = (difficulty) => {
   const r = BOT_THINK_MS_RANGE[difficulty] || BOT_THINK_MS_RANGE.medium;
