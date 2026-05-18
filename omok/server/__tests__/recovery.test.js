@@ -872,6 +872,91 @@ test('B4: 정상 queue_leave → bot_offer 안 옴', async () => {
 });
 
 // ============================================================
+// clientId reclaim — 같은 사용자가 어떤 경로로건 자기 방에 재합류 시 player 자리로
+// ============================================================
+
+test('RC1: 끊긴 player 가 새 ws 로 join_room → 자동 player 재합류 (resume_success)', async () => {
+  const { host, guest, hostSid, code } = await bootstrapRoom({ hostClientId: 'cid-RC1h', guestClientId: 'cid-RC1g' });
+  // 첫 수 둬서 보드 상태 만듦
+  sendJson(host, { type: 'move', row: 7, col: 7 });
+  await waitFor(host, (m) => m.type === 'move' && m.row === 7, 1000);
+  // host close → grace 시작, slot 유지
+  host.close();
+  await sleep(300);
+  // 새 탭 (sessionStorage 없음) — sessionId 없이 join_room
+  const host2 = await open();
+  sendJson(host2, { type: 'set_nickname', nickname: 'NewTab', clientId: 'cid-RC1h' });
+  sendJson(host2, { type: 'join_room', code, nickname: 'NewTab' });
+  // join_room 응답이 spectate_success 가 아니라 resume_success 여야 함 (reclaim)
+  const ok = await waitForType(host2, 'resume_success', 1500);
+  assert(ok.you === 'black', `expected reclaimed as black, got ${ok.you}`);
+  assert(ok.code === code);
+  assert(ok.board[7][7] === 1, 'board state preserved');
+  // guest 가 opponent_reconnected 받아야
+  await waitFor(guest, (m) => m.type === 'opponent_reconnected' && m.color === 'black', 1500);
+  // reclaim 후 사용자가 또 두면 정상 처리
+  // (host2 차례 아니지만 검증 목적: guest 가 다음 차례)
+  host2.close(); guest.close();
+});
+
+test('RC2: 끊긴 player 가 새 ws 로 spectate_room → 자동 player 재합류', async () => {
+  const { host, guest, code } = await bootstrapRoom({ hostClientId: 'cid-RC2h', guestClientId: 'cid-RC2g' });
+  host.close();
+  await sleep(300);
+  const host2 = await open();
+  sendJson(host2, { type: 'set_nickname', nickname: 'NewTab', clientId: 'cid-RC2h' });
+  // 사용자가 [관전만] 눌렀어도 자기 방이면 player 로 재합류
+  sendJson(host2, { type: 'spectate_room', code, nickname: 'NewTab' });
+  const ok = await waitForType(host2, 'resume_success', 1500);
+  assert(ok.you === 'black', `expected reclaimed as black, got ${ok.you}`);
+  host2.close(); guest.close();
+});
+
+test('RC3: 옛 ws 살아있을 때 새 ws reclaim → 옛 ws 가 player_replaced 받고 정리', async () => {
+  // 옛 ws 가 close 안 됐는데 (또는 race) 새 ws 가 같은 clientId 로 join_room.
+  const { host, guest, code } = await bootstrapRoom({ hostClientId: 'cid-RC3h', guestClientId: 'cid-RC3g' });
+  // 옛 host 는 그대로 alive
+  const host2 = await open();
+  sendJson(host2, { type: 'set_nickname', nickname: 'NewTab', clientId: 'cid-RC3h' });
+  sendJson(host2, { type: 'join_room', code, nickname: 'NewTab' });
+  await waitForType(host2, 'resume_success', 1500);
+  // 옛 ws (host) 가 player_replaced 받아야
+  await waitFor(host, (m) => m.type === 'player_replaced', 1500);
+  host.close(); host2.close(); guest.close();
+});
+
+test('RC4: 봇 게임도 clientId reclaim 동작', async () => {
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'Me', clientId: 'cid-RC4' });
+  sendJson(ws, { type: 'create_bot_game', difficulty: 'easy', first: 'me', nickname: 'Me' });
+  const start = await waitForType(ws, 'game_start');
+  const code = start.code;
+  ws.close();
+  await sleep(300);
+  // 새 탭에서 join_room (또는 spectate_room) — 봇 게임 방
+  const ws2 = await open();
+  sendJson(ws2, { type: 'set_nickname', nickname: 'NewTab', clientId: 'cid-RC4' });
+  sendJson(ws2, { type: 'spectate_room', code, nickname: 'NewTab' });
+  const ok = await waitForType(ws2, 'resume_success', 1500);
+  assert(ok.code === code);
+  // 사람 색으로 reclaim (봇이 아닌 색)
+  assert(ok.you === 'black' || ok.you === 'white');
+  assert(ok.status === 'playing');
+  ws2.close();
+});
+
+test('RC5: 다른 clientId 가 join_room 하면 기존대로 spectator (reclaim 안 됨)', async () => {
+  const { host, guest, code } = await bootstrapRoom({ hostClientId: 'cid-RC5h', guestClientId: 'cid-RC5g' });
+  const stranger = await open();
+  sendJson(stranger, { type: 'set_nickname', nickname: 'Stranger', clientId: 'cid-RC5-stranger' });
+  sendJson(stranger, { type: 'join_room', code, nickname: 'Stranger' });
+  // 두 자리 모두 차있으니 관전자로
+  const ok = await waitForType(stranger, 'spectate_success', 1500);
+  assert(ok.code === code);
+  host.close(); guest.close(); stranger.close();
+});
+
+// ============================================================
 // Phase 4+5 — JSON 직렬화 가능한 room state
 // ============================================================
 

@@ -195,6 +195,7 @@ const dispatch = (msg) => {
     case 'rooms_list':         return updateRoomsList(msg.rooms);
     case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
     case 'bot_offer':          return onBotOffer();
+    case 'player_replaced':    return onPlayerReplaced();
     case 'error':              return onError(msg);
   }
 };
@@ -421,6 +422,23 @@ const onOpponentGone = (text) => {
 // 서버가 큐에서 N초 동안 매칭 못 잡으면 보내주는 봇 제안 — main.js 가 설치한 모달 오프너 호출.
 const onBotOffer = () => {
   if (state.openBotGameModal) state.openBotGameModal('offer');
+};
+
+// 다른 탭/기기에서 같은 clientId 로 같은 방 player 자리를 가져갔을 때.
+// 이 ws 는 player 자격 잃고 로비로 떨어짐.
+const onPlayerReplaced = () => {
+  state.gameOver = true;
+  stopTimerTick();
+  state.sessionId = null;
+  setSession(null);
+  state.currentRoomCode = null;
+  setRoomInUrl(null);
+  state.role = null;
+  state.myColor = null;
+  state.waitingMode = null;
+  setReconnectOverlay(false);
+  showScreen('lobby');
+  setLobbyError('다른 탭/기기에서 게임을 이어가고 있어요');
 };
 
 const onError = (msg) => {
