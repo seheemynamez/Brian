@@ -127,6 +127,11 @@
 
       <div id="lobby-error" class="error-line"></div>
 
+      <div class="bot-game-row">
+        <span class="bot-game-prompt">🤖 상대가 없을 땐</span>
+        <button id="btn-bot-game" class="btn ghost btn-small">혼자 두기 (AI)</button>
+      </div>
+
       <div class="card-grid">
         <div class="card action-card">
           <div class="card-icon">🪄</div>
@@ -271,6 +276,37 @@
       <ul id="online-list-items" class="online-list"></ul>
       <div class="overlay-actions">
         <button id="btn-online-close" class="btn ghost">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 봇 대전 모달 — 로비 "혼자 두기" 카드 클릭 시, 또는 랜덤 매칭 10초 timeout 후 자동 노출 -->
+  <div id="bot-game-overlay" class="overlay hidden">
+    <div class="overlay-card bot-game-card">
+      <div class="overlay-title" id="bot-game-title">🤖 봇과 대전</div>
+      <div class="overlay-sub" id="bot-game-sub">난이도와 선공을 선택하세요</div>
+
+      <div class="bot-option-group">
+        <div class="label">난이도</div>
+        <div class="bot-toggle-row" data-group="difficulty">
+          <button data-value="easy"   class="bot-toggle-btn" type="button">🟢 하</button>
+          <button data-value="medium" class="bot-toggle-btn active" type="button">🟡 중</button>
+          <button data-value="hard"   class="bot-toggle-btn" type="button">🔴 상</button>
+        </div>
+      </div>
+
+      <div class="bot-option-group">
+        <div class="label">선공</div>
+        <div class="bot-toggle-row" data-group="first">
+          <button data-value="me"     class="bot-toggle-btn active" type="button">내가</button>
+          <button data-value="bot"    class="bot-toggle-btn" type="button">봇</button>
+          <button data-value="random" class="bot-toggle-btn" type="button">랜덤</button>
+        </div>
+      </div>
+
+      <div class="overlay-actions">
+        <button id="btn-bot-game-cancel" class="btn ghost">취소</button>
+        <button id="btn-bot-game-start"  class="btn primary">시작</button>
       </div>
     </div>
   </div>

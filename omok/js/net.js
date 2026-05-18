@@ -95,8 +95,8 @@ export const connect = () => {
   state.ws.addEventListener('open', () => {
     state.connected = true;
     updateConnStatus();
-    // 로비 닉네임을 서버에도 알려둬서 온라인 목록에 표시되게 한다.
-    if (state.myNick) sendMessage({ type: 'set_nickname', nickname: state.myNick });
+    // 로비 닉네임과 안정 식별자(clientId)를 서버에 알려둠 — 온라인 목록 + 차후 랭킹 기록용.
+    if (state.myNick) sendMessage({ type: 'set_nickname', nickname: state.myNick, clientId: state.clientId });
     if (state.sessionId) {
       // 게임 중 / 방 만들기 대기 중 / 재대국 대기 중 — 어느 상태이든 세션 복구 시도
       sendMessage({ type: 'resume_session', sessionId: state.sessionId, nickname: state.myNick });
@@ -161,6 +161,7 @@ const dispatch = (msg) => {
     case 'online_list':        return showOnlineList(msg.nicknames);
     case 'rooms_list':         return updateRoomsList(msg.rooms);
     case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
+    case 'bot_offer':          return onBotOffer();
     case 'error':              return onError(msg);
   }
 };
@@ -375,6 +376,11 @@ const onOpponentGone = (text) => {
   setSession(null);
   // currentRoomCode 와 URL ?room= 은 게임 끝난 화면에서 결과를 보는 동안 유지.
   // 사용자가 '방 나가기' 누를 때 leaveRoomAndGoLobby 에서 정리됨.
+};
+
+// 서버가 큐에서 N초 동안 매칭 못 잡으면 보내주는 봇 제안 — main.js 가 설치한 모달 오프너 호출.
+const onBotOffer = () => {
+  if (state.openBotGameModal) state.openBotGameModal('offer');
 };
 
 const onError = (msg) => {

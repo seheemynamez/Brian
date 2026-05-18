@@ -42,6 +42,8 @@ export const state = {
   sessionId: null,
   // 직접 링크(?room=) 진입 모달에서 확정했지만 WS 가 아직 열리지 않은 경우 임시 보관
   pendingDirectJoin: null,       // { type: 'join_room', code, nickname } | null
+  // main.js setupBotGame 가 채워주는 모달 오프너 — net.js 의 bot_offer 디스패치가 호출
+  openBotGameModal: null,        // ((mode: 'lobby' | 'offer') => void) | null
 
   // 양 플레이어
   nicknames: { black: '', white: '' },

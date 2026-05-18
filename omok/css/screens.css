@@ -148,6 +148,24 @@
   border-radius: var(--radius-sm);
 }
 
+/* 로비 — "혼자 두기 (AI)" 보조 카드 줄 */
+.bot-game-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.bot-game-prompt {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
 /* 크로스 프로모션 — 호스트 게이트웨이로 보내는 작고 옅은 보조 링크 */
 .other-games {
   display: inline-block;
