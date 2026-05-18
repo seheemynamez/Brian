@@ -297,41 +297,10 @@ const searchBestMove = (board, color, depth, topK) => {
 // ============================================================
 // 난이도별 generator
 // ============================================================
-// 하: 즉시 승리수가 있으면 그것, 상대의 즉시 승리 위협이 있으면 차단, 그 외 1-ply
-//     상위 3개 중 랜덤 (블런더 없이 약간의 변주).
-const generateMoveEasy = (board, color) => {
-  const cands = getCandidatesWithFallback(board, color);
-  if (!cands.length) return null;
-  const me = colorNumOf(color);
-  const opp = otherColor(color);
-  const oppMe = colorNumOf(opp);
-
-  // 1) 내가 둬서 즉시 이기는 수가 있으면 그 수.
-  for (const [r, c] of cands) {
-    board[r][c] = me;
-    const win = checkWinRenju(board, r, c, color);
-    board[r][c] = 0;
-    if (win) return [r, c];
-  }
-  // 2) 상대가 그 자리에 두면 즉시 이기는 위협이 있으면 차단.
-  for (const [r, c] of cands) {
-    board[r][c] = oppMe;
-    const win = checkWinRenju(board, r, c, opp);
-    board[r][c] = 0;
-    if (win) return [r, c];
-  }
-  // 3) 1-ply 평가 후 상위 3개 중 랜덤 — 약하지만 멍청하진 않음.
-  const scored = cands.map(([r, c]) => {
-    board[r][c] = me;
-    const win = checkWinRenju(board, r, c, color);
-    const s = win ? 1e9 : evaluatePosition(board, color);
-    board[r][c] = 0;
-    return { rc: [r, c], s };
-  });
-  scored.sort((a, b) => b.s - a.s);
-  const pool = scored.slice(0, Math.min(3, scored.length));
-  return pool[Math.floor(Math.random() * pool.length)].rc;
-};
+// 하: 2-ply 미니맥스 (결정적, 랜덤 없음).
+//     상대의 1수 응수까지 보기 때문에 열린3 / 단4 같은 기본 위협을 사전 차단.
+//     즉시 승리수도 자동으로 발견 (searchBestMove 내부 winLine 처리).
+const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 20);
 
 // 중: 3-ply 미니맥스, top 20 후보
 const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 20);
