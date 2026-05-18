@@ -83,7 +83,9 @@ const broadcastRoom = (room, msg) => {
 
 const broadcastOnlineCount = () => {
   if (!wssRef) return;
-  const payload = JSON.stringify({ type: 'online_count', n: getOnline() });
+  // 클라이언트에는 "실제 사용자 수" — 같은 clientId 의 좀비 연결은 합산 안 함.
+  // 비행기모드 reconnect 동안 옛 ws 가 heartbeat 로 정리되기 전까지 짧게 중복 카운팅 되던 버그.
+  const payload = JSON.stringify({ type: 'online_count', n: connections.getUniqueOnlineCount() });
   for (const c of wssRef.clients) {
     if (c.readyState === c.OPEN) c.send(payload);
   }
@@ -387,7 +389,11 @@ const onSetNickname = (ws, msg) => {
   // clientId 도 함께 받아서 ws 에 기록 — 추후 게임 결과 기록 시 안정 식별자로 사용.
   // 동시에 connection registry 에 등록 → 같은 clientId 의 멀티탭 추적 가능 (이슈 #31).
   if (typeof msg.clientId === 'string' && msg.clientId.length > 0 && msg.clientId.length <= 64) {
+    const isNewBinding = !ws.clientId || ws.clientId !== msg.clientId;
     connections.bindClient(ws, msg.clientId);
+    // 새 ws 가 같은 clientId 의 옛 좀비 연결과 합쳐졌을 수 있으니 unique count 재발송.
+    // (비행기모드 reconnect 시 짧게 중복 카운팅 되던 증상 해소)
+    if (isNewBinding) broadcastOnlineCount();
   }
 };
 
@@ -487,6 +493,30 @@ const onSpectateRoom = (ws, msg) => {
   addSpectator(ws, room, msg.nickname);
 };
 
+// bot offer 타이머는 queue entry 에 부착 — ws 가 reconnect 로 교체돼도 상태 유지.
+// 이미 발송된 적 있으면 중복 발송 안 함; 처음 발송이면 joinedAt 기준 남은 시간만 대기.
+// (이슈: 비행기모드 reconnect 시 봇 제안이 한 번 더 떴음.)
+const scheduleBotOfferIfNeeded = (entry) => {
+  if (entry.botOfferSentAt) return;
+  if (entry.botOfferTimer) clearTimeout(entry.botOfferTimer);
+  const remaining = Math.max(0, BOT_OFFER_DELAY_MS - (Date.now() - entry.joinedAt));
+  entry.botOfferTimer = setTimeout(() => {
+    entry.botOfferTimer = null;
+    entry.botOfferSentAt = Date.now();
+    const liveWs = connections.getWsByConnectionId(entry.connectionId);
+    if (liveWs && liveWs.readyState === liveWs.OPEN) {
+      send(liveWs, { type: 'bot_offer' });
+    }
+  }, remaining);
+};
+
+const clearBotOfferTimer = (entry) => {
+  if (entry && entry.botOfferTimer) {
+    clearTimeout(entry.botOfferTimer);
+    entry.botOfferTimer = null;
+  }
+};
+
 const onQueueJoin = (ws, msg) => {
   if (ws.roomCode) return send(ws, { type: 'error', message: '이미 방에 있어요' });
   ws.nickname = sanitizeNick(msg.nickname) || '익명';
@@ -498,14 +528,24 @@ const onQueueJoin = (ws, msg) => {
   const q = getQueue();
   const myCid = ws.connectionId;
 
-  // 같은 clientId 의 좀비 큐 항목 정리.
-  // (이슈 #5/#6: 같은 사용자가 새 탭/재연결로 다시 매칭을 누른 경우, 이전 항목과 자기 자신이
-  //  매칭되는 사태 방지)
+  // 같은 connection 이 큐에 이미 있으면 status 재발송만 (FE bug / 재발송 보호).
+  if (q.some((e) => e.connectionId === myCid)) {
+    return send(ws, { type: 'queue_waiting' });
+  }
+
+  // 같은 clientId 의 좀비 큐 항목 정리 + 옛 entry 의 timer/sent 상태 상속.
+  // (이슈 #5/#6, 그리고 비행기모드 reconnect: 옛 ws 가 close 안 됐는데 새 ws 가 reconnect 한 경우)
+  let inheritedJoinedAt = null;
+  let inheritedSentAt   = null;
   if (ws.clientId) {
     for (let i = q.length - 1; i >= 0; i--) {
       const e = q[i];
       if (e.connectionId !== myCid && e.clientId === ws.clientId) {
         q.splice(i, 1);
+        clearBotOfferTimer(e);
+        // 가장 마지막에 본 옛 entry 의 시각 정보 상속 (보통 1개).
+        inheritedJoinedAt = e.joinedAt;
+        if (e.botOfferSentAt) inheritedSentAt = e.botOfferSentAt;
         const staleWs = connections.getWsByConnectionId(e.connectionId);
         if (staleWs) {
           staleWs.inQueue = false;
@@ -524,19 +564,29 @@ const onQueueJoin = (ws, msg) => {
     const w = connections.getWsByConnectionId(e.connectionId);
     return w && w.readyState === w.OPEN;
   });
+
+  const makeMyEntry = () => ({
+    connectionId: myCid,
+    clientId: ws.clientId || null,
+    nickname: ws.nickname,
+    joinedAt: inheritedJoinedAt || Date.now(),
+    botOfferTimer: null,
+    botOfferSentAt: inheritedSentAt,
+  });
+
   if (idx >= 0) {
     const oppEntry = q.splice(idx, 1)[0];
+    clearBotOfferTimer(oppEntry);
     const opponent = connections.getWsByConnectionId(oppEntry.connectionId);
     if (!opponent) {
-      // 극히 드문 경합 — opponent ws 가 마침 close 됐다면 enqueue 흐름으로 fallback
-      // 그냥 이 분기로 떨어지지 않도록 다시 enqueue 처리.
-      // (재귀 호출 대신 inline fallback)
-      enqueue({ connectionId: myCid, clientId: ws.clientId || null, nickname: ws.nickname });
+      // opponent ws 가 race 로 사라진 경우 — re-enqueue self 로 fallback.
+      const myEntry = makeMyEntry();
+      enqueue(myEntry);
       ws.inQueue = true;
+      scheduleBotOfferIfNeeded(myEntry);
       return send(ws, { type: 'queue_waiting' });
     }
     opponent.inQueue = false;
-    if (opponent.botOfferTimer) { clearTimeout(opponent.botOfferTimer); opponent.botOfferTimer = null; }
     const code = genCode();
     const room = createRoom(code);
     room.players[0] = opponent;
@@ -554,24 +604,22 @@ const onQueueJoin = (ws, msg) => {
     log.event('queue_matched', { code, a: opponent.nickname, b: ws.nickname });
     startGame(room);
   } else {
-    enqueue({ connectionId: myCid, clientId: ws.clientId || null, nickname: ws.nickname });
+    const myEntry = makeMyEntry();
+    enqueue(myEntry);
     ws.inQueue = true;
     send(ws, { type: 'queue_waiting' });
-    // 큐 진입 후 BOT_OFFER_DELAY_MS 동안 매칭 안 되면 봇 제안 모달 트리거.
-    if (ws.botOfferTimer) clearTimeout(ws.botOfferTimer);
-    ws.botOfferTimer = setTimeout(() => {
-      ws.botOfferTimer = null;
-      if (!ws.inQueue) return;
-      if (ws.readyState !== ws.OPEN) return;
-      send(ws, { type: 'bot_offer' });
-    }, BOT_OFFER_DELAY_MS);
+    // bot 제안 타이머: 옛 entry 가 이미 발송했었다면 다시 보내지 않음.
+    //                  처음이면 joinedAt 기준 남은 시간만 대기.
+    scheduleBotOfferIfNeeded(myEntry);
   }
 };
 
 const onQueueLeave = (ws) => {
-  if (ws.connectionId) dequeueByConnectionId(ws.connectionId);
+  if (ws.connectionId) {
+    const entry = dequeueByConnectionId(ws.connectionId);
+    if (entry) clearBotOfferTimer(entry);
+  }
   ws.inQueue = false;
-  if (ws.botOfferTimer) { clearTimeout(ws.botOfferTimer); ws.botOfferTimer = null; }
 };
 
 // ============================================================
@@ -629,9 +677,9 @@ const onBotOfferAccept = (ws, msg) => {
   onCreateBotGame(ws, msg);
 };
 
-const onBotOfferDecline = (ws) => {
-  // 단순히 타이머만 정리 — 사용자는 계속 큐 대기.
-  if (ws.botOfferTimer) { clearTimeout(ws.botOfferTimer); ws.botOfferTimer = null; }
+const onBotOfferDecline = (_ws) => {
+  // 사용자가 봇 제안을 거절 — 큐는 그대로 유지. timer 는 이미 발화돼 fire 됐고,
+  // entry.botOfferSentAt 도 세팅된 상태라 같은 entry 에 대해서 다시 발송되지 않음.
 };
 
 const onResumeSession = (ws, msg) => {

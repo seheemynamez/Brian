@@ -102,10 +102,23 @@ const getWsListByClientId = (clientId) => {
   return out;
 };
 
+// "실제 사용자 수" — 같은 clientId 의 여러 연결(멀티탭/비행기-reconnect 좀비)은 1명으로 카운트.
+// clientId 가 아직 바인딩 안 된 갓-접속 연결은 각각 1명으로 카운트 (set_nickname 후 합산됨).
+// raw 연결 수 (rooms.onlineCount) 는 로깅용으로 유지하고, 클라이언트에 노출하는 카운트는
+// 이 함수의 결과를 사용 (이슈: 비행기모드 reconnect 동안 짧게 중복 카운팅되던 증상).
+const getUniqueOnlineCount = () => {
+  let withClient = 0;
+  for (const set of connectionsByClientId.values()) withClient += set.size;
+  const total = connectionsByConnectionId.size;
+  const withoutClient = Math.max(0, total - withClient);
+  return connectionsByClientId.size + withoutClient;
+};
+
 module.exports = {
   register, unregister,
   bindSession, unbindSession,
   bindClient,
   getWsByConnectionId, getWsBySessionId, getConnectionIdByWs,
   getWsListByClientId,
+  getUniqueOnlineCount,
 };
