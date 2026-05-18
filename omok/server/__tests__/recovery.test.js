@@ -214,19 +214,50 @@ test('T8: queue_join dedup → first ws receives queue_canceled', async () => {
   wsA.close(); wsB.close();
 });
 
-test('T9: bot game player disconnect → no grace', async () => {
+test('T9: bot game player disconnect → grace, room gone after grace expires', async () => {
   const ws = await open();
-  sendJson(ws, { type: 'set_nickname', nickname: 'Me', clientId: 'cid-T9' });
-  sendJson(ws, { type: 'create_bot_game', difficulty: 'easy', first: 'me', nickname: 'Me' });
+  sendJson(ws, { type: 'set_nickname', nickname: 'Me-T9', clientId: 'cid-T9' });
+  sendJson(ws, { type: 'create_bot_game', difficulty: 'easy', first: 'me', nickname: 'Me-T9' });
   await waitForType(ws, 'game_start');
   ws.close();
+  // grace 안 — 방 아직 존재
   await sleep(200);
+  // grace 만료 + 여유 후 — 방 사라짐
+  await sleep(GRACE + 500);
   const observer = await open();
   sendJson(observer, { type: 'request_rooms_list' });
   const list = await waitForType(observer, 'rooms_list');
-  const lingering = list.rooms.filter((r) => r.nicknames.black === 'Me' || r.nicknames.white === 'Me');
-  assert(lingering.length === 0, `bot room still lingers: ${JSON.stringify(lingering)}`);
+  const lingering = list.rooms.filter((r) => r.nicknames.black === 'Me-T9' || r.nicknames.white === 'Me-T9');
+  assert(lingering.length === 0, `bot room should be gone after grace: ${JSON.stringify(lingering)}`);
   observer.close();
+});
+
+test('T9b: bot game 끊김 + grace 안에 resume → 게임 이어짐', async () => {
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'Me-T9b', clientId: 'cid-T9b' });
+  sendJson(ws, { type: 'create_bot_game', difficulty: 'easy', first: 'me', nickname: 'Me-T9b' });
+  const start = await waitForType(ws, 'game_start');
+  const sid = start.sessionId;
+  const code = start.code;
+  ws.close();
+  await sleep(300);
+  // grace 안에 resume
+  const ws2 = await open();
+  sendJson(ws2, { type: 'resume_session', sessionId: sid, nickname: 'Me-T9b' });
+  const ok = await waitForType(ws2, 'resume_success', 1500);
+  assert(ok.status === 'playing', `expected playing, got ${ok.status}`);
+  assert(ok.code === code);
+  // 봇이 흑(선공) 이면 봇 차례 → scheduleBotMove 가 재개됨. 잠시 후 move 들어와야.
+  if (ok.turn === 'white') {
+    // 봇이 흑이고 사용자 차례 (white). 사용자가 둬보기 — 봇 응수 와야.
+    sendJson(ws2, { type: 'move', row: 7, col: 7 });
+    await waitFor(ws2, (m) => m.type === 'move' && m.color === 'black', 5000);
+  } else {
+    // 봇이 백이고 사용자 차례 (black). 사용자가 둬보기 — 봇 응수 와야.
+    sendJson(ws2, { type: 'move', row: 7, col: 7 });
+    await waitFor(ws2, (m) => m.type === 'move' && m.color === 'white', 5000);
+  }
+  ws2.close();
 });
 
 test('T10: resume_session with random sid → resume_failed', async () => {
@@ -564,41 +595,81 @@ test('P1: queue record-based matchmaking', async () => {
   wsA.close(); wsB.close();
 });
 
-test('P2: rate-limit bucket is per-clientId (Phase 3)', async () => {
-  // 같은 clientId 로 create_room 4번 → 4번째는 한도 초과 (limit=3/10s).
+test('F1: online_list 는 clientId 단위 dedup (같은 브라우저 멀티탭 = 1명)', async () => {
+  // 같은 clientId 로 두 탭에서 set_nickname (서로 다른 닉) → 명단에 1명만.
+  const tabA = await open();
+  sendJson(tabA, { type: 'set_nickname', nickname: 'F1탭A', clientId: 'cid-F1' });
+  await sleep(150);
+  const tabB = await open();
+  sendJson(tabB, { type: 'set_nickname', nickname: 'F1탭B', clientId: 'cid-F1' });
+  await sleep(300);
+  // 다른 사용자가 명단 요청
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'F1obs', clientId: 'cid-F1obs' });
+  sendJson(obs, { type: 'request_online_list' });
+  const list = await waitForType(obs, 'online_list', 1500);
+  const f1Count = list.nicknames.filter((n) => n.startsWith('F1탭')).length;
+  assert(f1Count === 1, `expected 1 F1탭 entry (dedup by clientId), got ${f1Count}: ${JSON.stringify(list.nicknames)}`);
+  // 마지막에 set_nickname 한 탭의 닉이 보여야 (B)
+  assert(list.nicknames.includes('F1탭B'), `expected F1탭B (most recent), got ${JSON.stringify(list.nicknames)}`);
+  tabA.close(); tabB.close(); obs.close();
+});
+
+test('F2: 옛 큐 entry 가 close 로 사라진 후 새 ws 재진입 → bot_offer 재발송 안 함 (clientId history)', async () => {
+  // race 시나리오: 옛 ws 의 close 가 새 ws 의 queue_join 보다 _먼저_ fire.
+  // 옛 entry 는 정리됐지만 botOfferSentByClientId 에 시각이 남아있어야 → 새 entry timer 안 켬.
+  const old = await open();
+  sendJson(old, { type: 'queue_join', nickname: 'F2', clientId: 'cid-F2' });
+  await waitForType(old, 'queue_waiting');
+  await waitForType(old, 'bot_offer', 2000);
+  old.close();  // 명시적 close — 옛 entry 정리됨
+  await sleep(150);
+  // 새 ws 가 같은 clientId 로 큐 재진입
+  const fresh = await open();
+  sendJson(fresh, { type: 'queue_join', nickname: 'F2', clientId: 'cid-F2' });
+  await waitForType(fresh, 'queue_waiting', 1500);
+  // 1500ms 대기 — bot_offer 다시 와선 안 됨
+  await sleep(1500);
+  const dupOffers = fresh.received.filter((m) => m.type === 'bot_offer');
+  assert(dupOffers.length === 0, `expected NO bot_offer (clientId cooldown), got ${dupOffers.length}`);
+  fresh.close();
+});
+
+// 정책 import — 정책 값이 바뀌어도 테스트 안 깨짐.
+const { POLICIES } = require('../rate-limit');
+
+test('P2: rate-limit hits at policy limit for clientId', async () => {
+  // request_online_list 는 짧은 windowMs 라 테스트하기 좋음.
+  const policy = POLICIES.request_online_list;
   const ws1 = await open();
-  sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P2-shared' });
-  for (let i = 0; i < 3; i++) {
-    sendJson(ws1, { type: 'create_room', nickname: 'L' });
-    await waitForType(ws1, 'room_created', 1500);
-    sendJson(ws1, { type: 'leave_room' });
-    await sleep(50);
+  sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P2' });
+  await sleep(100);
+  // limit 번 까지는 OK, limit+1 번째에 에러.
+  for (let i = 0; i <= policy.limit; i++) {
+    sendJson(ws1, { type: 'request_online_list' });
+    await sleep(20);
   }
-  // 4번째 — limit hit
-  sendJson(ws1, { type: 'create_room', nickname: 'L' });
   await sleep(200);
   const errLimit = ws1.received.filter((m) => m.type === 'error' && /다시 시도/.test(m.message));
-  assert(errLimit.length >= 1, `expected rate-limit error after 4th create_room, got ${errLimit.length}`);
+  assert(errLimit.length >= 1, `expected rate-limit error after limit+1=${policy.limit + 1} calls, got ${errLimit.length}`);
   ws1.close();
 });
 
 test('P3: 같은 clientId 새 ws 도 한도 유지 (새로고침 우회 방지)', async () => {
-  // 옛 ws 에서 3번 create_room → 새 ws (다른 connectionId, 같은 clientId) 가 4번째
-  //  → 여전히 한도 hit.
+  const policy = POLICIES.request_online_list;
   const ws1 = await open();
   sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3-shared' });
-  for (let i = 0; i < 3; i++) {
-    sendJson(ws1, { type: 'create_room', nickname: 'L' });
-    await waitForType(ws1, 'room_created', 1500);
-    sendJson(ws1, { type: 'leave_room' });
-    await sleep(50);
+  await sleep(100);
+  for (let i = 0; i < policy.limit; i++) {
+    sendJson(ws1, { type: 'request_online_list' });
+    await sleep(20);
   }
   ws1.close();
   await sleep(200);
-  // 새 connection 같은 clientId
+  // 새 connection 같은 clientId — 첫 호출 하나만으로 limit+1 도달
   const ws2 = await open();
   sendJson(ws2, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3-shared' });
-  sendJson(ws2, { type: 'create_room', nickname: 'L' });
+  sendJson(ws2, { type: 'request_online_list' });
   await sleep(200);
   const errLimit = ws2.received.filter((m) => m.type === 'error' && /다시 시도/.test(m.message));
   assert(errLimit.length >= 1, `expected rate-limit on new connection with same clientId, got ${errLimit.length}`);
@@ -606,21 +677,24 @@ test('P3: 같은 clientId 새 ws 도 한도 유지 (새로고침 우회 방지)'
 });
 
 test('P3b: 다른 clientId 새 ws → 깨끗한 bucket', async () => {
+  const policy = POLICIES.request_online_list;
   const ws1 = await open();
   sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3b-old' });
-  for (let i = 0; i < 3; i++) {
-    sendJson(ws1, { type: 'create_room', nickname: 'L' });
-    await waitForType(ws1, 'room_created', 1500);
-    sendJson(ws1, { type: 'leave_room' });
-    await sleep(50);
+  await sleep(100);
+  for (let i = 0; i < policy.limit; i++) {
+    sendJson(ws1, { type: 'request_online_list' });
+    await sleep(20);
   }
   ws1.close();
   await sleep(200);
   // 다른 clientId — 새 bucket
   const ws2 = await open();
   sendJson(ws2, { type: 'set_nickname', nickname: 'L2', clientId: 'cid-P3b-fresh' });
-  sendJson(ws2, { type: 'create_room', nickname: 'L2' });
-  await waitForType(ws2, 'room_created', 1500);
+  sendJson(ws2, { type: 'request_online_list' });
+  await sleep(200);
+  // 첫 호출은 통과해야 (한도 미달)
+  const ok = ws2.received.filter((m) => m.type === 'online_list');
+  assert(ok.length >= 1, `expected online_list on fresh clientId, got ${JSON.stringify(ws2.received.slice(-3))}`);
   ws2.close();
 });
 

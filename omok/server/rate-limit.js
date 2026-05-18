@@ -15,14 +15,16 @@
 // 단, clientId 는 localStorage 기반이라 강한 보안 식별자는 아님. 클리어/조작
 // 가능. 큰 남용에는 별도 IP rate-limit 또는 cloudflare 같은 layer 필요.
 
+// 정책: 일반 플레이엔 절대 안 걸리는 수준 + 자명한 어뷰징만 차단.
+// (이슈 #31 후속: 기존 정책이 사용자 체감으로 너무 빡빡했음.)
 const POLICIES = {
-  move:                { limit: 3, windowMs: 1000 },
-  request_rooms_list:  { limit: 1, windowMs: 3000 },
-  request_online_list: { limit: 1, windowMs: 5000 },
-  create_room:         { limit: 3, windowMs: 10000 },
-  join_room:           { limit: 5, windowMs: 10000 },
-  queue_join:          { limit: 3, windowMs: 10000 },
-  create_bot_game:     { limit: 3, windowMs: 10000 },
+  move:                { limit: 20, windowMs: 1000 },   // 1초 20회 (모바일 빠른 탭 + 봇 게임 빠른 응수)
+  request_rooms_list:  { limit: 10, windowMs: 3000 },   // 로비에서 새로고침/스크롤 등 잦은 갱신 허용
+  request_online_list: { limit: 5,  windowMs: 5000 },
+  create_room:         { limit: 30, windowMs: 60000 },  // 1분 30개 — 일반 사용자엔 의미 없음
+  join_room:           { limit: 30, windowMs: 60000 },
+  queue_join:          { limit: 30, windowMs: 60000 },
+  create_bot_game:     { limit: 30, windowMs: 60000 },
 };
 
 // bucketKey → { action: number[] } (window 안의 timestamp 들)

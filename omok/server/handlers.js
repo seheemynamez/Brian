@@ -421,20 +421,27 @@ const onSetNickname = (ws, msg) => {
   }
 };
 
-// 접속자 닉네임 목록 — 닉이 설정된 연결만, 같은 닉(멀티탭)은 1개로 dedupe.
+// 접속자 닉네임 목록 — clientId 단위 dedupe (같은 브라우저의 멀티탭은 1명).
+// clientId 가 없는 연결 (set_nickname 직전 짧은 윈도우) 은 닉네임 단위로 dedup.
+// unique online count 와 동일한 기준으로 카운트/명단이 일치하도록.
 const onRequestOnlineList = (ws) => {
   if (!wssRef) return;
-  const seen = new Set();
-  const nicknames = [];
+  const byClient = new Map();    // clientId → 최신 nickname
+  const noClient = new Set();    // clientId 없는 경우의 nickname 집합
   for (const c of wssRef.clients) {
     if (c.readyState !== c.OPEN) continue;
     if (!c.nickname) continue;
-    if (seen.has(c.nickname)) continue;
-    seen.add(c.nickname);
-    nicknames.push(c.nickname);
+    if (c.clientId) {
+      byClient.set(c.clientId, c.nickname);  // 같은 clientId 의 마지막 탭의 nickname 으로 갱신
+    } else {
+      noClient.add(c.nickname);
+    }
   }
-  nicknames.sort((a, b) => a.localeCompare(b, 'ko'));
-  send(ws, { type: 'online_list', nicknames });
+  const nicknames = [...byClient.values(), ...noClient];
+  // 위 두 그룹 간에도 닉네임 겹침 가능성 — 한번 더 dedup
+  const unique = Array.from(new Set(nicknames));
+  unique.sort((a, b) => a.localeCompare(b, 'ko'));
+  send(ws, { type: 'online_list', nicknames: unique });
 };
 
 // 플레이어가 보낸 이모트를 방 전체(상대 + 관전자)에 브로드캐스트.
@@ -521,16 +528,37 @@ const onSpectateRoom = (ws, msg) => {
   addSpectator(ws, room, msg.nickname);
 };
 
+// 봇 제안 발송 이력 (clientId 단위) — queue 와 무관하게 유지.
+// 비행기모드 reconnect race 방어: 옛 ws 의 close 가 새 ws 의 queue_join 보다 먼저 fire
+// 되어 옛 entry 가 dequeue 된 경우에도, history 가 남아서 cooldown 으로 중복 발송 차단.
+const botOfferSentByClientId = new Map();
+const BOT_OFFER_COOLDOWN_MS = 60_000;  // 발송 후 같은 사용자에게 다시 발송 가능한 최소 간격.
+
 // bot offer 타이머는 queue entry 에 부착 — ws 가 reconnect 로 교체돼도 상태 유지.
-// 이미 발송된 적 있으면 중복 발송 안 함; 처음 발송이면 joinedAt 기준 남은 시간만 대기.
-// (이슈: 비행기모드 reconnect 시 봇 제안이 한 번 더 떴음.)
+// 추가로 clientId 단위 history 도 확인 (entry 가 close→reconnect race 로 사라진 경우 대비).
 const scheduleBotOfferIfNeeded = (entry) => {
   if (entry.botOfferSentAt) return;
+  // clientId 별 cooldown 검사 — 최근에 발송한 적 있으면 entry 에 표시만 하고 timer 안 켬.
+  if (entry.clientId) {
+    const last = botOfferSentByClientId.get(entry.clientId);
+    if (last && (Date.now() - last) < BOT_OFFER_COOLDOWN_MS) {
+      entry.botOfferSentAt = last;
+      return;
+    }
+  }
   if (entry.botOfferTimer) clearTimeout(entry.botOfferTimer);
   const remaining = Math.max(0, BOT_OFFER_DELAY_MS - (Date.now() - entry.joinedAt));
   entry.botOfferTimer = setTimeout(() => {
     entry.botOfferTimer = null;
-    entry.botOfferSentAt = Date.now();
+    const now = Date.now();
+    entry.botOfferSentAt = now;
+    if (entry.clientId) {
+      botOfferSentByClientId.set(entry.clientId, now);
+      // Lazy cleanup — cooldown 의 2배 지난 항목 제거 (메모리 누수 방지).
+      for (const [cid, ts] of botOfferSentByClientId) {
+        if (now - ts > BOT_OFFER_COOLDOWN_MS * 2) botOfferSentByClientId.delete(cid);
+      }
+    }
     const liveWs = connections.getWsByConnectionId(entry.connectionId);
     if (liveWs && liveWs.readyState === liveWs.OPEN) {
       send(liveWs, { type: 'bot_offer' });
@@ -774,6 +802,12 @@ const onResumeSession = (ws, msg) => {
     turnDeadline: room.turnDeadline || null,
     spectators: getSpectatorNames(room),
   });
+  // 봇 게임이고 진행 중이면 봇 timer 재개 (사용자 끊긴 동안 멈췄던 것).
+  // 봇 차례면 곧바로 스케줄, 사용자 차례면 봇은 그냥 대기.
+  if (room.hasBot && room.status === 'playing') {
+    const botColor = getBotColor(room);
+    if (botColor && room.turn === botColor) scheduleBotMove(room);
+  }
   log.event('session_resumed', { sid: log.mask(sid), code: room.code, color: sess.color });
 };
 
@@ -950,37 +984,40 @@ const onPlayerDisconnect = (ws) => {
   const room = getRoom(ws.roomCode);
   if (!room) return;
 
-  // 봇 게임에서 사람이 끊기면 grace 없이 즉시 종료 (봇 혼자 남아있을 이유 없음).
-  if (room.hasBot) {
-    // 워커가 계산 중인 봇 수가 stale 결과로 들어오는 걸 막기 위해 status 먼저 변경.
-    room.status = 'over';
-    cancelBotTimers(room);
-    clearTurnTimer(room);
-    roomRuntime.clearAllDisconnectTimers(room.code);
-    roomRuntime.dispose(room.code);
-    ws.sessionId = null;
-    deleteRoom(room.code);  // 양쪽 slot 의 session 정리 포함
-    broadcastRoomsList();
-    return;
-  }
-
   if (room.status !== 'playing' && room.status !== 'waiting' && room.status !== 'over') {
     onLeaveRoom(ws);
     return;
   }
+
+  // 봇 게임이라도 사람 게임과 동일 grace 적용. 사용자가 비행기/네트워크 단절 후 30s 안에
+  // 돌아오면 게임이 이어진다 (이슈 #31 후속).
+  // 단, 사용자가 끊긴 동안엔 봇 timer 멈춤 (봇이 혼자 두면서 보드 진행되는 거 방지).
+  if (room.hasBot) cancelBotTimers(room);
+
   const myColor = ws.color;
   const deadline = Date.now() + DISCONNECT_GRACE_MS;
-  // 진행 중이든 대기/종료든 상대(있다면) + 관전자에게 동일 신호 — 표시는 클라가 알아서.
-  // slot 자체는 nullify 하지 않는다 (resume 시 메타 그대로 사용). ws 만 connections.unregister
-  // 로 끊겨 sendToSession 은 자연히 no-op.
+  // slot 자체는 nullify 하지 않는다 (resume 시 메타 그대로 사용). ws 만 끊겼으니
+  // sendToSession 은 자연히 no-op.
   sendToPlayer(room, otherColor(myColor), { type: 'opponent_disconnected', color: myColor, deadline });
   forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_disconnected', color: myColor, deadline }));
   roomRuntime.setDisconnectTimer(room.code, myColor, setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS));
 };
 
 const finalizeAbandon = (room, color) => {
+  // 봇 게임에서 사람이 grace 동안 안 돌아오면 → 방 자체를 폐쇄 (봇한테 알림 의미 없음).
+  if (room.hasBot) {
+    cancelBotTimers(room);
+    clearTurnTimer(room);
+    roomRuntime.clearAllDisconnectTimers(room.code);
+    roomRuntime.dispose(room.code);
+    log.event('game_over', { code: room.code, gameId: room.gameId, winner: null, reason: 'bot_abandoned' });
+    deleteRoom(room.code);
+    broadcastRoomsList();
+    return;
+  }
+
   const playerIds = playerIdsPayload(room);
-  // 게임 중에 안 돌아온 경우 — 기존 동작 유지 (opponent_abandoned 알림, status='over' 로 전환)
+  // 사람 게임 중에 안 돌아온 경우 — opponent_abandoned 알림, status='over' 로 전환
   if (room.status === 'playing') {
     room.status = 'over';
     for (const c of ['black', 'white']) sendToPlayer(room, c, { type: 'opponent_abandoned', color, gameId: room.gameId, playerIds });
