@@ -14,8 +14,10 @@ const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
 const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('./renju');
 const {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
-  generateMove, decideBotEmote, recordBotEmote, newBotEmoteState, thinkTimeMs,
+  decideBotEmote, recordBotEmote, newBotEmoteState, thinkTimeMs,
 } = require('./bot');
+// generateMove 는 워커 풀의 async 래퍼 사용 — 메인 이벤트 루프 블로킹 회피.
+const { generateMoveAsync } = require('./bot-pool');
 
 const TURN_TIMEOUT_MS       = Number(process.env.TURN_TIMEOUT_MS)       || 30000;
 const DISCONNECT_GRACE_MS   = Number(process.env.DISCONNECT_GRACE_MS)   || 30000;
@@ -120,13 +122,25 @@ const scheduleBotMove = (room) => {
   if (room.turn !== bot.color) return;
   if (room.botMoveTimer) clearTimeout(room.botMoveTimer);
   const delay = thinkTimeMs(bot.botDifficulty);
+  const code = room.code;
   room.botMoveTimer = setTimeout(() => {
     room.botMoveTimer = null;
     if (room.status !== 'playing') return;
     if (room.turn !== bot.color) return;
-    const move = generateMove(room.board, bot.color, bot.botDifficulty);
-    if (!move) return;  // 매우 드문 케이스 — 봇이 둘 곳 없음
-    onMove(bot, move[0], move[1]);
+    // 보드 스냅샷을 워커로 보내 비동기로 계산. 메인 이벤트 루프는 그동안 자유.
+    // 워커가 결과를 돌려줄 시점에 게임 상태가 변했을 수 있으니(사용자 leave / 타임아웃 등)
+    // 한 번 더 검증 후 onMove 호출.
+    generateMoveAsync(room.board, bot.color, bot.botDifficulty).then((move) => {
+      if (!move) return;
+      const current = getRoom(code);
+      if (!current || current !== room) return;          // 방이 사라졌거나 교체됨
+      if (room.status !== 'playing') return;             // 게임 종료 / 사용자 이탈
+      if (room.turn !== bot.color) return;               // 차례가 다른 색으로 넘어감 (타임아웃 등)
+      if (room.board[move[0]][move[1]] !== 0) return;    // 그 칸이 이미 채워짐 (방어적)
+      onMove(bot, move[0], move[1]);
+    }).catch((err) => {
+      console.error('[bot] generateMoveAsync 실패:', err && err.message);
+    });
   }, delay);
 };
 
@@ -732,6 +746,8 @@ const onPlayerDisconnect = (ws) => {
 
   // 봇 게임에서 사람이 끊기면 grace 없이 즉시 종료 (봇 혼자 남아있을 이유 없음).
   if (room.hasBot) {
+    // 워커가 계산 중인 봇 수가 stale 결과로 들어오는 걸 막기 위해 status 먼저 변경.
+    room.status = 'over';
     cancelBotTimers(room);
     clearTurnTimer(room);
     if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
