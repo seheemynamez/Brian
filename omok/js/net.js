@@ -18,12 +18,25 @@ import { drawBoard } from './board.js';
 // - 그 외(로컬 개발, LAN, Render 직접 접속): 같은 origin
 // ============================================================
 // Render 배포 후 실제 URL로 교체 (예: wss://omok-server-xxxx.onrender.com/ws)
-const PROD_WS_URL = 'wss://omok-server-u4rp.onrender.com/ws';
+const PROD_WS_URL     = 'wss://omok-server-u4rp.onrender.com/ws';
+const PROD_SHARE_BASE = 'https://omok-server-u4rp.onrender.com';
 
 const WS_URL = (() => {
   if (location.hostname === 'seheemynamez.github.io') return PROD_WS_URL;
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 })();
+
+// 공유용 초대 링크 — /i/CODE?n=NICK
+// 운영(GitHub Pages): Render 서버가 동적 OG 메타를 렌더링 → 메신저 프리뷰가 닉네임으로 노출됨
+// 그 외(로컬·LAN): 같은 origin 의 share 엔드포인트 사용
+export const buildShareUrl = (code, nick) => {
+  if (!code) return location.href;
+  const base = location.hostname === 'seheemynamez.github.io' ? PROD_SHARE_BASE : location.origin;
+  const params = new URLSearchParams();
+  if (nick) params.set('n', nick);
+  const qs = params.toString();
+  return `${base}/i/${encodeURIComponent(code)}${qs ? '?' + qs : ''}`;
+};
 
 // ---- 세션 저장 (sessionStorage 사용)
 // URL 해시(#session=...) 대신 sessionStorage 에 저장한다.

@@ -7,6 +7,7 @@ const http = require('http');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { makeStaticHandler } = require('./http-static');
+const { makeShareHandler } = require('./share');
 const { incrementOnline, decrementOnline, getOnline } = require('./rooms');
 const handlers = require('./handlers');
 
@@ -21,7 +22,19 @@ const STATIC_ROOT = process.env.STATIC_ROOT
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
-const httpServer = http.createServer(makeStaticHandler(STATIC_ROOT));
+// /i/CODE 초대 페이지의 canonical 리다이렉트 타깃.
+// 운영(Render): https://seheemynamez.github.io/Brian/omok/
+// 로컬: 미설정 시 같은 origin 의 /omok/ 로 자동 fallback (share.js 내부)
+const CANONICAL_OMOK_URL = process.env.CANONICAL_OMOK_URL || null;
+
+const staticHandler = makeStaticHandler(STATIC_ROOT);
+const shareHandler  = makeShareHandler({ canonicalOmokUrl: CANONICAL_OMOK_URL });
+
+const httpServer = http.createServer((req, res) => {
+  const urlPath = (req.url || '/').split('?')[0];
+  if (urlPath.startsWith('/i/')) return shareHandler(req, res);
+  return staticHandler(req, res);
+});
 
 const wssOpts = { server: httpServer, path: '/ws' };
 if (ALLOWED_ORIGINS.length) {

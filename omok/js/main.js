@@ -8,7 +8,7 @@ import {
   setReconnectOverlay, resetGameLocal, updateOnlineCount, setEmotePickerVisible,
 } from './ui.js';
 import { initAudio } from './sound.js';
-import { connect, sendMessage, getSession, setSession, setRoomInUrl, getRoomFromUrl } from './net.js';
+import { connect, sendMessage, getSession, setSession, setRoomInUrl, getRoomFromUrl, buildShareUrl } from './net.js';
 import { drawBoard, getBoardCoord } from './board.js';
 
 const $ = (id) => document.getElementById(id);
@@ -163,9 +163,10 @@ const setupGame = () => {
 
 // ---- 초대 링크 복사 ----
 // 두 위치(대기 화면 큰 버튼, 게임 화면 작은 버튼)에서 같은 동작을 한다.
-// 현재 URL (이미 ?room=XXXX 포함)을 그대로 복사하면 곧바로 공유 링크가 된다.
+// 복사되는 URL 은 share 엔드포인트(/i/CODE?n=NICK) — 메신저 봇이 동적 OG 메타를 가져가
+// "닉네임님이 오목대전을 신청했어요" 형태의 프리뷰가 뜬다. 사람이 클릭하면 canonical 게임 URL 로 redirect.
 const copyInviteLink = async (btn) => {
-  const url = location.href;
+  const url = buildShareUrl(state.currentRoomCode, state.myNick) || location.href;
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(url);
