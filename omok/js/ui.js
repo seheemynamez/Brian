@@ -20,6 +20,10 @@ export const showScreen = (name) => {
     const btnEmote = $('btn-emote');
     if (btnEmote) btnEmote.classList.add('hidden');
   }
+  // 초대 링크 복사 버튼 — 방 안에 있을 때만 노출 (대기 화면은 '방' 모드일 때만)
+  const hasCode = !!state.currentRoomCode;
+  $('btn-copy-waiting').classList.toggle('hidden', !(name === 'waiting' && hasCode && state.waitingMode === 'room'));
+  $('btn-copy-game').classList.toggle('hidden', !(name === 'game' && hasCode));
 };
 
 export const setLobbyError = (text) => { $('lobby-error').textContent = text || ''; };

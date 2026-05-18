@@ -203,9 +203,12 @@ function move(direction) {
 
   animating = true;
   applyTransforms(); // 슬라이드 시작 (CSS transition)
+  // 이동이 일어났으면 슬라이드 사운드 한 번 (병합 사운드와 겹치도록 즉시).
+  window.Sound2048 && window.Sound2048.playSound('slide');
 
   setTimeout(() => {
     // 슬라이드 끝 → 병합 적용
+    let won2048ThisMove = false;
     for (const m of result.merges) {
       const absorber = tiles.find(t => t.id === m.absorberId);
       if (absorber) {
@@ -214,7 +217,11 @@ function move(direction) {
         score += m.newValue;
         if (m.newValue === 2048 && !won) {
           won = true;
+          won2048ThisMove = true;
           showMessage('2048 달성! 계속 진행해도 됩니다.', 'win');
+        } else {
+          // 병합당 한 번씩 톤 — 값에 따라 음정이 올라간다.
+          window.Sound2048 && window.Sound2048.playSound('merge', m.newValue);
         }
       }
     }
@@ -226,9 +233,12 @@ function move(direction) {
     render();
     animating = false;
 
+    if (won2048ThisMove) window.Sound2048 && window.Sound2048.playSound('win_2048');
+
     if (!hasMoves()) {
       gameOver = true;
       if (!won) showMessage('게임 끝! "새 게임"을 눌러 다시 시작하세요.', '');
+      window.Sound2048 && window.Sound2048.playSound('gameover');
     }
   }, SLIDE_MS);
 }
@@ -277,7 +287,27 @@ document.getElementById('board').addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 // ============================================================
+// 음소거 토글
+// ============================================================
+const muteBtn = document.getElementById('btn-mute');
+const syncMuteIcon = () => {
+  if (!muteBtn) return;
+  muteBtn.textContent = (window.Sound2048 && window.Sound2048.isMuted()) ? '🔇' : '🔊';
+};
+if (muteBtn) {
+  muteBtn.addEventListener('click', () => {
+    if (!window.Sound2048) return;
+    window.Sound2048.setMuted(!window.Sound2048.isMuted());
+    syncMuteIcon();
+  });
+  syncMuteIcon();
+}
+
+// ============================================================
 // 시작
 // ============================================================
-document.getElementById('new-game').addEventListener('click', newGame);
+document.getElementById('new-game').addEventListener('click', () => {
+  window.Sound2048 && window.Sound2048.playSound('click');
+  newGame();
+});
 newGame();

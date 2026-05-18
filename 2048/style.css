@@ -1,11 +1,34 @@
 /* ============================================================
    기본 변수 & 리셋
+   - 페이지 톤(헤더/배경/버튼)은 호스트 게이트웨이(seheemynamez.github.io)
+     랜딩과 동일한 다크 팔레트 + 시안/마젠타/바이올렛 액센트.
+   - 보드/타일 색감은 2048 시그니처(따뜻한 베이지/오렌지)를 유지.
    ============================================================ */
 :root {
   --tile-size: 88px;
   --tile-gap: 12px;
   --slide-duration: 130ms;
+
+  --bg-0: #0b0a1f;
+  --bg-1: #1a1340;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-strong: rgba(255, 255, 255, 0.10);
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.20);
+  --ink: #e8e6ff;
+  --ink-muted: #b0a8d4;
+  --ink-faint: #7d76a0;
+  --accent-1: #00e5ff;
+  --accent-2: #ff43a8;
+  --accent-3: #b388ff;
+  --radius-sm: 12px;
+
+  /* 2048 시그니처 (보드/타일에서만 사용) */
+  --board-brown: #bbada0;
+  --tile-ink: #776e65;
+  --tile-ink-light: #f9f6f2;
 }
+
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
@@ -13,60 +36,110 @@ html, body {
   overscroll-behavior: none;
 }
 body {
-  font-family: 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #faf8ef;
-  padding: 24px 16px;
+  font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont,
+               system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  background: radial-gradient(ellipse at top, var(--bg-1), var(--bg-0) 70%);
+  background-attachment: fixed;
+  color: var(--ink);
+  padding: 32px 16px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #776e65;
   min-height: 100%;
+  letter-spacing: -0.01em;
 }
 
 /* ============================================================
    상단(제목 + 점수 + 새 게임 버튼)
    ============================================================ */
-h1 { font-size: 56px; margin: 0 0 16px; line-height: 1; }
+h1 {
+  font-size: clamp(40px, 7vw, 64px);
+  font-weight: 900;
+  margin: 0 0 18px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-3) 50%, var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 .header {
   display: flex;
   gap: 10px;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   flex-wrap: wrap;
   justify-content: center;
 }
 .score {
-  background: #bbada0;
-  color: white;
-  padding: 6px 16px;
-  border-radius: 4px;
-  font-weight: bold;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  color: var(--ink);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
   text-align: center;
-  min-width: 76px;
+  min-width: 84px;
 }
-.score-label { font-size: 11px; opacity: 0.8; letter-spacing: 1px; }
-.score-value { font-size: 22px; }
-button {
-  background: #8f7a66;
-  color: white;
+.score-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+.score-value {
+  font-size: 22px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-weight: 800;
+  color: var(--ink);
+}
+button#new-game {
+  background: linear-gradient(135deg, var(--accent-1), #4ad7ff);
+  color: #001624;
   border: none;
   padding: 10px 18px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 800;
+  font-family: inherit;
+  box-shadow: 0 0 24px rgba(0, 229, 255, 0.25);
+  transition: filter 0.15s, transform 0.08s;
 }
-button:hover { background: #7c6555; }
+button#new-game:hover { filter: brightness(1.08); }
+button#new-game:active { transform: scale(0.98); }
+
+/* 작은 아이콘 버튼 (음소거 등) — 오목과 동일 스타일 */
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 99px;
+  font-size: 16px;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.1s;
+}
+.icon-btn:hover { background: var(--surface-strong); }
+.icon-btn:active { transform: scale(0.95); }
 
 /* ============================================================
-   게임 보드 & 배경 셀
+   게임 보드 & 배경 셀 (시그니처 베이지 유지)
    ============================================================ */
 .board {
   position: relative;
-  background: #bbada0;
+  background: var(--board-brown);
   padding: var(--tile-gap);
   border-radius: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   width: calc(4 * var(--tile-size) + 3 * var(--tile-gap));
   height: calc(4 * var(--tile-size) + 3 * var(--tile-gap));
   box-sizing: content-box;
@@ -74,6 +147,7 @@ button:hover { background: #7c6555; }
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .cells {
   display: grid;
@@ -87,7 +161,7 @@ button:hover { background: #7c6555; }
 }
 
 /* ============================================================
-   움직이는 타일
+   움직이는 타일 (시그니처 컬러 그대로)
    ============================================================ */
 .tile-layer {
   position: absolute;
@@ -117,23 +191,23 @@ button:hover { background: #7c6555; }
   justify-content: center;
   font-size: calc(var(--tile-size) * 0.45);
   font-weight: bold;
-  color: #776e65;
+  color: var(--tile-ink);
 }
 
-/* 타일 값별 색상 */
+/* 타일 값별 색상 (시그니처) */
 .tile-2    .tile-content { background: #eee4da; }
 .tile-4    .tile-content { background: #ede0c8; }
-.tile-8    .tile-content { background: #f2b179; color: #f9f6f2; }
-.tile-16   .tile-content { background: #f59563; color: #f9f6f2; }
-.tile-32   .tile-content { background: #f67c5f; color: #f9f6f2; }
-.tile-64   .tile-content { background: #f65e3b; color: #f9f6f2; }
-.tile-128  .tile-content { background: #edcf72; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.36); }
-.tile-256  .tile-content { background: #edcc61; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.36); }
-.tile-512  .tile-content { background: #edc850; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.36); }
-.tile-1024 .tile-content { background: #edc53f; color: #f9f6f2; font-size: calc(var(--tile-size) * 0.30); }
+.tile-8    .tile-content { background: #f2b179; color: var(--tile-ink-light); }
+.tile-16   .tile-content { background: #f59563; color: var(--tile-ink-light); }
+.tile-32   .tile-content { background: #f67c5f; color: var(--tile-ink-light); }
+.tile-64   .tile-content { background: #f65e3b; color: var(--tile-ink-light); }
+.tile-128  .tile-content { background: #edcf72; color: var(--tile-ink-light); font-size: calc(var(--tile-size) * 0.36); }
+.tile-256  .tile-content { background: #edcc61; color: var(--tile-ink-light); font-size: calc(var(--tile-size) * 0.36); }
+.tile-512  .tile-content { background: #edc850; color: var(--tile-ink-light); font-size: calc(var(--tile-size) * 0.36); }
+.tile-1024 .tile-content { background: #edc53f; color: var(--tile-ink-light); font-size: calc(var(--tile-size) * 0.30); }
 .tile-2048 .tile-content {
   background: #edc22e;
-  color: #f9f6f2;
+  color: var(--tile-ink-light);
   font-size: calc(var(--tile-size) * 0.30);
   box-shadow: 0 0 20px rgba(243, 215, 116, 0.8);
 }
@@ -164,15 +238,32 @@ button:hover { background: #7c6555; }
   min-height: 24px;
   text-align: center;
   padding: 0 8px;
+  color: var(--ink);
 }
-.message.win { color: #f67c5f; }
+.message.win { color: var(--accent-1); text-shadow: 0 0 18px rgba(0, 229, 255, 0.45); }
 .help {
   max-width: 420px;
   text-align: center;
   font-size: 13px;
-  line-height: 1.5;
-  opacity: 0.75;
+  line-height: 1.6;
+  color: var(--ink-muted);
   margin: 8px 0 0;
+}
+
+/* 크로스 프로모션 — 호스트 게이트웨이로 보내는 작고 옅은 보조 링크 */
+.other-games {
+  display: inline-block;
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  border-bottom: 1px dashed transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.other-games:hover {
+  color: var(--ink-muted);
+  border-bottom-color: currentColor;
 }
 
 /* ============================================================
@@ -183,14 +274,14 @@ button:hover { background: #7c6555; }
     --tile-gap: 8px;
     --tile-size: min(
       calc((100vw - 2 * 12px - 2 * var(--tile-gap) - 3 * var(--tile-gap)) / 4),
-      calc((100vh - 200px - 2 * var(--tile-gap) - 3 * var(--tile-gap)) / 4),
+      calc((100vh - 220px - 2 * var(--tile-gap) - 3 * var(--tile-gap)) / 4),
       88px
     );
   }
-  body { padding: 16px 12px; }
-  h1 { font-size: 40px; margin-bottom: 10px; }
-  .header { margin-bottom: 10px; gap: 8px; }
-  .score { padding: 5px 12px; min-width: 66px; }
+  body { padding: 24px 12px 20px; }
+  h1 { font-size: 40px; margin-bottom: 12px; }
+  .header { margin-bottom: 12px; gap: 8px; }
+  .score { padding: 6px 12px; min-width: 72px; }
   .score-value { font-size: 18px; }
   button { padding: 8px 14px; font-size: 13px; }
   .help { font-size: 12px; }

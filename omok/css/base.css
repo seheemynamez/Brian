@@ -1,33 +1,33 @@
 /* ============================================================
    토큰 + 글로벌 (변수, body 배경, typography)
+   - 호스트 게이트웨이(seheemynamez.github.io) 랜딩과 동일한 팔레트.
    ============================================================ */
 :root {
-  --bg-1: #0b0a1f;
-  --bg-2: #160a2d;
-  --bg-3: #1c0b3a;
+  --bg-0: #0b0a1f;
+  --bg-1: #1a1340;
 
   --surface: rgba(255, 255, 255, 0.06);
   --surface-strong: rgba(255, 255, 255, 0.10);
   --border: rgba(255, 255, 255, 0.10);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.20);
 
-  --ink: #f1f1ff;
-  --ink-muted: rgba(241, 241, 255, 0.62);
-  --ink-faint: rgba(241, 241, 255, 0.40);
+  --ink: #e8e6ff;
+  --ink-muted: #b0a8d4;
+  --ink-faint: #7d76a0;
 
   --accent-1: #00e5ff;
-  --accent-2: #ff3d8a;
+  --accent-2: #ff43a8;
   --accent-3: #b388ff;
 
   --good: #4afaa3;
   --bad: #ff4d6a;
   --warn: #ffb84d;
 
-  --radius: 14px;
-  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-sm: 12px;
 
   --shadow-glow-cyan: 0 0 24px rgba(0, 229, 255, 0.35);
-  --shadow-glow-pink: 0 0 24px rgba(255, 61, 138, 0.35);
+  --shadow-glow-pink: 0 0 24px rgba(255, 67, 168, 0.35);
 }
 
 * { box-sizing: border-box; }
@@ -39,19 +39,16 @@ html, body {
 }
 
 body {
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont,
-               'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+  font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont,
+               system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   color: var(--ink);
   min-height: 100%;
-  background:
-    radial-gradient(1200px 700px at 10% -10%, rgba(0, 229, 255, 0.22), transparent 60%),
-    radial-gradient(900px 600px at 90% 0%, rgba(255, 61, 138, 0.20), transparent 60%),
-    radial-gradient(700px 600px at 50% 110%, rgba(179, 136, 255, 0.18), transparent 60%),
-    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
+  background: radial-gradient(ellipse at top, var(--bg-1), var(--bg-0) 70%);
   background-attachment: fixed;
   display: flex;
   flex-direction: column;
   align-items: center;
+  line-height: 1.5;
   letter-spacing: -0.01em;
 }
 

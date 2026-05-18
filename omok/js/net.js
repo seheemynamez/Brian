@@ -25,15 +25,48 @@ const WS_URL = (() => {
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 })();
 
-// ---- URL hash 세션 ----
-const setSessionInUrl = (id) => {
-  if (id) history.replaceState(null, '', '#session=' + id);
-  else    history.replaceState(null, '', location.pathname + location.search);
+// ---- 세션 저장 (sessionStorage 사용)
+// URL 해시(#session=...) 대신 sessionStorage 에 저장한다.
+//   - 공유 가능한 URL 에 세션 ID 가 노출되지 않음
+//   - 탭 단위 격리: 같은 도메인이라도 다른 탭에선 자동 복구되지 않음 (의도된 동작)
+// 이전 버전 사용자 호환: hash 에 session 이 남아있다면 한 번 읽어 sessionStorage 로 옮기고 hash 정리.
+const SESSION_KEY = 'omok_session';
+
+const setSession = (id) => {
+  try {
+    if (id) sessionStorage.setItem(SESSION_KEY, id);
+    else    sessionStorage.removeItem(SESSION_KEY);
+  } catch {}
 };
 
-export const readSessionFromUrl = () => {
+export const getSession = () => {
   const m = location.hash.match(/session=([^&]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  if (m) {
+    const fromHash = decodeURIComponent(m[1]);
+    try { sessionStorage.setItem(SESSION_KEY, fromHash); } catch {}
+    history.replaceState(null, '', location.pathname + location.search);
+    return fromHash;
+  }
+  try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; }
+};
+
+// ---- 방 코드 URL 파라미터 (?room=XXXX)
+// 방 안에 있는 동안 URL 자체가 공유 가능한 초대 링크가 된다.
+// 방을 떠나거나 실패하면 즉시 제거 — URL 이 현재 상태와 일치하도록 유지.
+const setRoomInUrl = (code) => {
+  const url = new URL(location.href);
+  if (code) url.searchParams.set('room', code);
+  else      url.searchParams.delete('room');
+  const qs = url.searchParams.toString();
+  history.replaceState(null, '', url.pathname + (qs ? '?' + qs : '') + url.hash);
+};
+
+export const getRoomFromUrl = () => {
+  const code = new URL(location.href).searchParams.get('room');
+  if (!code) return null;
+  const c = code.toUpperCase().trim();
+  if (!/^[A-Z0-9]{4}$/.test(c)) return null;
+  return c;
 };
 
 // ---- 송신 ----
@@ -58,6 +91,10 @@ export const connect = () => {
     } else if (state.waitingMode === 'queue' && state.screenState === 'waiting') {
       // 랜덤 매칭 대기 중 끊김 — 큐에 다시 등록
       sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });
+    } else if (state.pendingDirectJoin) {
+      // 직접 링크(?room=) 진입 모달에서 사용자가 확정했지만 WS 가 아직 안 열려있었던 경우
+      sendMessage(state.pendingDirectJoin);
+      state.pendingDirectJoin = null;
     }
     // 로비에 있다면 방 목록 즉시 요청 (자동 푸시 전 초기 상태)
     if (state.screenState === 'lobby') {
@@ -116,12 +153,11 @@ const dispatch = (msg) => {
 const onRoomCreated = (msg) => {
   state.currentRoomCode = msg.code;
   state.waitingMode = 'room';
-  // 방장에게 발급된 sessionId 를 URL 해시에 저장해두면, 다른 탭/네트워크 끊김 후
-  // 자동으로 resume_session 으로 복구된다 (이슈 #9).
   if (msg.sessionId) {
     state.sessionId = msg.sessionId;
-    setSessionInUrl(msg.sessionId);
+    setSession(msg.sessionId);
   }
+  setRoomInUrl(msg.code);
   document.getElementById('waiting-title').textContent = '상대를 기다리는 중';
   document.getElementById('waiting-code').textContent = msg.code;
   document.getElementById('waiting-detail').textContent = '이 코드를 친구에게 공유하세요';
@@ -141,12 +177,14 @@ const onQueueCanceled = () => {
   // 사용자가 다른 탭에서 매칭 다시 누른 경우이므로 조용히 로비로 복귀
   state.waitingMode = null;
   state.currentRoomCode = null;
+  setRoomInUrl(null);
   showScreen('lobby');
 };
 
 const onMatched = (msg) => {
   // 자동매칭에서 코드가 부여될 때 (game_start가 곧 따라옴 — 여기선 코드만 기억)
   state.currentRoomCode = msg.code;
+  setRoomInUrl(msg.code);
 };
 
 const onGameStart = (msg) => {
@@ -161,9 +199,10 @@ const onGameStart = (msg) => {
   state.role = 'player';
   if (msg.sessionId) {
     state.sessionId = msg.sessionId;
-    setSessionInUrl(msg.sessionId);
+    setSession(msg.sessionId);
   }
   if (msg.code) state.currentRoomCode = msg.code;
+  if (state.currentRoomCode) setRoomInUrl(state.currentRoomCode);
   updateSpectatorList(msg.spectators || []);
   document.getElementById('room-code-display').textContent = state.currentRoomCode ? '방 코드 · ' + state.currentRoomCode : '';
   document.getElementById('game-over').classList.add('hidden');
@@ -187,7 +226,8 @@ const onSpectateSuccess = (msg) => {
   state.gameOver = msg.status === 'over';
   state.currentRoomCode = msg.code;
   state.sessionId = null;
-  setSessionInUrl(null);
+  setSession(null);
+  setRoomInUrl(msg.code);
   state.turnDeadline = msg.turnDeadline || null;
   updateSpectatorList(msg.spectators || []);
   document.getElementById('room-code-display').textContent = '관전 중 · ' + msg.code;
@@ -218,7 +258,8 @@ const onResumeSuccess = (msg) => {
   state.role = 'player';
   state.sessionId = msg.sessionId;
   state.currentRoomCode = msg.code || state.currentRoomCode;
-  setSessionInUrl(state.sessionId);
+  setSession(state.sessionId);
+  if (state.currentRoomCode) setRoomInUrl(state.currentRoomCode);
   state.turnDeadline = msg.turnDeadline || null;
   updateSpectatorList(msg.spectators || []);
   setReconnectOverlay(false);
@@ -250,7 +291,9 @@ const onResumeSuccess = (msg) => {
 
 const onResumeFailed = () => {
   state.sessionId = null;
-  setSessionInUrl(null);
+  state.currentRoomCode = null;
+  setSession(null);
+  setRoomInUrl(null);
   setReconnectOverlay(false);
   showScreen('lobby');
   setLobbyError('이전 게임을 복구할 수 없어요 (만료됨)');
@@ -313,12 +356,20 @@ const onOpponentGone = (text) => {
   showToast(text);
   showGameOverNeutral(text);
   state.sessionId = null;
-  setSessionInUrl(null);
+  setSession(null);
+  // currentRoomCode 와 URL ?room= 은 게임 끝난 화면에서 결과를 보는 동안 유지.
+  // 사용자가 '방 나가기' 누를 때 leaveRoomAndGoLobby 에서 정리됨.
 };
 
 const onError = (msg) => {
-  if (state.screenState === 'lobby') setLobbyError(msg.message);
-  else showToast(msg.message);
+  if (state.screenState === 'lobby') {
+    setLobbyError(msg.message);
+    // 직접 링크로 들어왔다가 join 이 실패한 경우 → URL 의 ?room= 도 정리해서
+    // 새로고침해도 같은 에러가 반복되지 않게 한다.
+    setRoomInUrl(null);
+  } else {
+    showToast(msg.message);
+  }
 };
 
-export { setSessionInUrl };
+export { setSession, setRoomInUrl };

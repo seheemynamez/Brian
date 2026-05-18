@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#faf8ef">
-  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#0b0a1f">
+  <meta name="color-scheme" content="dark">
 
   <title>2048 — 클래식 슬라이드 퍼즐 게임 · Sehee's Mini Games</title>
   <meta name="description" content="브라우저에서 무료로 즐기는 2048 슬라이드 퍼즐 게임. 같은 숫자 두 개를 합쳐 2048 타일을 만드세요. 키보드 방향키와 모바일 터치 스와이프를 모두 지원합니다.">
@@ -21,7 +21,7 @@
   <meta property="og:title" content="2048 — 클래식 슬라이드 퍼즐 게임">
   <meta property="og:description" content="같은 숫자 두 개를 합쳐 2048 타일을 만드는 클래식 슬라이드 퍼즐. 브라우저에서 바로 플레이.">
   <meta property="og:url" content="https://seheemynamez.github.io/Brian/2048/">
-  <meta property="og:image" content="https://seheemynamez.github.io/Brian/og-image.svg">
+  <meta property="og:image" content="https://seheemynamez.github.io/og-image.svg">
   <meta property="og:image:alt" content="2048 슬라이드 퍼즐 — Sehee's Mini Games">
   <meta property="og:locale" content="ko_KR">
 
@@ -29,11 +29,11 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="2048 — 클래식 슬라이드 퍼즐">
   <meta name="twitter:description" content="같은 숫자를 합쳐 2048 을 만드세요. 브라우저에서 무료로.">
-  <meta name="twitter:image" content="https://seheemynamez.github.io/Brian/og-image.svg">
+  <meta name="twitter:image" content="https://seheemynamez.github.io/og-image.svg">
 
-  <!-- Favicon (루트 공통) -->
-  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
-  <link rel="apple-touch-icon" href="../favicon.svg">
+  <!-- Favicon (호스트 게이트웨이의 절대 URL) -->
+  <link rel="icon" type="image/svg+xml" href="https://seheemynamez.github.io/favicon.svg">
+  <link rel="apple-touch-icon" href="https://seheemynamez.github.io/favicon.svg">
 
   <!-- JSON-LD: Game + 상위 사이트 연결 + 빵 부스러기 -->
   <script type="application/ld+json">
@@ -45,7 +45,7 @@
         "name": "2048",
         "description": "같은 숫자 두 개를 합치며 2048 타일에 도달하는 클래식 슬라이드 퍼즐 게임. 키보드와 모바일 터치 스와이프 모두 지원.",
         "url": "https://seheemynamez.github.io/Brian/2048/",
-        "image": "https://seheemynamez.github.io/Brian/og-image.svg",
+        "image": "https://seheemynamez.github.io/og-image.svg",
         "inLanguage": "ko",
         "genre": ["Puzzle", "Number Game"],
         "playMode": "SinglePlayer",
@@ -82,6 +82,7 @@
       <div class="score-value" id="best">0</div>
     </div>
     <button id="new-game">새 게임</button>
+    <button id="btn-mute" class="icon-btn" type="button" aria-label="음소거 토글">🔊</button>
   </div>
 
   <div class="board" id="board">
@@ -101,6 +102,11 @@
     같은 숫자가 만나면 합쳐집니다. 2048을 만들어 보세요!
   </p>
 
+  <a class="other-games" href="https://seheemynamez.github.io/" target="_blank" rel="noopener">
+    🎲 다른 게임은 어떠세요? →
+  </a>
+
+  <script src="sound.js" defer></script>
   <script src="game.js" defer></script>
 </body>
 </html>

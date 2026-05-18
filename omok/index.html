@@ -21,7 +21,7 @@
   <meta property="og:title" content="오목대전 — 실시간 멀티플레이 오목">
   <meta property="og:description" content="방 코드로 친구와, 또는 랜덤 매칭으로 누군가와. 관전 모드 지원. 브라우저에서 무료로 즐기는 실시간 멀티플레이 오목.">
   <meta property="og:url" content="https://seheemynamez.github.io/Brian/omok/">
-  <meta property="og:image" content="https://seheemynamez.github.io/Brian/og-image.svg">
+  <meta property="og:image" content="https://seheemynamez.github.io/og-image.svg">
   <meta property="og:image:alt" content="오목대전 — 실시간 멀티플레이 오목">
   <meta property="og:locale" content="ko_KR">
 
@@ -29,11 +29,11 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="오목대전 — 실시간 멀티플레이 오목">
   <meta name="twitter:description" content="친구와 방 코드로, 또는 랜덤 매칭. 관전 가능. 브라우저에서 무료로.">
-  <meta name="twitter:image" content="https://seheemynamez.github.io/Brian/og-image.svg">
+  <meta name="twitter:image" content="https://seheemynamez.github.io/og-image.svg">
 
-  <!-- Favicon (루트 공통) -->
-  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
-  <link rel="apple-touch-icon" href="../favicon.svg">
+  <!-- Favicon (호스트 게이트웨이의 절대 URL) -->
+  <link rel="icon" type="image/svg+xml" href="https://seheemynamez.github.io/favicon.svg">
+  <link rel="apple-touch-icon" href="https://seheemynamez.github.io/favicon.svg">
 
   <!-- JSON-LD: Game(멀티플레이) + 빵 부스러기 + FAQ (LLM 인용에 유리) -->
   <script type="application/ld+json">
@@ -46,7 +46,7 @@
         "alternateName": ["Omok", "Gomoku", "Five in a Row"],
         "description": "방 코드로 친구와, 또는 랜덤 매칭으로 누군가와 즐기는 실시간 멀티플레이 오목. 관전 모드, 30초 차례 타이머, 재대국 지원.",
         "url": "https://seheemynamez.github.io/Brian/omok/",
-        "image": "https://seheemynamez.github.io/Brian/og-image.svg",
+        "image": "https://seheemynamez.github.io/og-image.svg",
         "inLanguage": "ko",
         "genre": ["Board Game", "Strategy"],
         "playMode": "MultiPlayer",
@@ -162,6 +162,10 @@
           <div class="rooms-empty">지금은 열려있는 방이 없어요</div>
         </div>
       </div>
+
+      <a class="other-games" href="https://seheemynamez.github.io/" target="_blank" rel="noopener">
+        🎲 다른 게임은 어떠세요? →
+      </a>
     </section>
 
     <!-- 대기 -->
@@ -169,6 +173,10 @@
       <div class="card waiting-card">
         <h2 id="waiting-title">상대를 기다리는 중</h2>
         <div id="waiting-code" class="room-code"></div>
+        <button id="btn-copy-waiting" class="btn copy-btn hidden" type="button">
+          <span class="copy-icon">🔗</span>
+          <span class="copy-label">초대 링크 복사</span>
+        </button>
         <div id="waiting-detail" class="muted center"></div>
         <div class="loader"><div></div><div></div><div></div></div>
         <button id="btn-cancel" class="btn ghost">취소</button>
@@ -205,6 +213,7 @@
 
       <div class="room-info-row">
         <div class="room-info" id="room-code-display"></div>
+        <button id="btn-copy-game" class="btn ghost btn-small hidden" type="button">🔗 링크 복사</button>
         <button id="btn-leave-game" class="btn ghost btn-small">🚪 방 나가기</button>
       </div>
 
@@ -250,6 +259,22 @@
       <div class="overlay-actions">
         <button id="btn-leave-cancel" class="btn ghost">취소</button>
         <button id="btn-leave-confirm" class="btn accent">나가기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 직접 링크 입장 모달 — ?room=XXXX 로 들어왔을 때 노출
+       플레이어로 참가할지, 관전만 할지 사용자가 명시적으로 선택. -->
+  <div id="direct-join-overlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="overlay-title">방 <span id="direct-join-code" class="direct-join-code"></span> 입장</div>
+      <div class="overlay-sub">닉네임을 입력하세요. 비워두면 자동으로 부여됩니다.</div>
+      <input id="direct-join-nick" class="input-nick" placeholder="최대 12자 (비워두면 자동)" maxlength="12" autocomplete="off" />
+      <div class="direct-join-hint">참가는 빈 자리에 들어가 플레이합니다 · 관전은 도중 나가도 게임에 영향이 없어요</div>
+      <div class="overlay-actions">
+        <button id="btn-direct-cancel" class="btn ghost">취소</button>
+        <button id="btn-direct-spectate" class="btn ghost">👀 관전만</button>
+        <button id="btn-direct-confirm" class="btn primary">🎮 참가</button>
       </div>
     </div>
   </div>
