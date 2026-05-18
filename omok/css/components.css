@@ -247,6 +247,43 @@ button.chip.chip-clickable:hover {
   padding: 0 4px;
 }
 
+/* 봇 대전 모달 — 옵션 그룹 + 토글 버튼 */
+.bot-game-card { gap: 12px; max-width: 360px; width: 100%; }
+.bot-option-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bot-toggle-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+.bot-toggle-btn {
+  flex: 1;
+  padding: 9px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border 0.15s, color 0.15s;
+}
+.bot-toggle-btn:hover {
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+.bot-toggle-btn.active {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: var(--accent-1);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--accent-1);
+}
+
 /* 접속자 목록 모달 */
 .overlay-card-list { max-width: 320px; width: 100%; }
 .online-list {

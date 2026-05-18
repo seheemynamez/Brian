@@ -12,10 +12,15 @@ const {
 } = require('./rooms');
 const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
 const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('./renju');
+const {
+  BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
+  generateMove, decideBotEmote, recordBotEmote, newBotEmoteState, thinkTimeMs,
+} = require('./bot');
 
 const TURN_TIMEOUT_MS       = Number(process.env.TURN_TIMEOUT_MS)       || 30000;
 const DISCONNECT_GRACE_MS   = Number(process.env.DISCONNECT_GRACE_MS)   || 30000;
 const EMOTE_COOLDOWN_MS     = Number(process.env.EMOTE_COOLDOWN_MS)     || 800;
+const BOT_OFFER_DELAY_MS    = Number(process.env.BOT_OFFER_DELAY_MS)    || 10000;
 
 // 게임 중 짧은 상호작용 이모트. 키는 클라/서버 합의된 화이트리스트만 허용.
 const EMOTES = {
@@ -70,6 +75,89 @@ const broadcastRoomsList = () => {
 
 const colorIndex = (c) => (c === 'black' ? 0 : 1);
 const otherColor = (c) => (c === 'black' ? 'white' : 'black');
+
+// ============================================================
+// 봇 ws shim — 사람 player 와 같은 onMove 경로를 타기 위한 가짜 ws.
+// 실제 네트워크 송신 없음 (send는 no-op). WebSocketServer.clients 와 무관.
+// ============================================================
+const makeBotWs = (difficulty) => ({
+  readyState: 1, OPEN: 1, CLOSED: 3,
+  send() {},
+  isBot: true,
+  botDifficulty: difficulty,
+  roomCode: null,
+  color: null,
+  role: null,
+  sessionId: null,
+  nickname: BOT_NICKNAMES[difficulty],
+  clientId: BOT_IDS[difficulty],
+});
+
+// ============================================================
+// 봇 행동 — emote / 다음 수 스케줄링
+// ============================================================
+const tryBotEmote = (room, trigger) => {
+  if (!room || !room.hasBot) return;
+  const bot = room.players.find((p) => p && p.isBot);
+  if (!bot) return;
+  if (!room.botEmoteState) room.botEmoteState = newBotEmoteState();
+  const key = decideBotEmote({
+    board: room.board, botColor: bot.color, difficulty: bot.botDifficulty,
+    trigger, emoteState: room.botEmoteState, now: Date.now(),
+  });
+  if (!key) return;
+  const e = EMOTES[key];
+  if (!e) return;
+  recordBotEmote(room.botEmoteState, key, Date.now());
+  broadcastRoom(room, { type: 'emote', from: bot.color, key, emoji: e.emoji, text: e.text });
+};
+
+const scheduleBotMove = (room) => {
+  if (!room || !room.hasBot) return;
+  if (room.status !== 'playing') return;
+  const bot = room.players.find((p) => p && p.isBot);
+  if (!bot) return;
+  if (room.turn !== bot.color) return;
+  if (room.botMoveTimer) clearTimeout(room.botMoveTimer);
+  const delay = thinkTimeMs(bot.botDifficulty);
+  room.botMoveTimer = setTimeout(() => {
+    room.botMoveTimer = null;
+    if (room.status !== 'playing') return;
+    if (room.turn !== bot.color) return;
+    const move = generateMove(room.board, bot.color, bot.botDifficulty);
+    if (!move) return;  // 매우 드문 케이스 — 봇이 둘 곳 없음
+    onMove(bot, move[0], move[1]);
+  }, delay);
+};
+
+const cancelBotTimers = (room) => {
+  if (room && room.botMoveTimer) {
+    clearTimeout(room.botMoveTimer);
+    room.botMoveTimer = null;
+  }
+  if (room && room.botOfferTimer) {
+    clearTimeout(room.botOfferTimer);
+    room.botOfferTimer = null;
+  }
+};
+
+// 매 성공적인 move 직후 호출 — 봇 게임이면 emote / 다음 봇 차례 처리.
+const afterSuccessfulMove = (room, justMovedWs) => {
+  if (!room.hasBot) return;
+  const bot = room.players.find((p) => p && p.isBot);
+  if (!bot) return;
+
+  if (room.status === 'over') {
+    if (room.winner === bot.color) setTimeout(() => tryBotEmote(room, 'game_over_win'), 600);
+    else if (room.winner && room.winner !== 'draw') setTimeout(() => tryBotEmote(room, 'game_over_lose'), 600);
+    cancelBotTimers(room);
+    return;
+  }
+  // 진행 중: 직전 수가 봇/사람 분기 → 적절한 emote → 봇 차례면 다음 수 스케줄
+  const trigger = justMovedWs && justMovedWs.isBot ? 'bot_moved' : 'opponent_moved';
+  setTimeout(() => tryBotEmote(room, trigger), 300);
+  if (room.turn === bot.color) scheduleBotMove(room);
+};
 
 // ============================================================
 // 차례 타이머
@@ -193,6 +281,9 @@ const handleMessage = (ws, msg) => {
     case 'leave_room':     return onLeaveRoom(ws);
     case 'emote':          return onEmote(ws, msg);
     case 'set_nickname':   return onSetNickname(ws, msg);
+    case 'create_bot_game':    return onCreateBotGame(ws, msg);
+    case 'bot_offer_accept':   return onBotOfferAccept(ws, msg);
+    case 'bot_offer_decline':  return onBotOfferDecline(ws);
     case 'request_rooms_list':
       return send(ws, { type: 'rooms_list', rooms: getRoomsList() });
     case 'request_online_list':
@@ -200,12 +291,14 @@ const handleMessage = (ws, msg) => {
   }
 };
 
-// 로비에서 닉네임만 동기화 — 방에 들어가기 전에도 온라인 목록에 표시되도록.
-// 방 안에서는 room.nicknames 가 이미 잡혀 있으므로 ws.nickname 만 갱신.
+// 로비에서 닉네임/clientId 동기화 — 방에 들어가기 전에도 온라인 목록 표시 + 랭킹용 식별자 확보.
 const onSetNickname = (ws, msg) => {
   const next = sanitizeNick(msg.nickname);
-  if (!next) return;
-  ws.nickname = next;
+  if (next) ws.nickname = next;
+  // clientId 도 함께 받아서 ws 에 기록 — 추후 게임 결과 기록 시 안정 식별자로 사용
+  if (typeof msg.clientId === 'string' && msg.clientId.length > 0 && msg.clientId.length <= 64) {
+    ws.clientId = msg.clientId;
+  }
 };
 
 // 접속자 닉네임 목록 — 닉이 설정된 연결만, 같은 닉(멀티탭)은 1개로 dedupe.
@@ -252,6 +345,7 @@ const onCreateRoom = (ws, msg) => {
   const room = createRoom(code);
   room.players[0] = ws;
   room.nicknames[0] = sanitizeNick(msg.nickname) || '익명';
+  room.playerIds[0] = ws.clientId || null;
   ws.roomCode = code;
   ws.color = 'black';
   ws.role = 'player';
@@ -283,6 +377,7 @@ const onJoinRoom = (ws, msg) => {
   onQueueLeave(ws);
   room.players[1] = ws;
   room.nicknames[1] = sanitizeNick(msg.nickname) || '익명';
+  room.playerIds[1] = ws.clientId || null;
   ws.roomCode = code;
   ws.color = 'white';
   ws.role = 'player';
@@ -332,13 +427,16 @@ const onQueueJoin = (ws, msg) => {
   if (idx >= 0) {
     const opponent = q.splice(idx, 1)[0];
     opponent.inQueue = false;
+    if (opponent.botOfferTimer) { clearTimeout(opponent.botOfferTimer); opponent.botOfferTimer = null; }
     const code = genCode();
     const room = createRoom(code);
     room.players[0] = opponent;
     room.nicknames[0] = opponent.nickname || '익명';
+    room.playerIds[0] = opponent.clientId || null;
     opponent.roomCode = code; opponent.color = 'black'; opponent.role = 'player';
     room.players[1] = ws;
     room.nicknames[1] = ws.nickname;
+    room.playerIds[1] = ws.clientId || null;
     ws.roomCode = code; ws.color = 'white'; ws.role = 'player';
     setRoom(code, room);
     // 자동매칭 후에도 방 코드 부여 (관전자 모집용)
@@ -349,12 +447,81 @@ const onQueueJoin = (ws, msg) => {
     enqueue(ws);
     ws.inQueue = true;
     send(ws, { type: 'queue_waiting' });
+    // 큐 진입 후 BOT_OFFER_DELAY_MS 동안 매칭 안 되면 봇 제안 모달 트리거.
+    if (ws.botOfferTimer) clearTimeout(ws.botOfferTimer);
+    ws.botOfferTimer = setTimeout(() => {
+      ws.botOfferTimer = null;
+      if (!ws.inQueue) return;
+      if (ws.readyState !== ws.OPEN) return;
+      send(ws, { type: 'bot_offer' });
+    }, BOT_OFFER_DELAY_MS);
   }
 };
 
 const onQueueLeave = (ws) => {
   dequeue(ws);
   ws.inQueue = false;
+  if (ws.botOfferTimer) { clearTimeout(ws.botOfferTimer); ws.botOfferTimer = null; }
+};
+
+// ============================================================
+// 봇 게임 생성 — 사용자 + 봇 즉시 매칭, 곧바로 게임 시작
+// first: 'me' | 'bot' | 'random' (선공 누가)
+// difficulty: 'easy' | 'medium' | 'hard'
+// ============================================================
+const onCreateBotGame = (ws, msg) => {
+  if (ws.roomCode) return send(ws, { type: 'error', message: '이미 방에 있어요' });
+  const difficulty = VALID_DIFFICULTIES.has(msg.difficulty) ? msg.difficulty : 'medium';
+  let firstChoice = msg.first;
+  if (firstChoice === 'random') firstChoice = Math.random() < 0.5 ? 'me' : 'bot';
+  if (firstChoice !== 'me' && firstChoice !== 'bot') firstChoice = 'me';
+  onQueueLeave(ws);
+
+  const code = genCode();
+  const room = createRoom(code);
+  room.hasBot = true;
+  room.botEmoteState = newBotEmoteState();
+
+  const userColor = (firstChoice === 'me') ? 'black' : 'white';
+  const botColor  = otherColor(userColor);
+  const userIdx = colorIndex(userColor);
+  const botIdx  = colorIndex(botColor);
+
+  // 사용자 배치
+  room.players[userIdx] = ws;
+  room.nicknames[userIdx] = sanitizeNick(msg.nickname) || ws.nickname || '익명';
+  room.playerIds[userIdx] = ws.clientId || null;
+  ws.roomCode = code;
+  ws.color = userColor;
+  ws.role = 'player';
+  ws.nickname = room.nicknames[userIdx];
+
+  // 봇 배치
+  const botWs = makeBotWs(difficulty);
+  botWs.roomCode = code;
+  botWs.color = botColor;
+  botWs.role = 'player';
+  room.players[botIdx] = botWs;
+  room.nicknames[botIdx] = botWs.nickname;
+  room.playerIds[botIdx] = botWs.clientId;
+
+  setRoom(code, room);
+  startGame(room);
+
+  // 시작 직후 봇 인사 시도 + 봇이 흑이면 첫 수 스케줄링.
+  setTimeout(() => tryBotEmote(room, 'game_start'), 800);
+  if (room.turn === botColor) scheduleBotMove(room);
+};
+
+const onBotOfferAccept = (ws, msg) => {
+  // 큐에서 빠지고 봇 게임 생성으로 합류.
+  onQueueLeave(ws);
+  onCreateBotGame(ws, msg);
+};
+
+const onBotOfferDecline = (ws) => {
+  // 단순히 타이머만 정리 — 사용자는 계속 큐 대기.
+  if (ws.botOfferTimer) { clearTimeout(ws.botOfferTimer); ws.botOfferTimer = null; }
 };
 
 const onResumeSession = (ws, msg) => {
@@ -443,7 +610,7 @@ const onMove = (ws, row, col) => {
     room.loser = otherColor(ws.color);
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
-    broadcastRoom(room, { type: 'game_over', winner: ws.color, line: winLine });
+    broadcastRoom(room, { type: 'game_over', winner: ws.color, line: winLine, playerIds: room.playerIds });
     broadcastRoomsList();
   } else if (isDraw(room.board)) {
     room.status = 'over';
@@ -451,13 +618,14 @@ const onMove = (ws, row, col) => {
     room.loser = null;
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color });
-    broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null });
+    broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null, playerIds: room.playerIds });
     broadcastRoomsList();
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color: ws.color, turn: room.turn });
     startTurnTimer(room);
   }
+  afterSuccessfulMove(room, ws);
 };
 
 const onRematch = (ws) => {
@@ -465,6 +633,11 @@ const onRematch = (ws) => {
   const room = getRoom(ws.roomCode);
   if (!room || room.status !== 'over') return;
   room.rematchVotes.add(ws.color);
+  // 봇은 자동으로 재대국 동의
+  if (room.hasBot) {
+    const bot = room.players.find((p) => p && p.isBot);
+    if (bot) room.rematchVotes.add(bot.color);
+  }
   if (room.rematchVotes.size < 2) {
     broadcastRoom(room, { type: 'rematch_pending', who: ws.color });
     return;
@@ -473,10 +646,18 @@ const onRematch = (ws) => {
   if (room.loser === 'white') {
     [room.players[0], room.players[1]] = [room.players[1], room.players[0]];
     [room.nicknames[0], room.nicknames[1]] = [room.nicknames[1], room.nicknames[0]];
+    [room.playerIds[0], room.playerIds[1]] = [room.playerIds[1], room.playerIds[0]];
     room.players[0].color = 'black';
     room.players[1].color = 'white';
   }
   startGame(room);
+  // 봇이 흑(선공) 이라면 첫 수 스케줄링
+  if (room.hasBot) {
+    if (room.botEmoteState) room.botEmoteState = newBotEmoteState();  // emote 쿨다운 리셋
+    const bot = room.players.find((p) => p && p.isBot);
+    if (bot && room.turn === bot.color) scheduleBotMove(room);
+    setTimeout(() => tryBotEmote(room, 'game_start'), 800);
+  }
 };
 
 const onLeaveRoom = (ws) => {
@@ -491,6 +672,7 @@ const onLeaveRoom = (ws) => {
 
   // 플레이어가 나감 → 방 폐쇄, 모두에게 알림
   clearTurnTimer(room);
+  cancelBotTimers(room);
   if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
   if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
 
@@ -541,6 +723,19 @@ const onPlayerDisconnect = (ws) => {
   }
   const room = getRoom(ws.roomCode);
   if (!room) return;
+
+  // 봇 게임에서 사람이 끊기면 grace 없이 즉시 종료 (봇 혼자 남아있을 이유 없음).
+  if (room.hasBot) {
+    cancelBotTimers(room);
+    clearTurnTimer(room);
+    if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
+    if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
+    dropSession(ws.sessionId); ws.sessionId = null;
+    deleteRoom(room.code);
+    broadcastRoomsList();
+    return;
+  }
+
   if (room.status !== 'playing' && room.status !== 'waiting' && room.status !== 'over') {
     onLeaveRoom(ws);
     return;

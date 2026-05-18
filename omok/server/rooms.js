@@ -77,6 +77,9 @@ const createRoom = (code) => ({
   code,
   players: [null, null],          // 0 = black, 1 = white
   nicknames: ['', ''],            // 0 = black nick, 1 = white nick
+  // 안정 플레이어 식별자 — 사람은 clientId(localStorage UUID), 봇은 _bot_easy/_bot_medium/_bot_hard.
+  // 차후 DB 랭킹 시스템 도입 시 게임 결과 기록 키로 활용.
+  playerIds: [null, null],
   sessionIds: [null, null],
   spectators: new Set(),          // Set<WS>
   board: emptyBoard(),
@@ -90,6 +93,8 @@ const createRoom = (code) => ({
   rematchVotes: new Set(),
   loser: null,                    // 다음 판 선공 결정용
   disconnectTimers: { black: null, white: null },
+  // 봇 게임 표시 — 봇이 들어있는 방. 사람만의 게임은 false.
+  hasBot: false,
 });
 
 const attachSession = (ws, room, color) => {

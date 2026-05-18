@@ -37,19 +37,20 @@ const setupNickname = () => {
   input.addEventListener('input', (e) => {
     state.myNick = e.target.value.trim();
     localStorage.setItem('omok_nick', state.myNick);
-    // 온라인 목록에 즉시 반영되도록 서버에도 동기화
-    sendMessage({ type: 'set_nickname', nickname: state.myNick });
+    // 온라인 목록에 즉시 반영 + 차후 랭킹 기록용 clientId 동기화
+    sendMessage({ type: 'set_nickname', nickname: state.myNick, clientId: state.clientId });
   });
 };
 
 // input 이 비어있는 채로 액션 버튼을 누른 경우의 fallback —
-// 자동 닉을 부여하고 input/state/저장소까지 일관되게 맞춰서 그대로 진행한다.
+// 자동 닉을 부여하고 input/state/저장소/서버까지 일관되게 맞춘다.
 const ensureNick = () => {
   if (state.myNick) return state.myNick;
   const nick = genGuestNick();
   state.myNick = nick;
   localStorage.setItem('omok_nick', nick);
   $('nick-input').value = nick;
+  sendMessage({ type: 'set_nickname', nickname: nick, clientId: state.clientId });
   return nick;
 };
 
@@ -202,6 +203,70 @@ const setupCopyLinks = () => {
   $('btn-copy-game').addEventListener('click', (e) => copyInviteLink(e.currentTarget));
 };
 
+// ---- 봇 대전 모달 ----
+// 두 경로에서 같은 모달을 띄운다:
+//   1) 로비 "혼자 두기 (AI)" 카드 클릭 → mode='lobby'
+//   2) 랜덤 매칭 큐에서 10초 timeout → 서버가 bot_offer 보냄 → mode='offer'
+// 같은 모달이지만 mode 에 따라 타이틀/부가설명만 다름. 사용자 입력은 동일 (난이도+선공).
+const setupBotGame = () => {
+  const overlay = $('bot-game-overlay');
+  const titleEl = $('bot-game-title');
+  const subEl = $('bot-game-sub');
+  let mode = 'lobby';
+  let difficulty = 'medium';
+  let first = 'me';
+
+  // 토글 버튼 그룹 — active 클래스 갱신 + 선택 값 보관
+  overlay.querySelectorAll('.bot-toggle-row').forEach((row) => {
+    const group = row.dataset.group;
+    row.addEventListener('click', (e) => {
+      const btn = e.target.closest('.bot-toggle-btn');
+      if (!btn) return;
+      row.querySelectorAll('.bot-toggle-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const value = btn.dataset.value;
+      if (group === 'difficulty') difficulty = value;
+      else if (group === 'first')  first = value;
+    });
+  });
+
+  const showModal = (m) => {
+    mode = m;
+    if (m === 'offer') {
+      titleEl.textContent = '🤖 매칭이 늦어요';
+      subEl.textContent = '오목봇과 한 판 두시겠어요?';
+    } else {
+      titleEl.textContent = '🤖 봇과 대전';
+      subEl.textContent = '난이도와 선공을 선택하세요';
+    }
+    overlay.classList.remove('hidden');
+  };
+  const hideModal = () => overlay.classList.add('hidden');
+
+  // 카드 클릭 → lobby 모드로 모달 열기
+  $('btn-bot-game').addEventListener('click', () => {
+    setLobbyError('');
+    ensureNick();
+    showModal('lobby');
+  });
+
+  $('btn-bot-game-cancel').addEventListener('click', () => {
+    if (mode === 'offer') sendMessage({ type: 'bot_offer_decline' });
+    hideModal();
+  });
+
+  $('btn-bot-game-start').addEventListener('click', () => {
+    const nick = ensureNick();
+    initAudio();
+    // offer 모드든 lobby 모드든 동일한 메시지 — 서버 onCreateBotGame 가 큐 정리부터 시작.
+    sendMessage({ type: 'create_bot_game', nickname: nick, difficulty, first });
+    hideModal();
+  });
+
+  // net.js 의 bot_offer 디스패치가 호출할 수 있도록 state 에 노출
+  state.openBotGameModal = showModal;
+};
+
 // ---- 접속자 목록 팝업 ----
 // 상단 '🟢 N명 온라인' 칩 클릭 → 서버에 목록 요청 (응답은 net.js 의 dispatch 가 받아 ui.js 의 showOnlineList 호출).
 const setupOnlineListPopup = () => {
@@ -351,6 +416,7 @@ setupWaiting();
 setupGame();
 setupCopyLinks();
 setupOnlineListPopup();
+setupBotGame();
 setupDirectJoinModal();
 setupMute();
 setupEmote();
