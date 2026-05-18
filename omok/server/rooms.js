@@ -37,7 +37,11 @@ const setRoom    = (code, room) => rooms.set(code, room);
 const deleteRoom = (code) => {
   const room = rooms.get(code);
   if (room) {
-    for (const sid of room.sessionIds) dropSession(sid);
+    for (const color of ['black', 'white']) {
+      const slot = room.players?.[color];
+      if (slot?.sessionId) dropSession(slot.sessionId);
+    }
+    for (const sid of room.spectatorSessionIds || []) dropSession(sid);
   }
   rooms.delete(code);
 };
@@ -50,7 +54,10 @@ const getRoomsList = () => {
     out.push({
       code,
       status: room.status,
-      nicknames: { black: room.nicknames[0] || '', white: room.nicknames[1] || '' },
+      nicknames: {
+        black: room.players.black?.nickname || '',
+        white: room.players.white?.nickname || '',
+      },
       spectatorCount: room.spectatorSessionIds.size,
     });
   }
@@ -108,18 +115,20 @@ const sanitizeNick = (nick) => {
 };
 
 // ---- 방 객체 / 세션 부착 ----
+// 이슈 #31 Phase 1: room.players 가 ws 가 아니라 metadata object 만 보유.
+// 도메인 상태 (room) 와 transport (ws) 분리. JSON 직렬화 가능한 shape 으로 한 걸음 더.
 const createRoom = (code) => ({
   code,
   // gameId — startGame 시마다 새로 발급. 재대국마다 변경. 랭킹/통계 사전 작업.
   gameId: null,
-  players: [null, null],          // 0 = black, 1 = white  (PR #2: ws 제거 → ID 기반)
-  nicknames: ['', ''],            // 0 = black nick, 1 = white nick
-  // 안정 플레이어 식별자 — 사람은 clientId(localStorage UUID), 봇은 _bot_easy/_bot_medium/_bot_hard.
-  // 차후 DB 랭킹 시스템 도입 시 게임 결과 기록 키로 활용.
-  playerIds: [null, null],
-  sessionIds: [null, null],
-  // 관전자 sessionId 단독 — 송신은 connections.getWsBySessionId 로 매번 resolve.
-  // 같은 clientId 의 멀티탭은 attachSpectatorSession 이 동일 sessionId 1개로만 카운트.
+  // 플레이어 슬롯 — color → PlayerSlot | null.
+  //   PlayerSlot = {
+  //     sessionId, playerId, clientId, nickname, type: 'human'|'bot', difficulty?
+  //   }
+  // 송신은 sendToPlayer(room, color, msg) → connections.getWsBySessionId 으로 매번 resolve.
+  players: { black: null, white: null },
+  // 관전자 sessionId 단독. 같은 clientId 의 멀티탭은 attachSpectatorSession 이 동일 sessionId
+  // 1개로만 카운트.
   spectatorSessionIds: new Set(),
   board: emptyBoard(),
   turn: 'black',
@@ -140,21 +149,38 @@ const createRoom = (code) => ({
 const genGameId = () => crypto.randomBytes(10).toString('base64url');
 
 // ---- player session ----
-const attachSession = (ws, room, color) => {
+// 플레이어 슬롯 + 세션을 동시에 생성. 사람이면 ws.sessionId 와 connections 바인딩까지.
+// type='bot' 이면 ws=null (봇은 transport 가 없음). slot 만 메모리에 둠.
+const createPlayerSession = (room, color, opts) => {
+  const { type, ws = null, clientId = null, playerId = null, nickname = '', difficulty = null } = opts;
   const sid = genSessionId();
-  ws.sessionId = sid;
-  const idx = color === 'black' ? 0 : 1;
-  room.sessionIds[idx] = sid;
+  const slot = {
+    sessionId: sid,
+    playerId: playerId || clientId || null,
+    clientId: clientId || null,
+    nickname: nickname || '',
+    type,
+  };
+  if (type === 'bot') slot.difficulty = difficulty;
   sessions.set(sid, {
     role: 'player',
     code: room.code,
     color,
-    clientId: ws.clientId || null,
-    nickname: ws.nickname || '',
+    clientId: slot.clientId,
+    nickname: slot.nickname,
+    type,
+    ...(type === 'bot' && { difficulty }),
     lastSeenAt: Date.now(),
   });
-  connections.bindSession(ws, sid);
-  return sid;
+  if (ws && type === 'human') connections.bindSession(ws, sid);
+  room.players[color] = slot;
+  return slot;
+};
+
+// 슬롯의 세션을 정리 (slot 자체는 caller 가 결정 — 보통 startGame 의 재발급 직전 또는 방 폐쇄 시).
+const clearPlayerSession = (room, color) => {
+  const slot = room.players[color];
+  if (slot?.sessionId) dropSession(slot.sessionId);
 };
 
 // ---- spectator session ----
@@ -206,5 +232,5 @@ module.exports = {
   getQueue, enqueue, dequeueByConnectionId,
   incrementOnline, decrementOnline, getOnline,
   genCode, genSessionId, genGameId, sanitizeNick,
-  createRoom, attachSession, attachSpectatorSession,
+  createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
 };

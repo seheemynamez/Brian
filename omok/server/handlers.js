@@ -8,7 +8,7 @@ const {
   getQueue, enqueue, dequeueByConnectionId,
   getOnline,
   genCode, genGameId, sanitizeNick,
-  createRoom, attachSession, attachSpectatorSession,
+  createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
 } = require('./rooms');
 const connections = require('./connections');
 const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
@@ -68,7 +68,7 @@ const sendToClient = (clientId, msg) => {
 };
 
 // 관전자 iteration helpers — spectatorSessionIds (single source of truth) → ws via connections.
-// ws 가 죽어있으면(close 직후) 무시. 호출 측은 ws 없는 sid 를 신경 쓸 필요 없음.
+// ws 가 죽어있으면(close 직후) 무시.
 const forEachSpectatorWs = (room, fn) => {
   for (const sid of room.spectatorSessionIds) {
     const ws = connections.getWsBySessionId(sid);
@@ -76,10 +76,35 @@ const forEachSpectatorWs = (room, fn) => {
   }
 };
 
+// Player Actor 추상화 — 사람과 봇을 색깔 기준으로 다룬다. room 안에 ws 가 없으므로
+// 송신은 sessionId → ws lookup 으로 처리. 봇은 transport 가 없으므로 송신 no-op.
+const sendToPlayer = (room, color, msg) => {
+  const slot = room.players[color];
+  if (!slot) return false;
+  if (slot.type === 'bot') return true;  // 봇에게 UI 메시지 전송 불필요
+  return sendToSession(slot.sessionId, msg);
+};
+
+const forEachPlayerWs = (room, fn) => {
+  for (const color of ['black', 'white']) {
+    const slot = room.players[color];
+    if (!slot || slot.type !== 'human') continue;
+    const ws = connections.getWsBySessionId(slot.sessionId);
+    if (ws && ws.readyState === ws.OPEN) fn(ws, color, slot);
+  }
+};
+
 const broadcastRoom = (room, msg) => {
-  for (const p of room.players) if (p) send(p, msg);
+  for (const color of ['black', 'white']) sendToPlayer(room, color, msg);
   forEachSpectatorWs(room, (ws) => send(ws, msg));
 };
+
+// game_over / game_start 같은 곳에서 발송하는 player metadata payload.
+// FE 가 black/white 둘 다 알아야 할 때 일관되게 사용.
+const playerIdsPayload = (room) => ({
+  black: room.players.black?.playerId || null,
+  white: room.players.white?.playerId || null,
+});
 
 const broadcastOnlineCount = () => {
   if (!wssRef) return;
@@ -106,69 +131,67 @@ const broadcastRoomsList = () => {
   });
 };
 
-const colorIndex = (c) => (c === 'black' ? 0 : 1);
 const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 
 // ============================================================
-// 봇 ws shim — 사람 player 와 같은 onMove 경로를 타기 위한 가짜 ws.
-// 실제 네트워크 송신 없음 (send는 no-op). WebSocketServer.clients 와 무관.
+// 봇은 ws shim 을 만들지 않고 room.players[color] 의 metadata 만으로 표현.
+// onMove 같은 ws 기반 핸들러를 봇이 직접 호출하지 않고, scheduleBotMove → applyBotMove
+// 라는 별도 경로를 통해 게임 로직을 진행. (이슈 #31 Phase 1)
 // ============================================================
-const makeBotWs = (difficulty) => ({
-  readyState: 1, OPEN: 1, CLOSED: 3,
-  send() {},
-  isBot: true,
-  botDifficulty: difficulty,
-  roomCode: null,
-  color: null,
-  role: null,
-  sessionId: null,
-  nickname: BOT_NICKNAMES[difficulty],
-  clientId: BOT_IDS[difficulty],
-});
+const getBotColor = (room) => {
+  if (!room.hasBot) return null;
+  if (room.players.black?.type === 'bot') return 'black';
+  if (room.players.white?.type === 'bot') return 'white';
+  return null;
+};
 
 // ============================================================
 // 봇 행동 — emote / 다음 수 스케줄링
 // ============================================================
 const tryBotEmote = (room, trigger) => {
   if (!room || !room.hasBot) return;
-  const bot = room.players.find((p) => p && p.isBot);
-  if (!bot) return;
+  const botColor = getBotColor(room);
+  if (!botColor) return;
+  const bot = room.players[botColor];
   if (!room.botEmoteState) room.botEmoteState = newBotEmoteState();
   const key = decideBotEmote({
-    board: room.board, botColor: bot.color, difficulty: bot.botDifficulty,
+    board: room.board, botColor, difficulty: bot.difficulty,
     trigger, emoteState: room.botEmoteState, now: Date.now(),
   });
   if (!key) return;
   const e = EMOTES[key];
   if (!e) return;
   recordBotEmote(room.botEmoteState, key, Date.now());
-  broadcastRoom(room, { type: 'emote', from: bot.color, key, emoji: e.emoji, text: e.text });
+  broadcastRoom(room, { type: 'emote', from: botColor, key, emoji: e.emoji, text: e.text });
 };
 
+// 봇 차례 → 워커 풀에 generateMove 요청 → 결과를 applyMove 로 적용.
+// onMove 는 사람 ws 입력 전용 (rate-limit/validators 가 들어옴). 봇은 그 경로를 우회.
 const scheduleBotMove = (room) => {
   if (!room || !room.hasBot) return;
   if (room.status !== 'playing') return;
-  const bot = room.players.find((p) => p && p.isBot);
-  if (!bot) return;
-  if (room.turn !== bot.color) return;
+  const botColor = getBotColor(room);
+  if (!botColor) return;
+  const bot = room.players[botColor];
+  if (room.turn !== botColor) return;
   if (room.botMoveTimer) clearTimeout(room.botMoveTimer);
-  const delay = thinkTimeMs(bot.botDifficulty);
+  const delay = thinkTimeMs(bot.difficulty);
   const code = room.code;
   room.botMoveTimer = setTimeout(() => {
     room.botMoveTimer = null;
     if (room.status !== 'playing') return;
-    if (room.turn !== bot.color) return;
+    if (room.turn !== botColor) return;
     // 보드 스냅샷을 워커로 보내 비동기로 계산. 메인 이벤트 루프는 그동안 자유.
     // 워커가 결과를 돌려줄 시점에 게임 상태가 변했을 수 있으니(사용자 leave / 타임아웃 등)
-    // 한 번 더 검증 후 onMove 호출.
-    generateMoveAsync(room.board, bot.color, bot.botDifficulty).then((move) => {
+    // 한 번 더 검증 후 applyMove 호출.
+    generateMoveAsync(room.board, botColor, bot.difficulty).then((move) => {
       if (!move) return;
       const current = getRoom(code);
       if (!current || current !== room) return;          // 방이 사라졌거나 교체됨
       if (room.status !== 'playing') return;             // 게임 종료 / 사용자 이탈
-      if (room.turn !== bot.color) return;               // 차례가 다른 색으로 넘어감 (타임아웃 등)
+      if (room.turn !== botColor) return;                // 차례가 다른 색으로 넘어감 (타임아웃 등)
       if (room.board[move[0]][move[1]] !== 0) return;    // 그 칸이 이미 채워짐 (방어적)
-      onMove(bot, move[0], move[1]);
+      applyMove(room, botColor, move[0], move[1], { actor: 'bot' });
     }).catch((err) => {
       console.error('[bot] generateMoveAsync 실패:', err && err.message);
     });
@@ -187,21 +210,22 @@ const cancelBotTimers = (room) => {
 };
 
 // 매 성공적인 move 직후 호출 — 봇 게임이면 emote / 다음 봇 차례 처리.
-const afterSuccessfulMove = (room, justMovedWs) => {
+// movedByBot: 직전 수가 봇이 둔 거면 true. emote trigger 분기용.
+const afterSuccessfulMove = (room, movedByBot) => {
   if (!room.hasBot) return;
-  const bot = room.players.find((p) => p && p.isBot);
-  if (!bot) return;
+  const botColor = getBotColor(room);
+  if (!botColor) return;
 
   if (room.status === 'over') {
-    if (room.winner === bot.color) setTimeout(() => tryBotEmote(room, 'game_over_win'), 600);
+    if (room.winner === botColor) setTimeout(() => tryBotEmote(room, 'game_over_win'), 600);
     else if (room.winner && room.winner !== 'draw') setTimeout(() => tryBotEmote(room, 'game_over_lose'), 600);
     cancelBotTimers(room);
     return;
   }
   // 진행 중: 직전 수가 봇/사람 분기 → 적절한 emote → 봇 차례면 다음 수 스케줄
-  const trigger = justMovedWs && justMovedWs.isBot ? 'bot_moved' : 'opponent_moved';
+  const trigger = movedByBot ? 'bot_moved' : 'opponent_moved';
   setTimeout(() => tryBotEmote(room, trigger), 300);
-  if (room.turn === bot.color) scheduleBotMove(room);
+  if (room.turn === botColor) scheduleBotMove(room);
 };
 
 // ============================================================
@@ -229,8 +253,8 @@ const onTurnTimeout = (room) => {
   // 봇 게임에서 사람이 시간 초과되면 봇 차례로 넘어가는데, 봇이 깨어나지 않던 버그.
   // afterSuccessfulMove 경로가 아닌 곳에서도 봇 차례면 즉시 스케줄.
   if (room.hasBot) {
-    const bot = room.players.find((p) => p && p.isBot);
-    if (bot && room.turn === bot.color) scheduleBotMove(room);
+    const botColor = getBotColor(room);
+    if (botColor && room.turn === botColor) scheduleBotMove(room);
   }
 };
 
@@ -258,7 +282,7 @@ const sendSpectatorState = (ws, room) => {
   send(ws, {
     type: 'spectate_success',
     code: room.code,
-    nicknames: { black: room.nicknames[0], white: room.nicknames[1] },
+    nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
     board: room.board,
     turn: room.turn,
     status: room.status,
@@ -315,9 +339,10 @@ const removeSpectator = (ws) => {
 // ============================================================
 // 게임 시작/재시작 — 양쪽 플레이어 + 관전자 모두에게 알림
 // ============================================================
+// startGame 진입 시점: room.players.black / white 가 이미 metadata 로 채워져 있다고 가정
+// (onJoinRoom / onQueueJoin 매칭 / onCreateBotGame / onRematch 가 setup 후 호출).
+// 슬롯 안의 ws 는 이미 set up 되어 있고 connections 에도 바인딩되어 있어야 함 (rematch 외).
 const startGame = (room) => {
-  for (const sid of room.sessionIds) dropSession(sid);
-  room.sessionIds = [null, null];
   room.status = 'playing';
   // 매 게임마다 새 gameId — 차후 DB 랭킹/통계 기록 키로 활용.
   room.gameId = genGameId();
@@ -329,20 +354,21 @@ const startGame = (room) => {
   room.rematchVotes.clear();
   room.loser = null;
 
-  const sidBlack = attachSession(room.players[0], room, 'black');
-  const sidWhite = attachSession(room.players[1], room, 'white');
-
+  const blackSlot = room.players.black;
+  const whiteSlot = room.players.white;
+  const nicknames = { black: blackSlot.nickname, white: whiteSlot.nickname };
   const base = {
     type: 'game_start',
     code: room.code,
     gameId: room.gameId,
     board: room.board,
     turn: room.turn,
-    nicknames: { black: room.nicknames[0], white: room.nicknames[1] },
+    nicknames,
     spectators: getSpectatorNames(room),
   };
-  send(room.players[0], { ...base, you: 'black', opponent: 'white', sessionId: sidBlack });
-  send(room.players[1], { ...base, you: 'white', opponent: 'black', sessionId: sidWhite });
+  // 각 플레이어에게 본인 sessionId 와 함께 알림 (FE 가 sessionStorage 에 저장).
+  sendToPlayer(room, 'black', { ...base, you: 'black', opponent: 'white', sessionId: blackSlot.sessionId });
+  sendToPlayer(room, 'white', { ...base, you: 'white', opponent: 'black', sessionId: whiteSlot.sessionId });
   forEachSpectatorWs(room, (ws) => sendSpectatorState(ws, room));
 
   startTurnTimer(room);
@@ -350,8 +376,8 @@ const startGame = (room) => {
   log.event('game_started', {
     code: room.code,
     gameId: room.gameId,
-    black: room.nicknames[0],
-    white: room.nicknames[1],
+    black: blackSlot.nickname,
+    white: whiteSlot.nickname,
     bot: !!room.hasBot,
   });
 };
@@ -439,19 +465,19 @@ const onCreateRoom = (ws, msg) => {
   onQueueLeave(ws);
   const code = genCode();
   const room = createRoom(code);
-  room.players[0] = ws;
-  room.nicknames[0] = sanitizeNick(msg.nickname) || '익명';
-  room.playerIds[0] = ws.clientId || null;
+  const nickname = sanitizeNick(msg.nickname) || '익명';
   ws.roomCode = code;
   ws.color = 'black';
   ws.role = 'player';
-  ws.nickname = room.nicknames[0];
+  ws.nickname = nickname;
   setRoom(code, room);
   // 방장에게도 sessionId 부여 — 대기 중 끊김 발생 시 resume_session 으로 복구 가능하게 함 (이슈 #9)
-  const sid = attachSession(ws, room, 'black');
-  send(ws, { type: 'room_created', code, sessionId: sid });
+  const slot = createPlayerSession(room, 'black', {
+    type: 'human', ws, clientId: ws.clientId || null, nickname,
+  });
+  send(ws, { type: 'room_created', code, sessionId: slot.sessionId });
   broadcastRoomsList();
-  log.event('room_created', { code, by: ws.nickname });
+  log.event('room_created', { code, by: nickname });
 };
 
 const onJoinRoom = (ws, msg) => {
@@ -462,23 +488,27 @@ const onJoinRoom = (ws, msg) => {
   if (!room) return send(ws, { type: 'error', message: '존재하지 않는 방 코드예요' });
 
   // 두 자리 모두 차 있으면 관전자로
-  if (room.players[0] && room.players[1]) {
+  if (room.players.black && room.players.white) {
     onQueueLeave(ws);
     addSpectator(ws, room, msg.nickname);
     return;
   }
-  // 방장이 잠시 끊긴 상태(자리 비움)면 join 거부 — grace 끝나기를 기다림
-  if (!room.players[0]) {
+  // 방장 슬롯이 비어있다면 (grace 만료 등으로 방이 곧 폐쇄될 상태) join 거부
+  if (!room.players.black) {
     return send(ws, { type: 'error', message: '방장이 잠시 자리를 비웠어요. 잠시 후 다시 시도해주세요' });
   }
   onQueueLeave(ws);
-  room.players[1] = ws;
-  room.nicknames[1] = sanitizeNick(msg.nickname) || '익명';
-  room.playerIds[1] = ws.clientId || null;
+  const nickname = sanitizeNick(msg.nickname) || '익명';
   ws.roomCode = code;
   ws.color = 'white';
   ws.role = 'player';
-  ws.nickname = room.nicknames[1];
+  ws.nickname = nickname;
+  createPlayerSession(room, 'white', {
+    type: 'human', ws, clientId: ws.clientId || null, nickname,
+  });
+  // game_start 직전, 옛 방장 sid (room_created 직후 발급된) 는 drop 하고 새 sid 발급할 수도 있지만,
+  // 사실 같은 sid 로 계속 둬도 됨. session 안의 color/role 이 이미 'player' / 'black' 이라
+  // 추가 처리 불필요. game_start 페이로드에 sessionId 가 그대로 들어가서 FE 가 setSession 갱신.
   startGame(room);
 };
 
@@ -589,19 +619,21 @@ const onQueueJoin = (ws, msg) => {
     opponent.inQueue = false;
     const code = genCode();
     const room = createRoom(code);
-    room.players[0] = opponent;
-    room.nicknames[0] = opponent.nickname || oppEntry.nickname || '익명';
-    room.playerIds[0] = opponent.clientId || oppEntry.clientId || null;
+    const blackNick = opponent.nickname || oppEntry.nickname || '익명';
+    const whiteNick = ws.nickname;
     opponent.roomCode = code; opponent.color = 'black'; opponent.role = 'player';
-    room.players[1] = ws;
-    room.nicknames[1] = ws.nickname;
-    room.playerIds[1] = ws.clientId || null;
     ws.roomCode = code; ws.color = 'white'; ws.role = 'player';
     setRoom(code, room);
+    createPlayerSession(room, 'black', {
+      type: 'human', ws: opponent, clientId: opponent.clientId || oppEntry.clientId || null, nickname: blackNick,
+    });
+    createPlayerSession(room, 'white', {
+      type: 'human', ws, clientId: ws.clientId || null, nickname: whiteNick,
+    });
     // 자동매칭 후에도 방 코드 부여 (관전자 모집용)
     send(opponent, { type: 'matched', code });
     send(ws,       { type: 'matched', code });
-    log.event('queue_matched', { code, a: opponent.nickname, b: ws.nickname });
+    log.event('queue_matched', { code, a: blackNick, b: whiteNick });
     startGame(room);
   } else {
     const myEntry = makeMyEntry();
@@ -642,26 +674,25 @@ const onCreateBotGame = (ws, msg) => {
 
   const userColor = (firstChoice === 'me') ? 'black' : 'white';
   const botColor  = otherColor(userColor);
-  const userIdx = colorIndex(userColor);
-  const botIdx  = colorIndex(botColor);
 
   // 사용자 배치
-  room.players[userIdx] = ws;
-  room.nicknames[userIdx] = sanitizeNick(msg.nickname) || ws.nickname || '익명';
-  room.playerIds[userIdx] = ws.clientId || null;
+  const userNick = sanitizeNick(msg.nickname) || ws.nickname || '익명';
   ws.roomCode = code;
   ws.color = userColor;
   ws.role = 'player';
-  ws.nickname = room.nicknames[userIdx];
+  ws.nickname = userNick;
+  createPlayerSession(room, userColor, {
+    type: 'human', ws, clientId: ws.clientId || null, nickname: userNick,
+  });
 
-  // 봇 배치
-  const botWs = makeBotWs(difficulty);
-  botWs.roomCode = code;
-  botWs.color = botColor;
-  botWs.role = 'player';
-  room.players[botIdx] = botWs;
-  room.nicknames[botIdx] = botWs.nickname;
-  room.playerIds[botIdx] = botWs.clientId;
+  // 봇 배치 — ws shim 없이 metadata 만.
+  createPlayerSession(room, botColor, {
+    type: 'bot', ws: null,
+    clientId: BOT_IDS[difficulty],
+    playerId: BOT_IDS[difficulty],
+    nickname: BOT_NICKNAMES[difficulty],
+    difficulty,
+  });
 
   setRoom(code, room);
   startGame(room);
@@ -706,38 +737,41 @@ const onResumeSession = (ws, msg) => {
     log.event('session_resumed', { sid: log.mask(sid), code: room.code, role: 'spectator' });
     return;
   }
-  const idx = colorIndex(sess.color);
+  // player resume — slot 의 sessionId 는 sid 그대로 유지. ws 만 새로 바인딩.
+  const slot = room.players[sess.color];
+  if (!slot) {
+    // 옛 slot 이 사라진 비정상 상황 (방 폐쇄 직전 등) — 실패로 처리.
+    return send(ws, { type: 'resume_failed', reason: 'not_found' });
+  }
   if (room.disconnectTimers[sess.color]) {
     clearTimeout(room.disconnectTimers[sess.color]);
     room.disconnectTimers[sess.color] = null;
   }
-  room.players[idx] = ws;
   ws.roomCode = room.code;
   ws.color = sess.color;
   ws.role = 'player';
-  // 세션의 ws 매핑 갱신 — 재접속한 새 ws 가 이 sid 의 현재 활성 연결이 된다.
   connections.bindSession(ws, sid);
   if (sess.clientId) connections.bindClient(ws, sess.clientId);
   if (msg.nickname) {
-    const n = sanitizeNick(msg.nickname) || room.nicknames[idx];
-    room.nicknames[idx] = n;
+    const n = sanitizeNick(msg.nickname) || slot.nickname;
+    slot.nickname = n;
     ws.nickname = n;
   } else {
-    ws.nickname = room.nicknames[idx];
+    ws.nickname = slot.nickname;
   }
-  const opp = room.players[colorIndex(otherColor(sess.color))];
-  if (opp) send(opp, { type: 'opponent_reconnected', color: sess.color });
-  forEachSpectatorWs(room, (ws) => send(ws, { type: 'opponent_reconnected', color: sess.color }));
+  const oppColor = otherColor(sess.color);
+  sendToPlayer(room, oppColor, { type: 'opponent_reconnected', color: sess.color });
+  forEachSpectatorWs(room, (sWs) => send(sWs, { type: 'opponent_reconnected', color: sess.color }));
   send(ws, {
     type: 'resume_success',
     code: room.code,
     gameId: room.gameId,
     you: sess.color,
-    opponent: otherColor(sess.color),
+    opponent: oppColor,
     sessionId: sid,
     board: room.board,
     turn: room.turn,
-    nicknames: { black: room.nicknames[0], white: room.nicknames[1] },
+    nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
     status: room.status,
     winner: room.winner,
     line: room.winLine,
@@ -748,6 +782,7 @@ const onResumeSession = (ws, msg) => {
   log.event('session_resumed', { sid: log.mask(sid), code: room.code, color: sess.color });
 };
 
+// 사람 ws 가 보낸 move — 검증 후 applyMove 로 위임.
 const onMove = (ws, row, col) => {
   if (!ws.roomCode || ws.role !== 'player') return;
   const room = getRoom(ws.roomCode);
@@ -756,53 +791,60 @@ const onMove = (ws, row, col) => {
   if (typeof row !== 'number' || typeof col !== 'number') return;
   if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return;
   if (room.board[row][col] !== 0) return send(ws, { type: 'error', message: '이미 돌이 있어요' });
+  applyMove(room, ws.color, row, col, { actor: 'human', humanWs: ws });
+};
 
-  const stone = ws.color === 'black' ? 1 : 2;
+// 사람/봇 공통 move 적용 — 게임 상태 갱신 + broadcast + 다음 턴 처리.
+// opts.actor: 'human' | 'bot'. humanWs 는 actor='human' 일 때 forbidden error 응답용.
+const applyMove = (room, color, row, col, opts) => {
+  const stone = color === 'black' ? 1 : 2;
   room.board[row][col] = stone;
 
   // ---- 렌주룰 (흑 전용) ----
-  // 1) 정확히 5 만들면 승리 우선 (금수 예외).
-  // 2) 그 외 금수(장목/쌍사/쌍삼)는 거부 + 돌 되돌리기.
-  const winLine = checkWinRenju(room.board, row, col, ws.color);
-  if (!winLine && ws.color === 'black') {
-    const forbidden = checkForbidden(room.board, row, col, ws.color);
+  const winLine = checkWinRenju(room.board, row, col, color);
+  if (!winLine && color === 'black') {
+    const forbidden = checkForbidden(room.board, row, col, color);
     if (forbidden) {
       room.board[row][col] = 0;  // 되돌리기
-      return send(ws, {
-        type: 'error',
-        message: `금수 — ${FORBIDDEN_LABEL[forbidden.reason] || forbidden.reason}`,
-        reason: 'forbidden',
-      });
+      if (opts.actor === 'human' && opts.humanWs) {
+        send(opts.humanWs, {
+          type: 'error',
+          message: `금수 — ${FORBIDDEN_LABEL[forbidden.reason] || forbidden.reason}`,
+          reason: 'forbidden',
+        });
+      }
+      return;
     }
   }
 
   room.lastMove = [row, col];
+  const playerIds = playerIdsPayload(room);
 
   if (winLine) {
     room.status = 'over';
-    room.winner = ws.color;
+    room.winner = color;
     room.winLine = winLine;
-    room.loser = otherColor(ws.color);
+    room.loser = otherColor(color);
     clearTurnTimer(room);
-    broadcastRoom(room, { type: 'move', row, col, color: ws.color });
-    broadcastRoom(room, { type: 'game_over', winner: ws.color, line: winLine, gameId: room.gameId, playerIds: room.playerIds });
+    broadcastRoom(room, { type: 'move', row, col, color });
+    broadcastRoom(room, { type: 'game_over', winner: color, line: winLine, gameId: room.gameId, playerIds });
     broadcastRoomsList();
-    log.event('game_over', { code: room.code, gameId: room.gameId, winner: ws.color, reason: 'five' });
+    log.event('game_over', { code: room.code, gameId: room.gameId, winner: color, reason: 'five' });
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
     room.loser = null;
     clearTurnTimer(room);
-    broadcastRoom(room, { type: 'move', row, col, color: ws.color });
-    broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null, gameId: room.gameId, playerIds: room.playerIds });
+    broadcastRoom(room, { type: 'move', row, col, color });
+    broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null, gameId: room.gameId, playerIds });
     broadcastRoomsList();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: 'draw', reason: 'draw' });
   } else {
     room.turn = otherColor(room.turn);
-    broadcastRoom(room, { type: 'move', row, col, color: ws.color, turn: room.turn });
+    broadcastRoom(room, { type: 'move', row, col, color, turn: room.turn });
     startTurnTimer(room);
   }
-  afterSuccessfulMove(room, ws);
+  afterSuccessfulMove(room, opts.actor === 'bot');
 };
 
 const onRematch = (ws) => {
@@ -812,27 +854,39 @@ const onRematch = (ws) => {
   room.rematchVotes.add(ws.color);
   // 봇은 자동으로 재대국 동의
   if (room.hasBot) {
-    const bot = room.players.find((p) => p && p.isBot);
-    if (bot) room.rematchVotes.add(bot.color);
+    const botColor = getBotColor(room);
+    if (botColor) room.rematchVotes.add(botColor);
   }
   if (room.rematchVotes.size < 2) {
     broadcastRoom(room, { type: 'rematch_pending', who: ws.color });
     return;
   }
-  // 패자 선공
+  // 패자 선공 — black/white 슬롯을 swap. 옛 sessionId 의 color 정보도 업데이트.
   if (room.loser === 'white') {
-    [room.players[0], room.players[1]] = [room.players[1], room.players[0]];
-    [room.nicknames[0], room.nicknames[1]] = [room.nicknames[1], room.nicknames[0]];
-    [room.playerIds[0], room.playerIds[1]] = [room.playerIds[1], room.playerIds[0]];
-    room.players[0].color = 'black';
-    room.players[1].color = 'white';
+    const blackSlot = room.players.black;
+    const whiteSlot = room.players.white;
+    room.players.black = whiteSlot;
+    room.players.white = blackSlot;
+    // sessions 안의 color 필드도 동기화. ws 의 color 도.
+    if (whiteSlot?.sessionId) {
+      const sess = getSession(whiteSlot.sessionId);
+      if (sess) sess.color = 'black';
+      const w = connections.getWsBySessionId(whiteSlot.sessionId);
+      if (w) w.color = 'black';
+    }
+    if (blackSlot?.sessionId) {
+      const sess = getSession(blackSlot.sessionId);
+      if (sess) sess.color = 'white';
+      const w = connections.getWsBySessionId(blackSlot.sessionId);
+      if (w) w.color = 'white';
+    }
   }
   startGame(room);
   // 봇이 흑(선공) 이라면 첫 수 스케줄링
   if (room.hasBot) {
     if (room.botEmoteState) room.botEmoteState = newBotEmoteState();  // emote 쿨다운 리셋
-    const bot = room.players.find((p) => p && p.isBot);
-    if (bot && room.turn === bot.color) scheduleBotMove(room);
+    const botColor = getBotColor(room);
+    if (botColor && room.turn === botColor) scheduleBotMove(room);
     setTimeout(() => tryBotEmote(room, 'game_start'), 800);
   }
 };
@@ -853,28 +907,31 @@ const onLeaveRoom = (ws) => {
   if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
   if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
 
-  const opp = room.players[colorIndex(otherColor(ws.color))];
+  const oppColor = otherColor(ws.color);
+  const oppSlot = room.players[oppColor];
+  const oppWs = oppSlot ? connections.getWsBySessionId(oppSlot.sessionId) : null;
+  const playerIds = playerIdsPayload(room);
 
   // 대전 중에 나가면 → 상대 승리로 처리
   if (room.status === 'playing') {
-    const winnerColor = otherColor(ws.color);
+    const winnerColor = oppColor;
     room.status = 'over';
     room.winner = winnerColor;
-    if (opp) send(opp, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, reason: 'opponent_left' });
-    forEachSpectatorWs(room, (s) => send(s, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, reason: 'opponent_left' }));
+    sendToPlayer(room, oppColor, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left' });
+    forEachSpectatorWs(room, (s) => send(s, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left' }));
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: winnerColor, reason: 'opponent_left' });
   } else {
-    // 대기/종료 상태에서 나감 → 기존대로 상대만 통보
-    if (opp) send(opp, { type: 'opponent_left' });
+    sendToPlayer(room, oppColor, { type: 'opponent_left' });
     forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_left' }));
   }
 
-  if (opp) {
-    opp.roomCode = null; opp.color = null; opp.role = null;
-    dropSession(opp.sessionId); opp.sessionId = null;
+  if (oppWs) {
+    oppWs.roomCode = null; oppWs.color = null; oppWs.role = null;
+    oppWs.sessionId = null;
   }
   forEachSpectatorWs(room, (s) => { s.roomCode = null; s.role = null; });
-  dropSession(ws.sessionId); ws.sessionId = null;
+  ws.sessionId = null;
+  // deleteRoom 이 양쪽 슬롯 + spectator sessions 모두 dropSession 처리.
   deleteRoom(room.code);
   ws.roomCode = null; ws.color = null; ws.role = null;
   broadcastRoomsList();
@@ -906,8 +963,8 @@ const onPlayerDisconnect = (ws) => {
     clearTurnTimer(room);
     if (room.disconnectTimers.black) clearTimeout(room.disconnectTimers.black);
     if (room.disconnectTimers.white) clearTimeout(room.disconnectTimers.white);
-    dropSession(ws.sessionId); ws.sessionId = null;
-    deleteRoom(room.code);
+    ws.sessionId = null;
+    deleteRoom(room.code);  // 양쪽 slot 의 session 정리 포함
     broadcastRoomsList();
     return;
   }
@@ -918,37 +975,39 @@ const onPlayerDisconnect = (ws) => {
   }
   const myColor = ws.color;
   const deadline = Date.now() + DISCONNECT_GRACE_MS;
-  // 진행 중이든 대기/종료든 상대(있다면) + 관전자에게는 동일한 신호 — 표시는 클라가 알아서.
-  for (const p of room.players) {
-    if (p && p !== ws) send(p, { type: 'opponent_disconnected', color: myColor, deadline });
-  }
+  // 진행 중이든 대기/종료든 상대(있다면) + 관전자에게 동일 신호 — 표시는 클라가 알아서.
+  // slot 자체는 nullify 하지 않는다 (resume 시 메타 그대로 사용). ws 만 connections.unregister
+  // 로 끊겨 sendToSession 은 자연히 no-op.
+  sendToPlayer(room, otherColor(myColor), { type: 'opponent_disconnected', color: myColor, deadline });
   forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_disconnected', color: myColor, deadline }));
-  room.players[colorIndex(myColor)] = null;
   if (room.disconnectTimers[myColor]) clearTimeout(room.disconnectTimers[myColor]);
   room.disconnectTimers[myColor] = setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS);
 };
 
 const finalizeAbandon = (room, color) => {
+  const playerIds = playerIdsPayload(room);
   // 게임 중에 안 돌아온 경우 — 기존 동작 유지 (opponent_abandoned 알림, status='over' 로 전환)
   if (room.status === 'playing') {
     room.status = 'over';
-    for (const p of room.players) if (p) send(p, { type: 'opponent_abandoned', color, gameId: room.gameId });
-    forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_abandoned', color, gameId: room.gameId }));
+    for (const c of ['black', 'white']) sendToPlayer(room, c, { type: 'opponent_abandoned', color, gameId: room.gameId, playerIds });
+    forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_abandoned', color, gameId: room.gameId, playerIds }));
     clearTurnTimer(room);
-    dropSession(room.sessionIds[colorIndex(color)]);
-    room.sessionIds[colorIndex(color)] = null;
+    clearPlayerSession(room, color);
     broadcastRoomsList();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: otherColor(color), reason: 'abandoned' });
     return;
   }
   // 대기 중(waiting) 또는 종료 후(over) 에 grace 동안 안 돌아온 경우 — 방 자체를 닫음.
-  // 남은 상대(있다면)와 관전자들에게 opponent_left 통보하고 방 폐쇄.
   if (room.status === 'waiting' || room.status === 'over') {
-    const opp = room.players[colorIndex(otherColor(color))];
-    if (opp) {
-      send(opp, { type: 'opponent_left' });
-      opp.roomCode = null; opp.color = null; opp.role = null;
-      dropSession(opp.sessionId); opp.sessionId = null;
+    const oppColor = otherColor(color);
+    const oppSlot = room.players[oppColor];
+    const oppWs = oppSlot ? connections.getWsBySessionId(oppSlot.sessionId) : null;
+    if (oppSlot) {
+      sendToPlayer(room, oppColor, { type: 'opponent_left' });
+      if (oppWs) {
+        oppWs.roomCode = null; oppWs.color = null; oppWs.role = null;
+        oppWs.sessionId = null;
+      }
     }
     forEachSpectatorWs(room, (s) => {
       send(s, { type: 'opponent_left' });
