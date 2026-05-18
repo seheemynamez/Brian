@@ -315,6 +315,16 @@
   border-color: var(--accent-1);
   box-shadow: 0 0 0 1px var(--accent-1), 0 0 24px rgba(0, 229, 255, 0.30);
 }
+/* 빈 슬롯 — 아직 상대가 들어오지 않은 자리 */
+.player-card.waiting {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.player-card.waiting .player-nick {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink-faint);
+}
 .player-color {
   font-size: 12px;
   font-weight: 800;
