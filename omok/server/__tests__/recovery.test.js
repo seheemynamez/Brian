@@ -491,6 +491,42 @@ test('R16: clientId bound for fresh ws even before joining room', async () => {
   ws1.close(); ws2.close();
 });
 
+test('S1: spectate_success 에 sessionId 포함 (Phase 2)', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'H', clientId: 'cid-S1h' });
+  sendJson(host, { type: 'create_room', nickname: 'H' });
+  const { code } = await waitForType(host, 'room_created');
+  const spec = await open();
+  sendJson(spec, { type: 'set_nickname', nickname: 'Spec', clientId: 'cid-S1s' });
+  sendJson(spec, { type: 'spectate_room', code, nickname: 'Spec' });
+  const ok = await waitForType(spec, 'spectate_success');
+  assert(typeof ok.sessionId === 'string' && ok.sessionId.length > 0, `expected sessionId in spectate_success, got ${ok.sessionId}`);
+  host.close(); spec.close();
+});
+
+test('S2: spectator resume_session 으로 같은 방 재합류 (비행기모드 모방)', async () => {
+  // spectator 세션은 grace 없이 ws close 즉시 정리. 따라서 정상 close 한 경우는
+  // resume 불가. 비행기모드(좀비 옛 ws + 새 ws) 시나리오에서만 resume_session 이
+  // 의미 있음 — 서버가 옛 ws 의 close 를 아직 감지하지 못한 윈도우.
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'H', clientId: 'cid-S2h' });
+  sendJson(host, { type: 'create_room', nickname: 'H' });
+  const { code } = await waitForType(host, 'room_created');
+  const spec = await open();
+  sendJson(spec, { type: 'set_nickname', nickname: 'Spec', clientId: 'cid-S2s' });
+  sendJson(spec, { type: 'spectate_room', code, nickname: 'Spec' });
+  const first = await waitForType(spec, 'spectate_success');
+  const sid = first.sessionId;
+  // 옛 spec 을 close 하지 않음 (좀비) → 새 ws 가 resume_session 으로 합류
+  const spec2 = await open();
+  sendJson(spec2, { type: 'set_nickname', nickname: 'Spec', clientId: 'cid-S2s' });
+  sendJson(spec2, { type: 'resume_session', sessionId: sid, nickname: 'Spec' });
+  const ok = await waitForType(spec2, 'spectate_success', 1500);
+  assert(ok.code === code, `expected same code ${code}, got ${ok.code}`);
+  assert(typeof ok.sessionId === 'string' && ok.sessionId.length > 0, 'expected new sessionId');
+  host.close(); spec.close(); spec2.close();
+});
+
 test('R17: rematch issues fresh gameId', async () => {
   const { host, guest, gameId: g1 } = await bootstrapRoom({ hostClientId: 'cid-R17a', guestClientId: 'cid-R17b' });
   const moves = [

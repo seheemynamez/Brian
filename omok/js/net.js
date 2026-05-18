@@ -275,8 +275,15 @@ const onSpectateSuccess = (msg) => {
   state.lastMove = msg.lastMove || null;
   state.gameOver = msg.status === 'over';
   state.currentRoomCode = msg.code;
-  state.sessionId = null;
-  setSession(null);
+  // 관전자도 sessionId 발급 — 새로고침/네트워크 끊김 후 resume_session 으로 재합류.
+  // (이슈 #31 Phase 2)
+  if (msg.sessionId) {
+    state.sessionId = msg.sessionId;
+    setSession(msg.sessionId);
+  } else {
+    state.sessionId = null;
+    setSession(null);
+  }
   setRoomInUrl(msg.code);
   state.turnDeadline = msg.turnDeadline || null;
   updateSpectatorList(msg.spectators || []);

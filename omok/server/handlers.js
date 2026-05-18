@@ -279,9 +279,12 @@ const broadcastSpectators = (room) => {
 };
 
 const sendSpectatorState = (ws, room) => {
+  // ws.sessionId 는 addSpectator 의 attachSpectatorSession 안에서 이미 세팅돼있음.
+  // FE 가 sessionStorage 에 저장해서 reconnect 시 resume_session 으로 재합류.
   send(ws, {
     type: 'spectate_success',
     code: room.code,
+    sessionId: ws.sessionId || null,
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
     board: room.board,
     turn: room.turn,
