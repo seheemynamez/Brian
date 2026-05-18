@@ -24,7 +24,7 @@ const log = require('./log');
 
 const TURN_TIMEOUT_MS                = Number(process.env.TURN_TIMEOUT_MS)                || 30000;
 const DISCONNECT_GRACE_MS            = Number(process.env.DISCONNECT_GRACE_MS)            || 30000;
-const SPECTATOR_DISCONNECT_GRACE_MS  = Number(process.env.SPECTATOR_DISCONNECT_GRACE_MS)  || 10000;
+const SPECTATOR_DISCONNECT_GRACE_MS  = Number(process.env.SPECTATOR_DISCONNECT_GRACE_MS)  || 30000;
 const EMOTE_COOLDOWN_MS              = Number(process.env.EMOTE_COOLDOWN_MS)              || 800;
 const BOT_OFFER_DELAY_MS             = Number(process.env.BOT_OFFER_DELAY_MS)             || 10000;
 
