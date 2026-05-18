@@ -252,21 +252,24 @@ const placementMakesFour = (board, r, c, me) => {
   return found;
 };
 
-// 이웃 카운트 + 4목 형성 자리 우선 — 빠르면서 결정적 후보는 놓치지 않음.
+// 이웃 카운트 + 결정적 자리 우선 — 빠르면서 핵심 후보는 놓치지 않음.
 // 후보당:
-//   1) 4 연속 만드는 자리 → top 우선 포함
-//   2) 그 외 → 이웃 돌 개수(3×3, 8칸) 기준 정렬
+//   1) 내가 두면 4 연속 만드는 자리 → 공격 우선 (top 무조건 포함)
+//   2) 상대가 두면 4 연속 만드는 자리 → 방어 우선 (top 무조건 포함)
+//      ← 이 검사가 없으면 사용자 open 3 차단 자리가 누락되어 봇이 막지 못함
+//   3) 그 외 → 이웃 돌 개수(3×3, 8칸) 기준 정렬
 // evaluatePosition 미사용 (cheap). + 후보 상한 MAX_CANDS_PER_NODE.
 const MAX_CANDS_PER_NODE = 50;
 const orderCandidatesCheap = (board, color, topK) => {
   const me = colorNumOf(color);
+  const opp = me === 1 ? 2 : 1;
   const cands = getCandidates(board, color, 2);
   if (cands.length <= topK) return cands;
-  const fourMakers = [];
+  const critical = [];  // 공격(내 4목) 또는 방어(상대 4목 차단)
   const others = [];
   for (const [r, c] of cands) {
-    if (placementMakesFour(board, r, c, me)) {
-      fourMakers.push([r, c]);
+    if (placementMakesFour(board, r, c, me) || placementMakesFour(board, r, c, opp)) {
+      critical.push([r, c]);
       continue;
     }
     let n = 0;
@@ -280,12 +283,11 @@ const orderCandidatesCheap = (board, color, topK) => {
     others.push({ rc: [r, c], s: n });
   }
   others.sort((a, b) => b.s - a.s);
-  const result = fourMakers.slice();  // 4목 자리는 무조건 포함 (cap 신경 안 씀)
+  const result = critical.slice();  // 결정적 자리는 무조건 포함
   for (const { rc } of others) {
     if (result.length >= topK) break;
     result.push(rc);
   }
-  // 너무 많은 4목 자리가 발견되어도 MAX_CANDS_PER_NODE 로 제한
   return result.slice(0, MAX_CANDS_PER_NODE);
 };
 
