@@ -22,10 +22,11 @@ const {
 const { generateMoveAsync } = require('./bot-pool');
 const log = require('./log');
 
-const TURN_TIMEOUT_MS       = Number(process.env.TURN_TIMEOUT_MS)       || 30000;
-const DISCONNECT_GRACE_MS   = Number(process.env.DISCONNECT_GRACE_MS)   || 30000;
-const EMOTE_COOLDOWN_MS     = Number(process.env.EMOTE_COOLDOWN_MS)     || 800;
-const BOT_OFFER_DELAY_MS    = Number(process.env.BOT_OFFER_DELAY_MS)    || 10000;
+const TURN_TIMEOUT_MS                = Number(process.env.TURN_TIMEOUT_MS)                || 30000;
+const DISCONNECT_GRACE_MS            = Number(process.env.DISCONNECT_GRACE_MS)            || 30000;
+const SPECTATOR_DISCONNECT_GRACE_MS  = Number(process.env.SPECTATOR_DISCONNECT_GRACE_MS)  || 10000;
+const EMOTE_COOLDOWN_MS              = Number(process.env.EMOTE_COOLDOWN_MS)              || 800;
+const BOT_OFFER_DELAY_MS             = Number(process.env.BOT_OFFER_DELAY_MS)             || 10000;
 
 // 게임 중 짧은 상호작용 이모트. 키는 클라/서버 합의된 화이트리스트만 허용.
 const EMOTES = {
@@ -320,13 +321,21 @@ const addSpectator = (ws, room, nickname) => {
 const removeSpectator = (ws) => {
   if (ws.role !== 'spectator' || !ws.roomCode) return;
   const room = getRoom(ws.roomCode);
-  if (room && ws.sessionId) {
-    room.spectatorSessionIds.delete(ws.sessionId);
+  const sid = ws.sessionId;
+  // 명단에서는 즉시 제거 (다른 사용자에게 보여주는 spectator_list 갱신).
+  if (room && sid) {
+    room.spectatorSessionIds.delete(sid);
     broadcastSpectators(room);
   }
-  // spectator 세션은 grace 의미가 없어 즉시 정리.
-  if (ws.sessionId) {
-    dropSession(ws.sessionId);
+  // session 자체는 짧은 grace 동안 유지 — 새로고침 / 비행기모드 reconnect 시
+  // resume_session 으로 복구 가능하게 함 (이슈: 봇 게임 관전 중 새로고침 시 만료 에러).
+  // grace 만료 후 lazy drop. 그 사이 resume 되면 onResumeSession 의 spectator 분기가
+  // dropSession 으로 정리.
+  if (sid) {
+    setTimeout(() => {
+      const sess = getSession(sid);
+      if (sess && sess.role === 'spectator') dropSession(sid);
+    }, SPECTATOR_DISCONNECT_GRACE_MS).unref?.();
     ws.sessionId = null;
   }
   ws.roomCode = null;

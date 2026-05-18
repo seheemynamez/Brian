@@ -535,6 +535,48 @@ test('S1: spectate_success 에 sessionId 포함 (Phase 2)', async () => {
   host.close(); spec.close();
 });
 
+test('S3: spectator 정상 close + grace 안에 resume → 같은 방 재합류', async () => {
+  // 새로고침 시나리오 — ws close 가 정상 fire 되는 경우.
+  // SPECTATOR_DISCONNECT_GRACE_MS 가 짧으니 (test: 500ms), 빠르게 reconnect.
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'H', clientId: 'cid-S3h' });
+  sendJson(host, { type: 'create_room', nickname: 'H' });
+  const { code } = await waitForType(host, 'room_created');
+  const spec = await open();
+  sendJson(spec, { type: 'set_nickname', nickname: 'Spec', clientId: 'cid-S3s' });
+  sendJson(spec, { type: 'spectate_room', code, nickname: 'Spec' });
+  const first = await waitForType(spec, 'spectate_success');
+  const sid = first.sessionId;
+  spec.close();   // 정상 close — grace 동안 session 유지
+  await sleep(150);
+  const spec2 = await open();
+  sendJson(spec2, { type: 'resume_session', sessionId: sid, nickname: 'Spec' });
+  const ok = await waitForType(spec2, 'spectate_success', 1500);
+  assert(ok.code === code);
+  assert(typeof ok.sessionId === 'string' && ok.sessionId !== sid, 'expected new sessionId after resume');
+  host.close(); spec2.close();
+});
+
+test('S4: spectator grace 만료 후 resume → resume_failed', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'H', clientId: 'cid-S4h' });
+  sendJson(host, { type: 'create_room', nickname: 'H' });
+  const { code } = await waitForType(host, 'room_created');
+  const spec = await open();
+  sendJson(spec, { type: 'set_nickname', nickname: 'Spec', clientId: 'cid-S4s' });
+  sendJson(spec, { type: 'spectate_room', code, nickname: 'Spec' });
+  const first = await waitForType(spec, 'spectate_success');
+  const sid = first.sessionId;
+  spec.close();
+  // SPECTATOR_DISCONNECT_GRACE_MS=500 (env) 보다 길게
+  await sleep(900);
+  const spec2 = await open();
+  sendJson(spec2, { type: 'resume_session', sessionId: sid, nickname: 'Spec' });
+  const fail = await waitForType(spec2, 'resume_failed', 1500);
+  assert(fail.reason === 'not_found' || fail.reason === 'invalid_session');
+  host.close(); spec2.close();
+});
+
 test('S2: spectator resume_session 으로 같은 방 재합류 (비행기모드 모방)', async () => {
   // spectator 세션은 grace 없이 ws close 즉시 정리. 따라서 정상 close 한 경우는
   // resume 불가. 비행기모드(좀비 옛 ws + 새 ws) 시나리오에서만 resume_session 이
