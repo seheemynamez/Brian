@@ -10,6 +10,8 @@ const { makeStaticHandler } = require('./http-static');
 const { makeShareHandler } = require('./share');
 const { incrementOnline, decrementOnline, getOnline } = require('./rooms');
 const handlers = require('./handlers');
+const { validateMessage, MAX_MESSAGE_BYTES } = require('./validators');
+const { checkRateLimit } = require('./rate-limit');
 
 const PORT = Number(process.env.PORT) || 8080;
 const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 30000;
@@ -62,11 +64,14 @@ wss.on('connection', (ws) => {
   handlers.broadcastOnlineCount();
 
   ws.on('message', (raw) => {
+    // 너무 큰 payload 는 parse 자체를 건너뛴다 — 메모리·CPU 방어.
+    if (raw && raw.length > MAX_MESSAGE_BYTES) return;
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (!msg || typeof msg.type !== 'string') return;
     // 클라이언트 app-level ping은 즉시 pong 으로 응답하고 살아있다고 표시.
     // 모바일 브라우저(WebSocket protocol ping 다루기 어려움)에서 백업 채널 역할.
+    // schema 검증·rate limit 이전에 가로채 — 빈도 높고 비용 절약.
     if (msg.type === 'ping') {
       ws.isAlive = true;
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'pong' }));
@@ -74,6 +79,16 @@ wss.on('connection', (ws) => {
     }
     if (msg.type === 'pong') {
       ws.isAlive = true;
+      return;
+    }
+    // schema 검증 — 형식 어긋난 payload 는 조용히 무시(스팸 답신 방지).
+    const v = validateMessage(msg);
+    if (!v.ok) return;
+    // 액션별 rate limit — 초과 시 1회성 안내 후 무시.
+    if (!checkRateLimit(ws, msg.type)) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: 'error', message: '잠시 후 다시 시도해주세요' }));
+      }
       return;
     }
     try {
