@@ -8,7 +8,7 @@ import {
   setReconnectOverlay, resetGameLocal, updateOnlineCount, setEmotePickerVisible,
 } from './ui.js';
 import { initAudio } from './sound.js';
-import { connect, sendMessage, getSession, setSession, setRoomInUrl, getRoomFromUrl } from './net.js';
+import { connect, sendMessage, getSession, setSession, setRoomInUrl, getRoomFromUrl, buildShareUrl } from './net.js';
 import { drawBoard, getBoardCoord } from './board.js';
 
 const $ = (id) => document.getElementById(id);
@@ -23,45 +23,67 @@ const onBoardClick = (e) => {
 };
 
 // ---- 닉네임 ----
+// 페이지 진입 시 localStorage 가 비어 있으면 형용사+동물 자동 부여.
+// 사용자는 input 을 수정해서 자기 닉으로 바꿀 수 있고, 비워둘 경우 다음 액션 직전에 다시 채워준다.
 const setupNickname = () => {
   const input = $('nick-input');
-  input.value = localStorage.getItem('omok_nick') || '';
-  state.myNick = input.value;
+  let nick = localStorage.getItem('omok_nick') || '';
+  if (!nick) {
+    nick = genGuestNick();
+    localStorage.setItem('omok_nick', nick);
+  }
+  input.value = nick;
+  state.myNick = nick;
   input.addEventListener('input', (e) => {
     state.myNick = e.target.value.trim();
     localStorage.setItem('omok_nick', state.myNick);
+    // 온라인 목록에 즉시 반영되도록 서버에도 동기화
+    sendMessage({ type: 'set_nickname', nickname: state.myNick });
   });
 };
 
+// input 이 비어있는 채로 액션 버튼을 누른 경우의 fallback —
+// 자동 닉을 부여하고 input/state/저장소까지 일관되게 맞춰서 그대로 진행한다.
+const ensureNick = () => {
+  if (state.myNick) return state.myNick;
+  const nick = genGuestNick();
+  state.myNick = nick;
+  localStorage.setItem('omok_nick', nick);
+  $('nick-input').value = nick;
+  return nick;
+};
+
 // ---- 로비 액션 ----
+// 닉네임은 페이지 진입 시 자동 부여되어 있고, 비어 있어도 ensureNick() 이 fallback 으로 채워준다.
+// 따라서 '닉네임을 먼저 입력하세요' 에러는 발생하지 않는다.
 const setupLobby = () => {
   $('btn-create').addEventListener('click', () => {
     setLobbyError('');
-    if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
+    const nick = ensureNick();
     initAudio();
-    sendMessage({ type: 'create_room', nickname: state.myNick });
+    sendMessage({ type: 'create_room', nickname: nick });
   });
   $('btn-join').addEventListener('click', () => {
     setLobbyError('');
-    if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
     const code = $('code-input').value.trim().toUpperCase();
     if (code.length !== 4) return setLobbyError('4글자 코드를 입력하세요');
+    const nick = ensureNick();
     initAudio();
-    sendMessage({ type: 'join_room', code, nickname: state.myNick });
+    sendMessage({ type: 'join_room', code, nickname: nick });
   });
   $('btn-spectate').addEventListener('click', () => {
     setLobbyError('');
-    if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
     const code = $('code-input').value.trim().toUpperCase();
     if (code.length !== 4) return setLobbyError('4글자 코드를 입력하세요');
+    const nick = ensureNick();
     initAudio();
-    sendMessage({ type: 'spectate_room', code, nickname: state.myNick });
+    sendMessage({ type: 'spectate_room', code, nickname: nick });
   });
   $('btn-queue').addEventListener('click', () => {
     setLobbyError('');
-    if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
+    const nick = ensureNick();
     initAudio();
-    sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });
+    sendMessage({ type: 'queue_join', nickname: nick, clientId: state.clientId });
   });
   $('code-input').addEventListener('input', (e) => {
     e.target.value = e.target.value.toUpperCase();
@@ -75,15 +97,11 @@ const setupLobby = () => {
     const item = e.target.closest('.room-item');
     if (!item) return;
     setLobbyError('');
-    if (!state.myNick) return setLobbyError('닉네임을 먼저 입력하세요');
+    const nick = ensureNick();
     initAudio();
     const code = item.dataset.code;
     const action = item.dataset.action;
-    if (action === 'join') {
-      sendMessage({ type: 'join_room', code, nickname: state.myNick });
-    } else {
-      sendMessage({ type: 'spectate_room', code, nickname: state.myNick });
-    }
+    sendMessage({ type: action === 'join' ? 'join_room' : 'spectate_room', code, nickname: nick });
   });
 };
 
@@ -145,9 +163,10 @@ const setupGame = () => {
 
 // ---- 초대 링크 복사 ----
 // 두 위치(대기 화면 큰 버튼, 게임 화면 작은 버튼)에서 같은 동작을 한다.
-// 현재 URL (이미 ?room=XXXX 포함)을 그대로 복사하면 곧바로 공유 링크가 된다.
+// 복사되는 URL 은 share 엔드포인트(/i/CODE?n=NICK) — 메신저 봇이 동적 OG 메타를 가져가
+// "닉네임님이 오목대전을 신청했어요" 형태의 프리뷰가 뜬다. 사람이 클릭하면 canonical 게임 URL 로 redirect.
 const copyInviteLink = async (btn) => {
-  const url = location.href;
+  const url = buildShareUrl(state.currentRoomCode, state.myNick) || location.href;
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(url);
@@ -181,6 +200,21 @@ const copyInviteLink = async (btn) => {
 const setupCopyLinks = () => {
   $('btn-copy-waiting').addEventListener('click', (e) => copyInviteLink(e.currentTarget));
   $('btn-copy-game').addEventListener('click', (e) => copyInviteLink(e.currentTarget));
+};
+
+// ---- 접속자 목록 팝업 ----
+// 상단 '🟢 N명 온라인' 칩 클릭 → 서버에 목록 요청 (응답은 net.js 의 dispatch 가 받아 ui.js 의 showOnlineList 호출).
+const setupOnlineListPopup = () => {
+  $('online-count').addEventListener('click', () => {
+    sendMessage({ type: 'request_online_list' });
+  });
+  $('btn-online-close').addEventListener('click', () => {
+    $('online-list-overlay').classList.add('hidden');
+  });
+  // ESC 로 닫기
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') $('online-list-overlay').classList.add('hidden');
+  });
 };
 
 // ---- 직접 링크(?room=XXXX) 진입 모달 ----
@@ -316,6 +350,7 @@ setupLobby();
 setupWaiting();
 setupGame();
 setupCopyLinks();
+setupOnlineListPopup();
 setupDirectJoinModal();
 setupMute();
 setupEmote();

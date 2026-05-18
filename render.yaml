@@ -19,3 +19,7 @@ services:
       - key: ALLOWED_ORIGINS
         # 쉼표 구분. Pages 도메인만 허용.
         value: https://seheemynamez.github.io
+      - key: CANONICAL_OMOK_URL
+        # /i/CODE 초대 페이지가 사람을 보낼 canonical 게임 URL.
+        # 봇은 OG 메타만 읽고, 사람은 여기로 redirect 된다.
+        value: https://seheemynamez.github.io/Brian/omok/
