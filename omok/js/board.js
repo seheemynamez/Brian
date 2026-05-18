@@ -3,6 +3,7 @@
 // ============================================================
 
 import { state, BOARD_SIZE } from './state.js';
+import { findForbiddenSpots } from './renju.js';
 
 const CANVAS_SIZE = 600;
 const PADDING = 28;
@@ -82,6 +83,31 @@ export const drawBoard = () => {
     ctx.lineTo(PADDING + c2 * CELL, PADDING + r2 * CELL);
     ctx.stroke();
     ctx.shadowBlur = 0;
+  }
+
+  // 렌주 금수 표시 — 흑 플레이어 본인 화면에만 노출.
+  //   - 백/관전자 화면엔 표시 안 함 (상대 측 정보를 UI 로 흘리지 않기 위함)
+  //   - 흑 차례 여부와 무관하게 게임이 진행 중이면 항상 노출 → 흑이 미리 수읽기 가능
+  const isBlackPlayer = state.role === 'player' && state.myColor === 'black';
+  if (!state.gameOver && isBlackPlayer) {
+    // 매번 계산 — 15x15 + 패턴 검사로 비용 작음.
+    const forbidden = findForbiddenSpots(state.board, 'black');
+    if (forbidden.length) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 77, 106, 0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      const sz = CELL * 0.22;
+      for (const [r, c] of forbidden) {
+        const x = PADDING + c * CELL;
+        const y = PADDING + r * CELL;
+        ctx.beginPath();
+        ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz);
+        ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 };
 
