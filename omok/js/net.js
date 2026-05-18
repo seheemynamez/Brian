@@ -185,8 +185,8 @@ const dispatch = (msg) => {
     case 'turn_skipped':       return onTurnSkipped(msg);
     case 'game_over':          return onGameOver(msg);
     case 'rematch_pending':    return onRematchPending(msg);
-    case 'opponent_disconnected': return onOpponentDisconnected();
-    case 'opponent_reconnected':  return onOpponentReconnected();
+    case 'opponent_disconnected': return onOpponentDisconnected(msg);
+    case 'opponent_reconnected':  return onOpponentReconnected(msg);
     case 'opponent_left':         return onOpponentGone('상대가 방을 나갔어요');
     case 'opponent_abandoned':    return onOpponentGone('상대가 돌아오지 않아 종료');
     case 'spectator_list':     return updateSpectatorList(msg.spectators);
@@ -242,6 +242,7 @@ const onGameStart = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
   state.myNick = msg.nicknames[msg.you];
+  state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
   state.winLine = null;
@@ -270,6 +271,7 @@ const onSpectateSuccess = (msg) => {
   state.role = 'spectator';
   state.myColor = null;
   state.nicknames = msg.nicknames;
+  state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
   state.winLine = msg.line || null;
@@ -308,6 +310,7 @@ const onResumeSuccess = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
   state.myNick = msg.nicknames[msg.you];
+  state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
   state.winLine = msg.line || null;
@@ -400,11 +403,19 @@ const onRematchPending = (msg) => {
   else document.getElementById('rematch-pending').classList.remove('hidden');
 };
 
-const onOpponentDisconnected = () => {
+const onOpponentDisconnected = (msg) => {
+  if (msg && msg.color && state.playerStatus) {
+    state.playerStatus[msg.color] = 'offline';
+    updatePlayerCards();
+  }
   showToast('상대 연결 끊김 — 30초 안에 돌아오지 않으면 게임 종료');
 };
 
-const onOpponentReconnected = () => {
+const onOpponentReconnected = (msg) => {
+  if (msg && msg.color && state.playerStatus) {
+    state.playerStatus[msg.color] = 'online';
+    updatePlayerCards();
+  }
   showToast('상대 재연결됨');
 };
 

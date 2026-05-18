@@ -108,6 +108,21 @@ const playerIdsPayload = (room) => ({
   white: room.players.white?.playerId || null,
 });
 
+// 현재 양쪽 player 의 connection 상태 — 게임 화면 UI 의 online indicator 용.
+// 봇은 항상 'online' (transport 는 없지만 UI 표시는 그렇게).
+// 사람은 sessionId 의 활성 ws 존재 여부로 판단.
+const playerStatusPayload = (room) => {
+  const out = {};
+  for (const color of ['black', 'white']) {
+    const slot = room.players[color];
+    if (!slot) { out[color] = 'offline'; continue; }
+    if (slot.type === 'bot') { out[color] = 'online'; continue; }
+    const ws = connections.getWsBySessionId(slot.sessionId);
+    out[color] = (ws && ws.readyState === ws.OPEN) ? 'online' : 'offline';
+  }
+  return out;
+};
+
 const broadcastOnlineCount = () => {
   if (!wssRef) return;
   // 클라이언트에는 "실제 사용자 수" — 같은 clientId 의 좀비 연결은 합산 안 함.
@@ -282,6 +297,7 @@ const sendSpectatorState = (ws, room) => {
     code: room.code,
     sessionId: ws.sessionId || null,
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
+    playerStatus: playerStatusPayload(room),
     board: room.board,
     turn: room.turn,
     status: room.status,
@@ -371,6 +387,7 @@ const startGame = (room) => {
     board: room.board,
     turn: room.turn,
     nicknames,
+    playerStatus: playerStatusPayload(room),
     spectators: getSpectatorNames(room),
   };
   // 각 플레이어에게 본인 sessionId 와 함께 알림 (FE 가 sessionStorage 에 저장).
@@ -556,6 +573,7 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
     board: room.board,
     turn: room.turn,
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
+    playerStatus: playerStatusPayload(room),
     status: room.status,
     winner: room.winner,
     line: room.winLine,
@@ -889,6 +907,7 @@ const onResumeSession = (ws, msg) => {
     board: room.board,
     turn: room.turn,
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
+    playerStatus: playerStatusPayload(room),
     status: room.status,
     winner: room.winner,
     line: room.winLine,

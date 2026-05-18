@@ -48,6 +48,10 @@ export const state = {
   // 양 플레이어
   nicknames: { black: '', white: '' },
   myNick: '',
+  // 양 플레이어의 connection 상태 — 게임 화면의 online indicator 용.
+  // 'online' | 'offline'. game_start/resume_success/spectate_success 시 서버가 동기화.
+  // opponent_disconnected/reconnected 로도 실시간 업데이트.
+  playerStatus: { black: 'online', white: 'online' },
 
   // 역할
   role: null,                    // 'player' | 'spectator' | null
