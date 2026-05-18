@@ -5,7 +5,7 @@
 const {
   getRoom, setRoom, deleteRoom, getRoomsList,
   getSession, dropSession,
-  getQueue, enqueue, dequeue,
+  getQueue, enqueue, dequeueByConnectionId,
   getOnline,
   genCode, genGameId, sanitizeNick,
   createRoom, attachSession, attachSpectatorSession,
@@ -67,9 +67,18 @@ const sendToClient = (clientId, msg) => {
   for (const ws of connections.getWsListByClientId(clientId)) send(ws, msg);
 };
 
+// 관전자 iteration helpers — spectatorSessionIds (single source of truth) → ws via connections.
+// ws 가 죽어있으면(close 직후) 무시. 호출 측은 ws 없는 sid 를 신경 쓸 필요 없음.
+const forEachSpectatorWs = (room, fn) => {
+  for (const sid of room.spectatorSessionIds) {
+    const ws = connections.getWsBySessionId(sid);
+    if (ws && ws.readyState === ws.OPEN) fn(ws, sid);
+  }
+};
+
 const broadcastRoom = (room, msg) => {
   for (const p of room.players) if (p) send(p, msg);
-  for (const s of room.spectators) send(s, msg);
+  forEachSpectatorWs(room, (ws) => send(ws, msg));
 };
 
 const broadcastOnlineCount = () => {
@@ -226,8 +235,18 @@ const onTurnTimeout = (room) => {
 // ============================================================
 // 관전자 헬퍼
 // ============================================================
-const getSpectatorNames = (room) =>
-  Array.from(room.spectators).map((s) => s.nickname || '익명');
+// spectatorSessionIds 를 단일 source of truth 로 사용. 닉네임은 활성 ws 가 있으면 거기서,
+// 없으면 session 에 저장된 닉네임으로 fallback (재접속 grace 동안에도 표시 유지).
+const getSpectatorNames = (room) => {
+  const names = [];
+  for (const sid of room.spectatorSessionIds) {
+    const ws = connections.getWsBySessionId(sid);
+    if (ws && ws.nickname) { names.push(ws.nickname); continue; }
+    const sess = getSession(sid);
+    if (sess) names.push(sess.nickname || '익명');
+  }
+  return names;
+};
 
 const broadcastSpectators = (room) => {
   broadcastRoom(room, { type: 'spectator_list', spectators: getSpectatorNames(room) });
@@ -253,17 +272,14 @@ const addSpectator = (ws, room, nickname) => {
   ws.nickname = sanitizeNick(nickname) || '익명';
   ws.roomCode = room.code;
   ws.role = 'spectator';
-  // 같은 clientId 의 이전 spectator 세션 정리 — 멀티탭으로 들어와도 한 자리만 차지하도록.
-  // 반환된 droppedOldWs 가 있으면 그 ws 를 room.spectators 에서 제거.
+  // 같은 clientId 의 이전 spectator 세션 정리 — 멀티탭으로 들어와도 한 자리만 차지.
+  // attachSpectatorSession 안에서 옛 spectatorSessionIds 항목 + 세션 자체를 정리.
   const { sid, droppedOldWs } = attachSpectatorSession(ws, room);
   if (droppedOldWs && droppedOldWs !== ws) {
-    // 보통은 같은 방의 다른 탭 — 다른 방을 관전하던 경우라도 그 방에서도 함께 정리.
+    // 옛 ws 가 다른 방을 관전 중이었다면 그 방의 spectator_list 도 갱신.
     if (droppedOldWs.roomCode) {
       const oldRoom = getRoom(droppedOldWs.roomCode);
-      if (oldRoom) {
-        oldRoom.spectators.delete(droppedOldWs);
-        if (oldRoom !== room) broadcastSpectators(oldRoom);
-      }
+      if (oldRoom && oldRoom !== room) broadcastSpectators(oldRoom);
     }
     // 옛 ws 에게 강제 정리됐음을 알림 (UI 가 적절히 처리).
     send(droppedOldWs, { type: 'spectator_replaced' });
@@ -271,7 +287,6 @@ const addSpectator = (ws, room, nickname) => {
     droppedOldWs.role = null;
     droppedOldWs.sessionId = null;
   }
-  room.spectators.add(ws);
   sendSpectatorState(ws, room);
   broadcastSpectators(room);
   broadcastRoomsList();
@@ -281,9 +296,8 @@ const addSpectator = (ws, room, nickname) => {
 const removeSpectator = (ws) => {
   if (ws.role !== 'spectator' || !ws.roomCode) return;
   const room = getRoom(ws.roomCode);
-  if (room) {
-    room.spectators.delete(ws);
-    if (ws.sessionId) room.spectatorSessionIds.delete(ws.sessionId);
+  if (room && ws.sessionId) {
+    room.spectatorSessionIds.delete(ws.sessionId);
     broadcastSpectators(room);
   }
   // spectator 세션은 grace 의미가 없어 즉시 정리.
@@ -327,7 +341,7 @@ const startGame = (room) => {
   };
   send(room.players[0], { ...base, you: 'black', opponent: 'white', sessionId: sidBlack });
   send(room.players[1], { ...base, you: 'white', opponent: 'black', sessionId: sidWhite });
-  for (const s of room.spectators) sendSpectatorState(s, room);
+  forEachSpectatorWs(room, (ws) => sendSpectatorState(ws, room));
 
   startTurnTimer(room);
   broadcastRoomsList();
@@ -482,36 +496,52 @@ const onQueueJoin = (ws, msg) => {
   }
 
   const q = getQueue();
+  const myCid = ws.connectionId;
 
-  // 같은 clientId 의 좀비 ws 가 큐에 남아 있으면 정리.
-  // (이슈 #5/#6: 같은 사용자가 새 탭/재연결로 다시 매칭을 누른 경우, 이전 ws 와 자기 자신이 매칭되는 사태 방지)
+  // 같은 clientId 의 좀비 큐 항목 정리.
+  // (이슈 #5/#6: 같은 사용자가 새 탭/재연결로 다시 매칭을 누른 경우, 이전 항목과 자기 자신이
+  //  매칭되는 사태 방지)
   if (ws.clientId) {
     for (let i = q.length - 1; i >= 0; i--) {
-      if (q[i] !== ws && q[i].clientId === ws.clientId) {
-        const stale = q.splice(i, 1)[0];
-        stale.inQueue = false;
-        if (stale.readyState === stale.OPEN) {
-          send(stale, { type: 'queue_canceled', reason: 'replaced' });
+      const e = q[i];
+      if (e.connectionId !== myCid && e.clientId === ws.clientId) {
+        q.splice(i, 1);
+        const staleWs = connections.getWsByConnectionId(e.connectionId);
+        if (staleWs) {
+          staleWs.inQueue = false;
+          if (staleWs.readyState === staleWs.OPEN) {
+            send(staleWs, { type: 'queue_canceled', reason: 'replaced' });
+          }
         }
       }
     }
   }
 
-  // 매칭 상대 찾기 — readyState OPEN 이고, 같은 clientId 가 아닌 사람
-  const idx = q.findIndex((w) =>
-    w !== ws &&
-    w.readyState === w.OPEN &&
-    !(ws.clientId && w.clientId && w.clientId === ws.clientId)
-  );
+  // 매칭 상대 찾기 — 다른 connection 이고 같은 clientId 가 아닌 항목
+  const idx = q.findIndex((e) => {
+    if (e.connectionId === myCid) return false;
+    if (ws.clientId && e.clientId && e.clientId === ws.clientId) return false;
+    const w = connections.getWsByConnectionId(e.connectionId);
+    return w && w.readyState === w.OPEN;
+  });
   if (idx >= 0) {
-    const opponent = q.splice(idx, 1)[0];
+    const oppEntry = q.splice(idx, 1)[0];
+    const opponent = connections.getWsByConnectionId(oppEntry.connectionId);
+    if (!opponent) {
+      // 극히 드문 경합 — opponent ws 가 마침 close 됐다면 enqueue 흐름으로 fallback
+      // 그냥 이 분기로 떨어지지 않도록 다시 enqueue 처리.
+      // (재귀 호출 대신 inline fallback)
+      enqueue({ connectionId: myCid, clientId: ws.clientId || null, nickname: ws.nickname });
+      ws.inQueue = true;
+      return send(ws, { type: 'queue_waiting' });
+    }
     opponent.inQueue = false;
     if (opponent.botOfferTimer) { clearTimeout(opponent.botOfferTimer); opponent.botOfferTimer = null; }
     const code = genCode();
     const room = createRoom(code);
     room.players[0] = opponent;
-    room.nicknames[0] = opponent.nickname || '익명';
-    room.playerIds[0] = opponent.clientId || null;
+    room.nicknames[0] = opponent.nickname || oppEntry.nickname || '익명';
+    room.playerIds[0] = opponent.clientId || oppEntry.clientId || null;
     opponent.roomCode = code; opponent.color = 'black'; opponent.role = 'player';
     room.players[1] = ws;
     room.nicknames[1] = ws.nickname;
@@ -524,7 +554,7 @@ const onQueueJoin = (ws, msg) => {
     log.event('queue_matched', { code, a: opponent.nickname, b: ws.nickname });
     startGame(room);
   } else {
-    enqueue(ws);
+    enqueue({ connectionId: myCid, clientId: ws.clientId || null, nickname: ws.nickname });
     ws.inQueue = true;
     send(ws, { type: 'queue_waiting' });
     // 큐 진입 후 BOT_OFFER_DELAY_MS 동안 매칭 안 되면 봇 제안 모달 트리거.
@@ -539,7 +569,7 @@ const onQueueJoin = (ws, msg) => {
 };
 
 const onQueueLeave = (ws) => {
-  dequeue(ws);
+  if (ws.connectionId) dequeueByConnectionId(ws.connectionId);
   ws.inQueue = false;
   if (ws.botOfferTimer) { clearTimeout(ws.botOfferTimer); ws.botOfferTimer = null; }
 };
@@ -649,7 +679,7 @@ const onResumeSession = (ws, msg) => {
   }
   const opp = room.players[colorIndex(otherColor(sess.color))];
   if (opp) send(opp, { type: 'opponent_reconnected', color: sess.color });
-  for (const s of room.spectators) send(s, { type: 'opponent_reconnected', color: sess.color });
+  forEachSpectatorWs(room, (ws) => send(ws, { type: 'opponent_reconnected', color: sess.color }));
   send(ws, {
     type: 'resume_success',
     code: room.code,
@@ -783,23 +813,19 @@ const onLeaveRoom = (ws) => {
     room.status = 'over';
     room.winner = winnerColor;
     if (opp) send(opp, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, reason: 'opponent_left' });
-    for (const s of room.spectators) {
-      send(s, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, reason: 'opponent_left' });
-    }
+    forEachSpectatorWs(room, (s) => send(s, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, reason: 'opponent_left' }));
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: winnerColor, reason: 'opponent_left' });
   } else {
     // 대기/종료 상태에서 나감 → 기존대로 상대만 통보
     if (opp) send(opp, { type: 'opponent_left' });
-    for (const s of room.spectators) send(s, { type: 'opponent_left' });
+    forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_left' }));
   }
 
   if (opp) {
     opp.roomCode = null; opp.color = null; opp.role = null;
     dropSession(opp.sessionId); opp.sessionId = null;
   }
-  for (const s of room.spectators) {
-    s.roomCode = null; s.role = null;
-  }
+  forEachSpectatorWs(room, (s) => { s.roomCode = null; s.role = null; });
   dropSession(ws.sessionId); ws.sessionId = null;
   deleteRoom(room.code);
   ws.roomCode = null; ws.color = null; ws.role = null;
@@ -848,9 +874,7 @@ const onPlayerDisconnect = (ws) => {
   for (const p of room.players) {
     if (p && p !== ws) send(p, { type: 'opponent_disconnected', color: myColor, deadline });
   }
-  for (const s of room.spectators) {
-    send(s, { type: 'opponent_disconnected', color: myColor, deadline });
-  }
+  forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_disconnected', color: myColor, deadline }));
   room.players[colorIndex(myColor)] = null;
   if (room.disconnectTimers[myColor]) clearTimeout(room.disconnectTimers[myColor]);
   room.disconnectTimers[myColor] = setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS);
@@ -861,7 +885,7 @@ const finalizeAbandon = (room, color) => {
   if (room.status === 'playing') {
     room.status = 'over';
     for (const p of room.players) if (p) send(p, { type: 'opponent_abandoned', color, gameId: room.gameId });
-    for (const s of room.spectators) send(s, { type: 'opponent_abandoned', color, gameId: room.gameId });
+    forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_abandoned', color, gameId: room.gameId }));
     clearTurnTimer(room);
     dropSession(room.sessionIds[colorIndex(color)]);
     room.sessionIds[colorIndex(color)] = null;
@@ -878,10 +902,10 @@ const finalizeAbandon = (room, color) => {
       opp.roomCode = null; opp.color = null; opp.role = null;
       dropSession(opp.sessionId); opp.sessionId = null;
     }
-    for (const s of room.spectators) {
+    forEachSpectatorWs(room, (s) => {
       send(s, { type: 'opponent_left' });
       s.roomCode = null; s.role = null;
-    }
+    });
     if (room.disconnectTimers.black) { clearTimeout(room.disconnectTimers.black); room.disconnectTimers.black = null; }
     if (room.disconnectTimers.white) { clearTimeout(room.disconnectTimers.white); room.disconnectTimers.white = null; }
     clearTurnTimer(room);

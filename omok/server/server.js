@@ -12,7 +12,7 @@ const { incrementOnline, decrementOnline, getOnline, touchSession } = require('.
 const connections = require('./connections');
 const handlers = require('./handlers');
 const { validateMessage, MAX_MESSAGE_BYTES } = require('./validators');
-const { checkRateLimit } = require('./rate-limit');
+const { checkRateLimit, clearForConnection } = require('./rate-limit');
 const log = require('./log');
 
 const PORT = Number(process.env.PORT) || 8080;
@@ -94,8 +94,8 @@ wss.on('connection', (ws) => {
     if (!v.ok) return;
     // 세션 활성 신호 — 메시지 도착 자체로 lastSeenAt 갱신.
     if (ws.sessionId) touchSession(ws.sessionId);
-    // 액션별 rate limit — 초과 시 1회성 안내 후 무시.
-    if (!checkRateLimit(ws, msg.type)) {
+    // 액션별 rate limit — 초과 시 1회성 안내 후 무시. (이슈 #31: connectionId 기반)
+    if (!checkRateLimit(ws.connectionId, msg.type)) {
       log.event('rate_limited', { action: msg.type, client: log.mask(ws.clientId), nick: ws.nickname || undefined });
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: '잠시 후 다시 시도해주세요' }));
@@ -115,6 +115,8 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     handlers.onQueueLeave(ws);
     handlers.onPlayerDisconnect(ws);
+    // rate-limit bucket 정리. unregister 보다 먼저 — connectionId 가 아직 살아있을 때.
+    clearForConnection(ws.connectionId);
     // connectionId / clientId / sessionId 매핑 정리. session 자체는 grace 동안 유지될 수 있어서
     // 여기서 dropSession 은 하지 않음 — wsBySessionId 매핑만 제거.
     connections.unregister(ws);

@@ -9,7 +9,12 @@ const connections = require('./connections');
 const MAX_NICK_LEN = 12;
 
 const rooms = new Map();      // code -> Room
-const queue = [];             // WS[] (자동 매칭 대기) — PR #2 에서 객체 배열로 교체 예정
+//
+// 자동 매칭 대기 큐. 항목: { connectionId, clientId, nickname, joinedAt }.
+// connectionId 가 unique key — handler 가 ws 가 아니라 connectionId 로 enqueue/dequeue.
+// 송신/타이머는 connections.getWsByConnectionId 로 ws 를 매번 resolve.
+// (이슈 #31 PR #2 — queue 에서 ws 객체 제거)
+const queue = [];
 //
 // sessionId → {
 //   role:        'player' | 'spectator',
@@ -46,7 +51,7 @@ const getRoomsList = () => {
       code,
       status: room.status,
       nicknames: { black: room.nicknames[0] || '', white: room.nicknames[1] || '' },
-      spectatorCount: room.spectators.size,
+      spectatorCount: room.spectatorSessionIds.size,
     });
   }
   return out;
@@ -66,10 +71,17 @@ const touchSession = (sid) => {
 };
 
 const getQueue = () => queue;
-const enqueue  = (ws) => { if (!queue.includes(ws)) queue.push(ws); };
-const dequeue  = (ws) => {
-  const i = queue.indexOf(ws);
-  if (i >= 0) queue.splice(i, 1);
+// entry: { connectionId, clientId, nickname }
+const enqueue = (entry) => {
+  if (!entry || !entry.connectionId) return;
+  if (queue.some((e) => e.connectionId === entry.connectionId)) return;
+  queue.push(entry);
+};
+const dequeueByConnectionId = (cid) => {
+  if (!cid) return null;
+  const i = queue.findIndex((e) => e.connectionId === cid);
+  if (i < 0) return null;
+  return queue.splice(i, 1)[0];
 };
 
 const incrementOnline = () => ++onlineCount;
@@ -106,9 +118,8 @@ const createRoom = (code) => ({
   // 차후 DB 랭킹 시스템 도입 시 게임 결과 기록 키로 활용.
   playerIds: [null, null],
   sessionIds: [null, null],
-  spectators: new Set(),          // Set<WS> — PR #2 에서 Set<sessionId> 로 교체 예정
-  // 관전자 sessionId 트래킹 (PR #2 전환 사전 작업). 같은 사용자(clientId) 의 멀티탭은
-  // 동일 sessionId 1개로만 카운트되도록 attachSpectatorSession 이 dedup 처리.
+  // 관전자 sessionId 단독 — 송신은 connections.getWsBySessionId 로 매번 resolve.
+  // 같은 clientId 의 멀티탭은 attachSpectatorSession 이 동일 sessionId 1개로만 카운트.
   spectatorSessionIds: new Set(),
   board: emptyBoard(),
   turn: 'black',
@@ -150,8 +161,8 @@ const attachSession = (ws, room, color) => {
 // 관전자는 clientId 당 1개의 sessionId 만 유지 (dedup) — 같은 사용자가 멀티탭으로
 // 관전 시도하면 이전 세션을 정리.
 // 호출자는 이미 ws.nickname / ws.clientId 가 세팅돼있다는 전제.
-// 반환: { sid, droppedOldSid|null, droppedOldWs|null } — 호출자가 옛 ws 를 room.spectators
-//        에서 제거하는 등 후속 정리에 사용. dropSession 후엔 ws 조회가 불가하므로 미리 resolve.
+// 반환: { sid, droppedOldSid|null, droppedOldWs|null } — 호출자가 옛 ws 의 transient 상태(roomCode,
+//        role 등) 를 정리하는 데 사용. dropSession 후엔 ws 조회가 불가하므로 미리 resolve.
 const attachSpectatorSession = (ws, room) => {
   let droppedOldSid = null;
   let droppedOldWs = null;
@@ -192,7 +203,7 @@ module.exports = {
   MAX_NICK_LEN,
   getRoom, setRoom, deleteRoom, getRoomsList,
   getSession, dropSession, touchSession,
-  getQueue, enqueue, dequeue,
+  getQueue, enqueue, dequeueByConnectionId,
   incrementOnline, decrementOnline, getOnline,
   genCode, genSessionId, genGameId, sanitizeNick,
   createRoom, attachSession, attachSpectatorSession,
