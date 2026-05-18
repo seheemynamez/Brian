@@ -4,12 +4,25 @@
 
 const crypto = require('crypto');
 const { emptyBoard } = require('./game-logic');
+const connections = require('./connections');
 
 const MAX_NICK_LEN = 12;
 
 const rooms = new Map();      // code -> Room
-const queue = [];             // WS[] (자동 매칭 대기)
-const sessions = new Map();   // sessionId -> { code, color }
+const queue = [];             // WS[] (자동 매칭 대기) — PR #2 에서 객체 배열로 교체 예정
+//
+// sessionId → {
+//   role:        'player' | 'spectator',
+//   code:        roomCode,
+//   color?:      'black' | 'white'  (player only),
+//   clientId?:   localStorage UUID  (사람) | '_bot_easy/_medium/_hard'  (봇),
+//   nickname:    string,
+//   lastSeenAt:  ms epoch
+// }
+//
+// 이슈 #31: 도메인 상태의 unique key 로 ws 를 쓰지 않기 위해 session 정보 풍부화.
+// player·spectator 모두 session 발급 가능.
+const sessions = new Map();
 
 let onlineCount = 0;
 
@@ -40,7 +53,17 @@ const getRoomsList = () => {
 };
 
 const getSession  = (sid) => sessions.get(sid);
-const dropSession = (sid) => { if (sid) sessions.delete(sid); };
+const dropSession = (sid) => {
+  if (!sid) return;
+  sessions.delete(sid);
+  connections.unbindSession(sid);
+};
+// 세션 lastSeenAt 갱신 — heartbeat / 메시지 수신 시 호출.
+const touchSession = (sid) => {
+  if (!sid) return;
+  const sess = sessions.get(sid);
+  if (sess) sess.lastSeenAt = Date.now();
+};
 
 const getQueue = () => queue;
 const enqueue  = (ws) => { if (!queue.includes(ws)) queue.push(ws); };
@@ -75,13 +98,18 @@ const sanitizeNick = (nick) => {
 // ---- 방 객체 / 세션 부착 ----
 const createRoom = (code) => ({
   code,
-  players: [null, null],          // 0 = black, 1 = white
+  // gameId — startGame 시마다 새로 발급. 재대국마다 변경. 랭킹/통계 사전 작업.
+  gameId: null,
+  players: [null, null],          // 0 = black, 1 = white  (PR #2: ws 제거 → ID 기반)
   nicknames: ['', ''],            // 0 = black nick, 1 = white nick
   // 안정 플레이어 식별자 — 사람은 clientId(localStorage UUID), 봇은 _bot_easy/_bot_medium/_bot_hard.
   // 차후 DB 랭킹 시스템 도입 시 게임 결과 기록 키로 활용.
   playerIds: [null, null],
   sessionIds: [null, null],
-  spectators: new Set(),          // Set<WS>
+  spectators: new Set(),          // Set<WS> — PR #2 에서 Set<sessionId> 로 교체 예정
+  // 관전자 sessionId 트래킹 (PR #2 전환 사전 작업). 같은 사용자(clientId) 의 멀티탭은
+  // 동일 sessionId 1개로만 카운트되도록 attachSpectatorSession 이 dedup 처리.
+  spectatorSessionIds: new Set(),
   board: emptyBoard(),
   turn: 'black',
   turnDeadline: 0,
@@ -97,21 +125,75 @@ const createRoom = (code) => ({
   hasBot: false,
 });
 
+// 새 게임 시작마다 발급. 랭킹·통계 키.
+const genGameId = () => crypto.randomBytes(10).toString('base64url');
+
+// ---- player session ----
 const attachSession = (ws, room, color) => {
   const sid = genSessionId();
   ws.sessionId = sid;
   const idx = color === 'black' ? 0 : 1;
   room.sessionIds[idx] = sid;
-  sessions.set(sid, { code: room.code, color });
+  sessions.set(sid, {
+    role: 'player',
+    code: room.code,
+    color,
+    clientId: ws.clientId || null,
+    nickname: ws.nickname || '',
+    lastSeenAt: Date.now(),
+  });
+  connections.bindSession(ws, sid);
   return sid;
+};
+
+// ---- spectator session ----
+// 관전자는 clientId 당 1개의 sessionId 만 유지 (dedup) — 같은 사용자가 멀티탭으로
+// 관전 시도하면 이전 세션을 정리.
+// 호출자는 이미 ws.nickname / ws.clientId 가 세팅돼있다는 전제.
+// 반환: { sid, droppedOldSid|null, droppedOldWs|null } — 호출자가 옛 ws 를 room.spectators
+//        에서 제거하는 등 후속 정리에 사용. dropSession 후엔 ws 조회가 불가하므로 미리 resolve.
+const attachSpectatorSession = (ws, room) => {
+  let droppedOldSid = null;
+  let droppedOldWs = null;
+  if (ws.clientId) {
+    // 같은 clientId 의 기존 spectator 세션 있으면 제거
+    for (const [sid, sess] of sessions) {
+      if (sess.role === 'spectator' && sess.clientId === ws.clientId) {
+        droppedOldSid = sid;
+        break;
+      }
+    }
+    if (droppedOldSid) {
+      // dropSession 으로 ws 매핑이 정리되기 전에 미리 ws 조회.
+      droppedOldWs = connections.getWsBySessionId(droppedOldSid) || null;
+      const oldSess = sessions.get(droppedOldSid);
+      if (oldSess) {
+        const oldRoom = rooms.get(oldSess.code);
+        if (oldRoom) oldRoom.spectatorSessionIds.delete(droppedOldSid);
+      }
+      dropSession(droppedOldSid);
+    }
+  }
+  const sid = genSessionId();
+  sessions.set(sid, {
+    role: 'spectator',
+    code: room.code,
+    color: null,
+    clientId: ws.clientId || null,
+    nickname: ws.nickname || '',
+    lastSeenAt: Date.now(),
+  });
+  room.spectatorSessionIds.add(sid);
+  connections.bindSession(ws, sid);
+  return { sid, droppedOldSid, droppedOldWs };
 };
 
 module.exports = {
   MAX_NICK_LEN,
   getRoom, setRoom, deleteRoom, getRoomsList,
-  getSession, dropSession,
+  getSession, dropSession, touchSession,
   getQueue, enqueue, dequeue,
   incrementOnline, decrementOnline, getOnline,
-  genCode, genSessionId, sanitizeNick,
-  createRoom, attachSession,
+  genCode, genSessionId, genGameId, sanitizeNick,
+  createRoom, attachSession, attachSpectatorSession,
 };
