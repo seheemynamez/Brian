@@ -3,6 +3,7 @@
 // ============================================================
 
 import { state, BOARD_SIZE } from './state.js';
+import { findForbiddenSpots } from './renju.js';
 
 const CANVAS_SIZE = 600;
 const PADDING = 28;
@@ -82,6 +83,29 @@ export const drawBoard = () => {
     ctx.lineTo(PADDING + c2 * CELL, PADDING + r2 * CELL);
     ctx.stroke();
     ctx.shadowBlur = 0;
+  }
+
+  // 렌주 금수 표시 — 흑 차례에만 빈 칸 중 금수 위치에 × 오버레이.
+  // 게임 종료 / 백 차례 / 보드 비어있을 땐 표시 안 함 (시각적 노이즈 줄이기).
+  if (!state.gameOver && state.currentTurn === 'black') {
+    // 매 차례 보드 상태 변경되므로 매번 계산. 15x15 + 패턴 검사 = 빠름.
+    const forbidden = findForbiddenSpots(state.board, 'black');
+    if (forbidden.length) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 77, 106, 0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      const sz = CELL * 0.22;
+      for (const [r, c] of forbidden) {
+        const x = PADDING + c * CELL;
+        const y = PADDING + r * CELL;
+        ctx.beginPath();
+        ctx.moveTo(x - sz, y - sz); ctx.lineTo(x + sz, y + sz);
+        ctx.moveTo(x + sz, y - sz); ctx.lineTo(x - sz, y + sz);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 };
 

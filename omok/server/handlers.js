@@ -11,6 +11,7 @@ const {
   createRoom, attachSession,
 } = require('./rooms');
 const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
+const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('./renju');
 
 const TURN_TIMEOUT_MS       = Number(process.env.TURN_TIMEOUT_MS)       || 30000;
 const DISCONNECT_GRACE_MS   = Number(process.env.DISCONNECT_GRACE_MS)   || 30000;
@@ -416,9 +417,25 @@ const onMove = (ws, row, col) => {
 
   const stone = ws.color === 'black' ? 1 : 2;
   room.board[row][col] = stone;
+
+  // ---- 렌주룰 (흑 전용) ----
+  // 1) 정확히 5 만들면 승리 우선 (금수 예외).
+  // 2) 그 외 금수(장목/쌍사/쌍삼)는 거부 + 돌 되돌리기.
+  const winLine = checkWinRenju(room.board, row, col, ws.color);
+  if (!winLine && ws.color === 'black') {
+    const forbidden = checkForbidden(room.board, row, col, ws.color);
+    if (forbidden) {
+      room.board[row][col] = 0;  // 되돌리기
+      return send(ws, {
+        type: 'error',
+        message: `금수 — ${FORBIDDEN_LABEL[forbidden.reason] || forbidden.reason}`,
+        reason: 'forbidden',
+      });
+    }
+  }
+
   room.lastMove = [row, col];
 
-  const winLine = checkWin(room.board, row, col, ws.color);
   if (winLine) {
     room.status = 'over';
     room.winner = ws.color;
