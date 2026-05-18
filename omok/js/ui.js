@@ -77,8 +77,16 @@ export const updatePlayerCards = () => {
   $('player-white').classList.remove('hidden');
   $('vs-divider').classList.remove('hidden');
 
-  $('black-nick').textContent = state.nicknames.black || '익명';
-  $('white-nick').textContent = state.nicknames.white || '익명';
+  // 닉네임이 빈 문자열이면 그 슬롯은 아직 비어있는 것 (서버가 미배정 슬롯을 빈 문자열로 표현).
+  // 관전자가 waiting 상태의 방에 들어왔을 때 백 슬롯이 이렇게 비어있다.
+  // 사용자가 실제로 닉을 입력 안 한 경우는 서버에서 '익명'으로 채워 보내므로, 빈 문자열은 곧 '미배정'.
+  const WAITING_LABEL = '대기 중…';
+  const blackEmpty = !state.nicknames.black;
+  const whiteEmpty = !state.nicknames.white;
+  $('black-nick').textContent = blackEmpty ? WAITING_LABEL : state.nicknames.black;
+  $('white-nick').textContent = whiteEmpty ? WAITING_LABEL : state.nicknames.white;
+  $('player-black').classList.toggle('waiting', blackEmpty);
+  $('player-white').classList.toggle('waiting', whiteEmpty);
   $('black-color').textContent = '흑';
   $('white-color').textContent = '백';
 
