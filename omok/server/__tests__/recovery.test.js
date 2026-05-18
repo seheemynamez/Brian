@@ -564,27 +564,30 @@ test('P1: queue record-based matchmaking', async () => {
   wsA.close(); wsB.close();
 });
 
-test('P2: rate-limit bucket is per-connection (new ws starts fresh)', async () => {
+test('P2: rate-limit bucket is per-clientId (Phase 3)', async () => {
+  // 같은 clientId 로 create_room 4번 → 4번째는 한도 초과 (limit=3/10s).
   const ws1 = await open();
+  sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P2-shared' });
   for (let i = 0; i < 3; i++) {
-    sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P2-' + i });
     sendJson(ws1, { type: 'create_room', nickname: 'L' });
     await waitForType(ws1, 'room_created', 1500);
     sendJson(ws1, { type: 'leave_room' });
     await sleep(50);
   }
-  sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P2-4' });
+  // 4번째 — limit hit
   sendJson(ws1, { type: 'create_room', nickname: 'L' });
   await sleep(200);
   const errLimit = ws1.received.filter((m) => m.type === 'error' && /다시 시도/.test(m.message));
-  assert(errLimit.length >= 1);
+  assert(errLimit.length >= 1, `expected rate-limit error after 4th create_room, got ${errLimit.length}`);
   ws1.close();
 });
 
-test('P3: rate-limit bucket cleared on connection close', async () => {
+test('P3: 같은 clientId 새 ws 도 한도 유지 (새로고침 우회 방지)', async () => {
+  // 옛 ws 에서 3번 create_room → 새 ws (다른 connectionId, 같은 clientId) 가 4번째
+  //  → 여전히 한도 hit.
   const ws1 = await open();
+  sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3-shared' });
   for (let i = 0; i < 3; i++) {
-    sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3-' + i });
     sendJson(ws1, { type: 'create_room', nickname: 'L' });
     await waitForType(ws1, 'room_created', 1500);
     sendJson(ws1, { type: 'leave_room' });
@@ -592,8 +595,30 @@ test('P3: rate-limit bucket cleared on connection close', async () => {
   }
   ws1.close();
   await sleep(200);
+  // 새 connection 같은 clientId
   const ws2 = await open();
-  sendJson(ws2, { type: 'set_nickname', nickname: 'L2', clientId: 'cid-P3-fresh' });
+  sendJson(ws2, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3-shared' });
+  sendJson(ws2, { type: 'create_room', nickname: 'L' });
+  await sleep(200);
+  const errLimit = ws2.received.filter((m) => m.type === 'error' && /다시 시도/.test(m.message));
+  assert(errLimit.length >= 1, `expected rate-limit on new connection with same clientId, got ${errLimit.length}`);
+  ws2.close();
+});
+
+test('P3b: 다른 clientId 새 ws → 깨끗한 bucket', async () => {
+  const ws1 = await open();
+  sendJson(ws1, { type: 'set_nickname', nickname: 'L', clientId: 'cid-P3b-old' });
+  for (let i = 0; i < 3; i++) {
+    sendJson(ws1, { type: 'create_room', nickname: 'L' });
+    await waitForType(ws1, 'room_created', 1500);
+    sendJson(ws1, { type: 'leave_room' });
+    await sleep(50);
+  }
+  ws1.close();
+  await sleep(200);
+  // 다른 clientId — 새 bucket
+  const ws2 = await open();
+  sendJson(ws2, { type: 'set_nickname', nickname: 'L2', clientId: 'cid-P3b-fresh' });
   sendJson(ws2, { type: 'create_room', nickname: 'L2' });
   await waitForType(ws2, 'room_created', 1500);
   ws2.close();

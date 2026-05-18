@@ -94,8 +94,9 @@ wss.on('connection', (ws) => {
     if (!v.ok) return;
     // 세션 활성 신호 — 메시지 도착 자체로 lastSeenAt 갱신.
     if (ws.sessionId) touchSession(ws.sessionId);
-    // 액션별 rate limit — 초과 시 1회성 안내 후 무시. (이슈 #31: connectionId 기반)
-    if (!checkRateLimit(ws.connectionId, msg.type)) {
+    // 액션별 rate limit — primary key 는 clientId, 폴백은 sessionId → connectionId.
+    // (이슈 #31 Phase 3: 새로고침으로 한도 우회되지 않도록 사용자 단위로 묶음.)
+    if (!checkRateLimit({ clientId: ws.clientId, sessionId: ws.sessionId, connectionId: ws.connectionId }, msg.type)) {
       log.event('rate_limited', { action: msg.type, client: log.mask(ws.clientId), nick: ws.nickname || undefined });
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: '잠시 후 다시 시도해주세요' }));
