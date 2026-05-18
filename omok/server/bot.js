@@ -205,10 +205,14 @@ const evaluatePosition = (board, myColor) =>
   scoreFor(board, myColor) - scoreFor(board, otherColor(myColor));
 
 // ============================================================
-// 무브 정렬 — 빠른 1-ply 평가로 후보를 점수순 정렬, 상위 K 개만 채택.
-// α-β 가지치기 효율이 극적으로 향상되어 같은 시간 안에 더 깊이 탐색 가능.
+// 무브 정렬
+// ----------------------------------------------------------------
+// 루트 (orderCandidatesAtRoot) — 정확한 1-ply 평가 기반 정렬. 후보당 evaluatePosition 1 회.
+//   비싸지만 루트는 1회만 호출되고 α-β 가지치기 효과가 가장 크다.
+// 비루트 (orderCandidatesCheap) — 이웃 돌 개수(3×3, 8 칸)로 cheap 정렬.
+//   eval call 0 회. 후반(후보 100+)에 minimax 트리 전체에서 누적되던 비용 제거.
 // ============================================================
-const orderCandidates = (board, color, myColor, topK) => {
+const orderCandidatesAtRoot = (board, color, myColor, topK) => {
   const me = colorNumOf(color);
   const cands = getCandidates(board, color, 2);
   if (cands.length <= 1) return cands;
@@ -221,9 +225,83 @@ const orderCandidates = (board, color, myColor, topK) => {
     board[r][c] = 0;
     return { rc: [r, c], s };
   });
-  // 자기 차례면 점수 높은 순, 상대 차례면 자기 입장 점수 낮은 순
   scored.sort((a, b) => (color === myColor ? b.s - a.s : a.s - b.s));
   return scored.slice(0, topK).map((x) => x.rc);
+};
+
+// (r,c) 에 me 색 돌을 놓으면 4 이상 연속이 형성되는지 — 점프 패턴은 제외, 연속 5 직전.
+// 한 방향당 ±4 칸 스캔. 후보당 ~30 칸 액세스 (가볍다).
+const placementMakesFour = (board, r, c, me) => {
+  board[r][c] = me;
+  let found = false;
+  for (const [dr, dc] of DIRS) {
+    let n = 1;
+    for (let i = 1; i < 5; i++) {
+      const nr = r + dr * i, nc = c + dc * i;
+      if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE || board[nr][nc] !== me) break;
+      n++;
+    }
+    for (let i = 1; i < 5; i++) {
+      const nr = r - dr * i, nc = c - dc * i;
+      if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE || board[nr][nc] !== me) break;
+      n++;
+    }
+    if (n >= 4) { found = true; break; }
+  }
+  board[r][c] = 0;
+  return found;
+};
+
+// 이웃 카운트 + 4목 형성 자리 우선 — 빠르면서 결정적 후보는 놓치지 않음.
+// 후보당:
+//   1) 4 연속 만드는 자리 → top 우선 포함
+//   2) 그 외 → 이웃 돌 개수(3×3, 8칸) 기준 정렬
+// evaluatePosition 미사용 (cheap). + 후보 상한 MAX_CANDS_PER_NODE.
+const MAX_CANDS_PER_NODE = 50;
+const orderCandidatesCheap = (board, color, topK) => {
+  const me = colorNumOf(color);
+  const cands = getCandidates(board, color, 2);
+  if (cands.length <= topK) return cands;
+  const fourMakers = [];
+  const others = [];
+  for (const [r, c] of cands) {
+    if (placementMakesFour(board, r, c, me)) {
+      fourMakers.push([r, c]);
+      continue;
+    }
+    let n = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && board[nr][nc] !== 0) n++;
+      }
+    }
+    others.push({ rc: [r, c], s: n });
+  }
+  others.sort((a, b) => b.s - a.s);
+  const result = fourMakers.slice();  // 4목 자리는 무조건 포함 (cap 신경 안 씀)
+  for (const { rc } of others) {
+    if (result.length >= topK) break;
+    result.push(rc);
+  }
+  // 너무 많은 4목 자리가 발견되어도 MAX_CANDS_PER_NODE 로 제한
+  return result.slice(0, MAX_CANDS_PER_NODE);
+};
+
+// 후보 정렬과 무관하게 즉시 승리수가 존재하면 빠르게 잡아낸다.
+// — cheap ordering 이 결정적 cell 을 놓쳐 minimax 가 잘못된 분석을 하는 문제 방지
+// — 더불어 큰 성능 향상 (재귀 회피)
+const findWinningMove = (board, color) => {
+  const me = colorNumOf(color);
+  const cands = getCandidates(board, color, 2);
+  for (const [r, c] of cands) {
+    board[r][c] = me;
+    const win = checkWinRenju(board, r, c, color);
+    board[r][c] = 0;
+    if (win) return [r, c];
+  }
+  return null;
 };
 
 // ============================================================
@@ -232,7 +310,15 @@ const orderCandidates = (board, color, myColor, topK) => {
 const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
   if (depth === 0) return evaluatePosition(board, myColor);
 
-  const cands = orderCandidates(board, color, myColor, topK);
+  // 단축회로: 이 차례에 즉시 5목 만들 수 있으면 더 깊이 갈 필요 없음.
+  // cheap ordering 이 결정적 cell 을 top K 에 못 넣어도 안전하게 잡힘.
+  const win = findWinningMove(board, color);
+  if (win) {
+    const isMax = (color === myColor);
+    return isMax ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
+  }
+
+  const cands = orderCandidatesCheap(board, color, topK);
   if (!cands.length) return evaluatePosition(board, myColor);
 
   const me = colorNumOf(color);
@@ -263,7 +349,7 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
 };
 
 const searchBestMove = (board, color, depth, topK) => {
-  const cands = orderCandidates(board, color, color, topK);
+  const cands = orderCandidatesAtRoot(board, color, color, topK);
   if (!cands.length) {
     const fb = getCandidatesWithFallback(board, color);
     return fb[0] || null;
