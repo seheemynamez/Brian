@@ -35,20 +35,32 @@ npm test              # 회귀 테스트 (memory backend, 짧은 grace timer)
 ```
 STORE_BACKEND=valkey
 VALKEY_URL=rediss://default:PASSWORD@host:port
+VALKEY_KEY_PREFIX=omok:dev      # 로컬. production 은 'omok:prod'
 ```
 
 `.env.example` 참고. Aiven 콘솔의 Connection information → Service URI 를 그대로 사용.
 
+### dev / prod 키 namespace 분리
+
+로컬 개발 + Render production 이 같은 Aiven 인스턴스를 공유한다면 **`VALKEY_KEY_PREFIX` 분리 필수**. 안 그러면 로컬 게임이 production 데이터에 섞임.
+
+- 로컬 `.env`: `VALKEY_KEY_PREFIX=omok:dev`
+- Render Environment: `VALKEY_KEY_PREFIX=omok:prod`
+
+키 스키마는 prefix 만 바뀌고 나머지 동일 (예: `omok:prod:room:ABCD`).
+
 ### Valkey 키 스키마
+
+`{PREFIX}` 는 `VALKEY_KEY_PREFIX` 환경변수 (기본 `omok`).
 
 | 키 | 값 |
 |---|---|
-| `omok:room:{code}` | room JSON (board / turn / players / status / turnDeadline / ...) |
-| `omok:rooms` | SET of room codes (인덱스) |
-| `omok:session:{sid}` | session JSON (role / code / color / clientId / nickname / lastSeenAt) |
-| `omok:sessions` | SET of session IDs |
-| `omok:queue` | 매칭 대기 큐 array JSON |
-| `omok:botOffer:{clientId}` | 봇 제안 발송 시각 (EX 120s 자동 만료) |
+| `{PREFIX}:room:{code}` | room JSON (board / turn / players / status / turnDeadline / ...) |
+| `{PREFIX}:rooms` | SET of room codes (인덱스) |
+| `{PREFIX}:session:{sid}` | session JSON (role / code / color / clientId / nickname / lastSeenAt) |
+| `{PREFIX}:sessions` | SET of session IDs |
+| `{PREFIX}:queue` | 매칭 대기 큐 array JSON |
+| `{PREFIX}:botOffer:{clientId}` | 봇 제안 발송 시각 (EX 120s 자동 만료) |
 
 쓰기 시점: 메모리 갱신 직후 fire-and-forget 으로 valkey 에 SET (write-through).
 읽기는 항상 메모리. 부팅 시 한 번 hydrate 로 메모리 cache 초기화.

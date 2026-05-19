@@ -7,26 +7,31 @@
 // 호출자 (rooms.js / handlers.js) 는 backend === 'valkey' 일 때 store.persistRoom
 // 같은 헬퍼를 호출해서 변경을 명시적으로 sync. memory backend 에선 모두 no-op.
 //
-// 키 스키마 (omok namespace prefix):
-//   omok:room:{code}        — room JSON
-//   omok:rooms              — SET of room codes (인덱싱)
-//   omok:session:{sid}      — session JSON
-//   omok:sessions           — SET of session ids
-//   omok:queue              — queue array JSON (단일 키)
-//   omok:botOffer:{cid}     — 봇 제안 발송 시각 (string, EX 120s)
+// 키 스키마 (PREFIX namespace, 기본 'omok'):
+//   {PREFIX}:room:{code}        — room JSON
+//   {PREFIX}:rooms              — SET of room codes (인덱싱)
+//   {PREFIX}:session:{sid}      — session JSON
+//   {PREFIX}:sessions           — SET of session ids
+//   {PREFIX}:queue              — queue array JSON (단일 키)
+//   {PREFIX}:botOffer:{cid}     — 봇 제안 발송 시각 (string, EX 120s)
+//
+// PREFIX 는 VALKEY_KEY_PREFIX 환경변수로 override. dev/prod 가 같은 valkey
+// 인스턴스를 공유할 때 키 충돌 방지 (예: 'omok:dev' vs 'omok:prod').
 
 'use strict';
 
 const Redis = require('ioredis');
 const { serializeRoom, deserializeRoom } = require('./serialize');
 
+const PREFIX = process.env.VALKEY_KEY_PREFIX || 'omok';
 const K = {
-  room: (code) => `omok:room:${code}`,
-  rooms: 'omok:rooms',
-  session: (sid) => `omok:session:${sid}`,
-  sessions: 'omok:sessions',
-  queue: 'omok:queue',
-  botOffer: (cid) => `omok:botOffer:${cid}`,
+  room: (code) => `${PREFIX}:room:${code}`,
+  rooms: `${PREFIX}:rooms`,
+  session: (sid) => `${PREFIX}:session:${sid}`,
+  sessions: `${PREFIX}:sessions`,
+  queue: `${PREFIX}:queue`,
+  botOffer: (cid) => `${PREFIX}:botOffer:${cid}`,
+  botOfferMatch: `${PREFIX}:botOffer:*`,
 };
 
 const createValkeyStore = () => {
@@ -111,20 +116,21 @@ const createValkeyStore = () => {
       }
       // Bot offer history (EX TTL 로 만료된 건 자동 제외됨, 남은 key 들 scan)
       let botOfferHydrated = 0;
+      const botOfferPrefix = `${PREFIX}:botOffer:`;
       let cursor = '0';
       do {
-        const [next, keys] = await client.scan(cursor, 'MATCH', 'omok:botOffer:*', 'COUNT', 200);
+        const [next, keys] = await client.scan(cursor, 'MATCH', K.botOfferMatch, 'COUNT', 200);
         cursor = next;
         for (const k of keys) {
           const ts = await client.get(k);
           if (ts) {
-            const clientId = k.replace('omok:botOffer:', '');
+            const clientId = k.replace(botOfferPrefix, '');
             botOffer.set(clientId, Number(ts));
             botOfferHydrated++;
           }
         }
       } while (cursor !== '0');
-      console.log(`[valkey] hydrated: rooms=${roomHydrated} sessions=${sessionHydrated} queue=${queue.length} botOffer=${botOfferHydrated}`);
+      console.log(`[valkey] hydrated (prefix=${PREFIX}): rooms=${roomHydrated} sessions=${sessionHydrated} queue=${queue.length} botOffer=${botOfferHydrated}`);
     },
 
     async close() {
