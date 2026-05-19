@@ -343,16 +343,21 @@ export const updateRanking = (entries) => {
   const wrap = $('ranking-list');
   const count = $('ranking-count');
   const meExtra = $('me-rank-extra');
+  const toggle = $('ranking-toggle');
   if (!wrap) return;
   count.textContent = state.ranking.length;
   if (!state.ranking.length) {
     wrap.innerHTML = '<div class="rooms-empty">아직 랭킹 데이터가 없어요</div>';
     if (meExtra) meExtra.classList.add('hidden');
+    if (toggle) toggle.classList.add('hidden');
     return;
   }
   const myCid = state.clientId;
   const top = state.ranking;  // 서버가 이미 limit 적용 (기본 10)
   wrap.innerHTML = top.map((e, i) => renderRankItem(e, i + 1, { isMe: e.clientId === myCid })).join('');
+
+  // 4개 이상이면 토글 버튼 노출 — 기본 3개만 보이고 펼치면 전체.
+  if (toggle) toggle.classList.toggle('hidden', top.length <= 3);
 
   // 내가 top 안에 있으면 보조 행 숨김. 없으면 서버에서 별도로 제공 안 하니
   // (현재는 top 10 만 보냄) "내 정보 비공개" 처리 안 함 — 향후 확장 시 추가.
@@ -424,14 +429,32 @@ export const updateRecentGames = (entries) => {
   state.recentGames = Array.isArray(entries) ? entries : [];
   const wrap = $('recent-games-list');
   const count = $('recent-games-count');
+  const toggle = $('recent-games-toggle');
   if (!wrap) return;
   count.textContent = state.recentGames.length;
   if (!state.recentGames.length) {
     wrap.innerHTML = '<div class="rooms-empty">아직 종료된 대국이 없어요</div>';
+    if (toggle) toggle.classList.add('hidden');
     return;
   }
   wrap.innerHTML = state.recentGames.map(renderRecentGameItem).join('');
+  // 4개 이상이면 토글 버튼 노출.
+  if (toggle) toggle.classList.toggle('hidden', state.recentGames.length <= 3);
 };
+
+// 토글 버튼 wire up — module load 시 한 번만 (ES module 은 deferred 라 DOM ready 보장).
+const wireListToggle = (btnId, listId) => {
+  const btn = $(btnId);
+  const list = $(listId);
+  if (!btn || !list) return;
+  btn.addEventListener('click', () => {
+    const next = !list.classList.contains('expanded');
+    list.classList.toggle('expanded', next);
+    btn.textContent = next ? '접기 ▲' : '더보기 ▼';
+  });
+};
+wireListToggle('ranking-toggle', 'ranking-list');
+wireListToggle('recent-games-toggle', 'recent-games-list');
 
 // ---- 온라인 사용자 목록 팝업 ----
 export const showOnlineList = (nicknames) => {
