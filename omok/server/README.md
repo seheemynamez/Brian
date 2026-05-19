@@ -70,6 +70,36 @@ VALKEY_KEY_PREFIX=omok:dev      # 로컬. production 은 'omok:prod'
 쓰기 시점: 메모리 갱신 직후 fire-and-forget 으로 valkey 에 SET (write-through).
 읽기는 항상 메모리. 부팅 시 한 번 hydrate 로 메모리 cache 초기화.
 
+### Write-through 정책 (best-effort)
+
+valkey backend 의 write 는 **fire-and-forget**:
+
+1. 메모리 cache (Map / Array) 를 먼저 갱신
+2. valkey 명령을 비동기 호출 (`.catch` 만 걸려있고 await 안 함)
+3. 사용자 action 응답은 즉시 (valkey RTT 무시)
+
+이 정책의 의미:
+
+- **장점**: 사용자 action latency 가 valkey RTT (Aiven Bangalore ~200ms) 에 영향 없음.
+- **단점**: process crash + valkey 미도달 사이의 좁은 window (보통 수십 ms) 에 한해 마지막 변경 lost 가능. valkey 실패는 `[valkey] cmd fail:` 로 로깅되지만 사용자 action 은 성공으로 응답.
+- **회복**: 다음 write 가 자연 복구. room 단위로 전체 JSON 을 매번 SET 하기 때문에 partial write 누락이 다음 변경 시 사라짐.
+- **운영 트래픽 수준**: 현재 single Render 인스턴스 + 동시 게임 < 100 수준에선 fire-and-forget 으로 충분. 만일 일관성을 더 강하게 가져가려면 `store/valkey.js` 의 `fnf` 를 await 으로 바꿔 latency 와 트레이드 가능.
+
+### Production 가드
+
+`NODE_ENV=production` (Render 가 자동 설정) 에서 `STORE_BACKEND` 가 `valkey` 가 아니면 부팅 거부. env 누락으로 prod 가 memory backend 로 떠 데이터가 휘발되는 사고 방지.
+
+```
+Error: Production (NODE_ENV=production) 에서 STORE_BACKEND='memory' 거부.
+```
+
+임시 우회 (테스트 / 데이터 마이그레이션 등 의도된 경우):
+```
+ALLOW_MEMORY_STORE_IN_PROD=1
+```
+
+local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 기본값 (memory) 또는 명시 (valkey) 모두 동작.
+
 ## 프로토콜 (주요 메시지)
 
 클라이언트 → 서버:
