@@ -12,7 +12,7 @@ const {
   playerIdsPayload, playerStatusPayload, broadcastRoomsList,
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
-const { recordGameResult } = require('../domain/users');
+const { recordGameResult, buildPlayerRatings } = require('../domain/users');
 const { getSpectatorNames, sendSpectatorState } = require('./spectator');
 const {
   getBotColor, scheduleBotMove, afterSuccessfulMove,
@@ -73,6 +73,7 @@ const startGame = (room) => {
   const blackSlot = room.players.black;
   const whiteSlot = room.players.white;
   const nicknames = { black: blackSlot.nickname, white: whiteSlot.nickname };
+  const ratings = buildPlayerRatings(room);
   const base = {
     type: 'game_start',
     code: room.code,
@@ -80,6 +81,7 @@ const startGame = (room) => {
     board: room.board,
     turn: room.turn,
     nicknames,
+    ratings,
     playerStatus: playerStatusPayload(room),
     spectators: getSpectatorNames(room),
   };

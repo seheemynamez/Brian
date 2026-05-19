@@ -18,6 +18,28 @@ const recentGames = store.recentGames;
 
 const getUser = (clientId) => (clientId ? users.get(clientId) : null);
 
+// game_start / resume_success / spectate_success payload 용 — user 가 없어도
+// 추정 rating 반환 (생성 안 함). recordGameResult 가 호출돼야만 user 가 생성됨.
+const getRatingPreview = (clientId, isBot = false, botDifficulty = null) => {
+  const u = clientId ? users.get(clientId) : null;
+  if (u) return u.rating;
+  if (isBot && botDifficulty) {
+    const botKey = `_bot_${botDifficulty}`;
+    return BOT_INITIAL_RATING[botKey] ?? INITIAL_RATING;
+  }
+  return INITIAL_RATING;
+};
+
+// room.players 양쪽 색의 rating 을 한꺼번에 — 핸들러에서 game_start payload 빌드용.
+const buildPlayerRatings = (room) => {
+  const blk = room?.players?.black;
+  const wht = room?.players?.white;
+  return {
+    black: blk ? getRatingPreview(blk.clientId, blk.type === 'bot', blk.difficulty) : null,
+    white: wht ? getRatingPreview(wht.clientId, wht.type === 'bot', wht.difficulty) : null,
+  };
+};
+
 // 없으면 새로 만들고 valkey 에도 sync. 봇이면 봇 전용 초기 rating.
 // 있으면 nickname 만 마지막 값으로 업데이트 (마지막 사용한 닉 보존).
 const getOrCreateUser = (clientId, nickname, opts = {}) => {
@@ -141,4 +163,5 @@ const getRecentGames = (limit = 10) => recentGames.slice(0, limit);
 module.exports = {
   getUser, getOrCreateUser, recordGameResult,
   getTopRanking, getRecentGames,
+  getRatingPreview, buildPlayerRatings,
 };

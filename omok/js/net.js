@@ -8,6 +8,7 @@ import {
   setReconnectOverlay, updateOnlineCount, updatePlayerCards,
   updateTurnUI, updateSpectatorList, startTimerTick, stopTimerTick,
   showGameOver, showGameOverNeutral, updateRoomsList, showEmote, showOnlineList,
+  updateRanking, updateRecentGames,
 } from './ui.js';
 import { playSound } from './sound.js';
 import { drawBoard } from './board.js';
@@ -139,9 +140,11 @@ export const connect = () => {
       sendMessage(state.pendingDirectJoin);
       state.pendingDirectJoin = null;
     }
-    // 로비에 있다면 방 목록 즉시 요청 (자동 푸시 전 초기 상태)
+    // 로비에 있다면 방 목록 + 랭킹 + 최근 대국 즉시 요청 (자동 푸시 전 초기 상태)
     if (state.screenState === 'lobby') {
       sendMessage({ type: 'request_rooms_list' });
+      sendMessage({ type: 'request_ranking' });
+      sendMessage({ type: 'request_recent_games' });
     }
   });
   state.ws.addEventListener('close', () => {
@@ -191,6 +194,8 @@ const dispatch = (msg) => {
     case 'online_count':       return updateOnlineCount(msg.n);
     case 'online_list':        return showOnlineList(msg.nicknames);
     case 'rooms_list':         return updateRoomsList(msg.rooms);
+    case 'ranking_list':       return updateRanking(msg.entries);
+    case 'recent_games_list':  return updateRecentGames(msg.entries);
     case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
     case 'bot_offer':          return onBotOffer();
     case 'player_replaced':    return onPlayerReplaced();
@@ -239,6 +244,7 @@ const onMatched = (msg) => {
 const onGameStart = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
+  state.ratings = msg.ratings || { black: null, white: null };
   state.myNick = msg.nicknames[msg.you];
   state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
@@ -269,6 +275,7 @@ const onSpectateSuccess = (msg) => {
   state.role = 'spectator';
   state.myColor = null;
   state.nicknames = msg.nicknames;
+  state.ratings = msg.ratings || { black: null, white: null };
   state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
   state.currentTurn = msg.turn;
@@ -307,6 +314,7 @@ const onSpectateSuccess = (msg) => {
 const onResumeSuccess = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
+  state.ratings = msg.ratings || { black: null, white: null };
   state.myNick = msg.nicknames[msg.you];
   state.playerStatus = msg.playerStatus || { black: 'online', white: 'online' };
   state.board = msg.board;
