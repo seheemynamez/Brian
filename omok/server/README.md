@@ -7,8 +7,13 @@ Korean Gomoku WebSocket server. 정적 파일 호스팅 (omok/ 디렉토리) + `
 ```bash
 npm install
 npm start             # 기본 — memory backend, port 8080
-npm test              # 회귀 테스트 (memory backend, 짧은 grace timer)
+npm test              # 회귀 테스트 (memory backend, 57 시나리오)
+npm run test:valkey   # 같은 테스트를 valkey backend 로 (.env 의 VALKEY_URL 사용, prefix omok:test 자동격리)
+npm run test:hydrate  # 부팅 hydrate 검증 — 방생성 → SIGTERM → restart → resume 일치 확인
 ```
+
+수동 스모크 체크리스트: `scripts/MANUAL_SMOKE.md`
+Render 프로덕션 검증 절차: `scripts/RENDER_VERIFY.md`
 
 `.env` 파일을 만들면 `node --env-file-if-exists=.env server.js` 가 자동 로드합니다.
 
