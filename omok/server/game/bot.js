@@ -389,17 +389,18 @@ const searchBestMove = (board, color, depth, topK) => {
 // ============================================================
 // 난이도별 generator
 // ============================================================
-// 하: 2-ply 미니맥스 (결정적, 랜덤 없음).
-//     상대의 1수 응수까지 보기 때문에 열린3 / 단4 같은 기본 위협을 사전 차단.
-//     즉시 승리수도 자동으로 발견 (searchBestMove 내부 winLine 처리).
-const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 20);
+// 하: 2-ply × top 5 — 상대 1수 응수는 보지만 후보 폭을 좁혀
+//     루트 정렬에 의존하므로 좋은 수도 자주 놓침. 입문자가 21% 승률 → ~50% 목표.
+//     즉시 승리수 (5목) 는 root 에서 무조건 잡힘.
+const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 5);
 
-// 중: 4-ply × top 12 — depth +1 로 상대 응수 / 자기 응수까지 한 단계 더 깊이.
-//     폭은 12 로 좁혀도 루트 무브 정렬로 핵심 후보는 우선 탐색.
-const generateMoveMedium = (board, color) => searchBestMove(board, color, 4, 12);
+// 중: 3-ply × top 15 — depth 한 단계 줄여 상대 응수의 응수까지 보지 않음.
+//     폭은 넓혀도 깊이 부족으로 콤보·강제 응수 차단력 ↓.
+//     사용자 13% 승률 → ~35-45% 로 적정 도전 수준.
+const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 15);
 
 // 상: 5-ply × top 8 — 깊이 한 단계 더 올려 자기 콤보·상대 강제 응수를 2수 더 깊이 추적.
-//     폭은 8 로 좁혀 α-β 가지치기 효율 ↑.
+//     폭은 8 로 좁혀 α-β 가지치기 효율 ↑. 의도된 끝판 — 변경 없음.
 const generateMoveHard = (board, color) => searchBestMove(board, color, 5, 8);
 
 const GENERATORS = {
