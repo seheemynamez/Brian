@@ -201,7 +201,7 @@ const dispatch = (msg) => {
     case 'online_count':       return updateOnlineCount(msg.n);
     case 'online_list':        return showOnlineList(msg.nicknames);
     case 'rooms_list':         return updateRoomsList(msg.rooms);
-    case 'ranking_list':       return updateRanking(msg.entries);
+    case 'ranking_list':       return updateRanking(msg);
     case 'recent_games_list':  return updateRecentGames(msg.entries);
     case 'emote':              return showEmote(msg.from, msg.emoji, msg.text);
     case 'bot_offer':          return onBotOffer();

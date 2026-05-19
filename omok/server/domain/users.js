@@ -160,8 +160,35 @@ const getTopRanking = (limit = 10) => {
 
 const getRecentGames = (limit = 10) => recentGames.slice(0, limit);
 
+// 특정 clientId 의 ranking entry + 전체 순위. user 미등록이면 null.
+// getTopRanking 과 동일한 정렬 기준 (rating desc, wins desc, losses asc).
+const getMyRankEntry = (clientId) => {
+  if (!clientId) return null;
+  const u = users.get(clientId);
+  if (!u) return null;
+  const arr = Array.from(users.values());
+  arr.sort((a, b) => {
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return a.losses - b.losses;
+  });
+  const idx = arr.findIndex((x) => x.clientId === clientId);
+  if (idx < 0) return null;
+  return {
+    rank: idx + 1,
+    clientId: u.clientId,
+    nickname: u.nickname,
+    rating: u.rating,
+    tier: getTier(u.rating),
+    wins: u.wins,
+    losses: u.losses,
+    draws: u.draws,
+    isBot: u.isBot,
+  };
+};
+
 module.exports = {
   getUser, getOrCreateUser, recordGameResult,
-  getTopRanking, getRecentGames,
+  getTopRanking, getRecentGames, getMyRankEntry,
   getRatingPreview, buildPlayerRatings,
 };

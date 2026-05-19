@@ -114,11 +114,13 @@ const broadcastRankingUpdate = () => {
     _rankingPending = false;
     const currentWss = getWss();
     if (!currentWss) return;
-    const { getTopRanking } = require('../domain/users');
+    const { getTopRanking, getMyRankEntry } = require('../domain/users');
     const entries = getTopRanking(10);
-    const payload = JSON.stringify({ type: 'ranking_list', entries });
+    // ws 별 me 포함 — 각자 자기 정보. JSON.stringify 매번 비용은 있지만 ws 수가 적어 무해.
     for (const c of currentWss.clients) {
-      if (c.readyState === c.OPEN) c.send(payload);
+      if (c.readyState !== c.OPEN) continue;
+      const me = getMyRankEntry(c.clientId);
+      c.send(JSON.stringify({ type: 'ranking_list', entries, me }));
     }
   });
 };

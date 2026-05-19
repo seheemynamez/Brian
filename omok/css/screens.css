@@ -633,6 +633,17 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   font-size: 11px;
   opacity: 0.75;
 }
+/* 게임 화면 player-me-badge 와 같은 톤 — 본인 row 옆 작은 청록 pill */
+.rank-me-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: var(--accent-1);
+  color: #001624;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
 .rank-rating {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
