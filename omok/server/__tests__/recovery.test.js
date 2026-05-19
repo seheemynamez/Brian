@@ -1003,6 +1003,81 @@ test('J2: room 자체에도 timer field 가 없음 (runtime 분리)', async () =
 });
 
 // ============================================================
+// 랭킹 / 레이팅
+// ============================================================
+// broadcast 의 ranking_list (top 10) 가 먼저 도착해 새 user 가 그 안에 없을 수 있으니,
+// request_ranking 보내기 전 이전 ranking_list / recent_games_list 메시지를 비워둔다.
+// request 응답은 limit 50 으로 새 user 가 누적되어도 무조건 찾을 수 있게.
+const clearRankingMessages = (ws) => {
+  ws.received = ws.received.filter((m) =>
+    m.type !== 'ranking_list' && m.type !== 'recent_games_list');
+};
+
+test('RK1: 봇 게임 leave_room → 사람 rating 감소 + recent_games 적재', async () => {
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'RKLeaver', clientId: 'cid-rk1' });
+  sendJson(ws, { type: 'create_bot_game', nickname: 'RKLeaver', difficulty: 'easy', first: 'me' });
+  await waitForType(ws, 'game_start');
+  sendJson(ws, { type: 'leave_room' });
+  // leave_room 본인 ws 는 game_over 받지 않음 (다른 player/spectator 만). 잠시 대기로 처리 완료.
+  await sleep(300);
+
+  clearRankingMessages(ws);
+  sendJson(ws, { type: 'request_ranking', limit: 50 });
+  const list = await waitForType(ws, 'ranking_list');
+  const me = list.entries.find((e) => e.clientId === 'cid-rk1');
+  assert(me, 'me not in ranking after game');
+  assert(me.rating < 1500, `expected rating < 1500 after loss, got ${me.rating}`);
+  assert(me.losses === 1, `expected losses=1, got ${me.losses}`);
+  assert(typeof me.tier === 'string' && me.tier.length > 0, 'tier missing');
+
+  clearRankingMessages(ws);
+  sendJson(ws, { type: 'request_recent_games' });
+  const games = await waitForType(ws, 'recent_games_list');
+  const myGame = games.entries.find((g) =>
+    g.black.clientId === 'cid-rk1' || g.white.clientId === 'cid-rk1');
+  assert(myGame, 'my game not in recent_games');
+  assert(myGame.reason === 'opponent_left', `expected reason=opponent_left, got ${myGame.reason}`);
+  assert(myGame.isBot === true, 'expected isBot=true');
+});
+
+test('RK2: 봇 user 도 ranking 에 등록', async () => {
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'RKObs', clientId: 'cid-rk2' });
+  clearRankingMessages(ws);
+  sendJson(ws, { type: 'request_ranking', limit: 50 });
+  const list = await waitForType(ws, 'ranking_list');
+  // RK1 시나리오 후 easy 봇 user 가 생성되어있어야 함
+  const bot = list.entries.find((e) => e.clientId === '_bot_easy');
+  assert(bot, '_bot_easy not in ranking');
+  assert(bot.isBot === true, 'bot.isBot=true 기대');
+  assert(bot.rating > 1000, `expected easy bot rating > 1000 (RK1 에서 한 번 이김), got ${bot.rating}`);
+  assert(bot.wins >= 1, `expected bot.wins>=1, got ${bot.wins}`);
+  assert(typeof bot.tier === 'string', 'bot tier missing');
+});
+
+test('RK3: PVP leave_room → 떠난 쪽 패배 + ratings 변동', async () => {
+  const { host, guest, code } = await bootstrapRoom({
+    hostNick: 'RKHost', hostClientId: 'cid-rk3-host',
+    guestNick: 'RKGuest', guestClientId: 'cid-rk3-guest',
+  });
+  void code;
+  sendJson(host, { type: 'leave_room' });
+  await waitForType(guest, 'game_over');
+
+  clearRankingMessages(host);
+  sendJson(host, { type: 'request_ranking', limit: 50 });
+  const list = await waitForType(host, 'ranking_list');
+  const h = list.entries.find((e) => e.clientId === 'cid-rk3-host');
+  const g = list.entries.find((e) => e.clientId === 'cid-rk3-guest');
+  assert(h && g, 'host/guest not in ranking');
+  // zero-sum
+  assert(h.rating + g.rating === 3000, `zero-sum 깨짐: host=${h.rating} guest=${g.rating}`);
+  assert(h.rating < 1500 && g.rating > 1500, 'host should lose, guest should win');
+  assert(h.losses === 1 && g.wins === 1, `wins/losses 카운트 오류`);
+});
+
+// ============================================================
 // runner
 // ============================================================
 (async () => {

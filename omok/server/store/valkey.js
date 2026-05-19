@@ -14,6 +14,9 @@
 //   {PREFIX}:sessions           — SET of session ids
 //   {PREFIX}:queue              — queue array JSON (단일 키)
 //   {PREFIX}:botOffer:{cid}     — 봇 제안 발송 시각 (string, EX 120s)
+//   {PREFIX}:user:{clientId}    — user JSON (rating / wins / losses / draws / nickname)
+//   {PREFIX}:users              — SET of clientIds (랭킹 인덱스)
+//   {PREFIX}:recent_games       — LIST of game result JSON (LPUSH + LTRIM 으로 최근 N개 유지)
 //
 // PREFIX 는 VALKEY_KEY_PREFIX 환경변수로 override. dev/prod 가 같은 valkey
 // 인스턴스를 공유할 때 키 충돌 방지 (예: 'omok:dev' vs 'omok:prod').
@@ -24,6 +27,7 @@ const Redis = require('ioredis');
 const { serializeRoom, deserializeRoom } = require('./serialize');
 
 const PREFIX = process.env.VALKEY_KEY_PREFIX || 'omok';
+const RECENT_GAMES_CAP = Number(process.env.RECENT_GAMES_CAP) || 100;
 const K = {
   room: (code) => `${PREFIX}:room:${code}`,
   rooms: `${PREFIX}:rooms`,
@@ -32,6 +36,9 @@ const K = {
   queue: `${PREFIX}:queue`,
   botOffer: (cid) => `${PREFIX}:botOffer:${cid}`,
   botOfferMatch: `${PREFIX}:botOffer:*`,
+  user: (cid) => `${PREFIX}:user:${cid}`,
+  users: `${PREFIX}:users`,
+  recentGames: `${PREFIX}:recent_games`,
 };
 
 const createValkeyStore = () => {
@@ -56,12 +63,14 @@ const createValkeyStore = () => {
   const sessions = new Map();
   const queue = [];
   const botOffer = new Map();
+  const users = new Map();         // clientId → user JSON
+  const recentGames = [];          // 최신 먼저 (unshift). hydrate 시 valkey 의 LRANGE 0 N-1 을 그대로.
 
   const fnf = (p) => Promise.resolve(p).catch((e) => console.error('[valkey] cmd fail:', e && e.message));
 
   const api = {
     backend: 'valkey',
-    rooms, sessions, queue, botOffer,
+    rooms, sessions, queue, botOffer, users, recentGames,
     client,
 
     async connect() {
@@ -130,7 +139,27 @@ const createValkeyStore = () => {
           }
         }
       } while (cursor !== '0');
-      console.log(`[valkey] hydrated (prefix=${PREFIX}): rooms=${roomHydrated} sessions=${sessionHydrated} queue=${queue.length} botOffer=${botOfferHydrated}`);
+      // Users (랭킹용 — 모든 user 메모리에 캐싱)
+      const cids = await client.smembers(K.users);
+      let userHydrated = 0;
+      for (const cid of cids) {
+        const json = await client.get(K.user(cid));
+        if (json) {
+          try {
+            users.set(cid, JSON.parse(json));
+            userHydrated++;
+          } catch (e) {
+            console.error('[valkey] user hydrate fail', cid, e && e.message);
+          }
+        }
+      }
+      // Recent games (LIST, 최신 먼저)
+      const gamesJson = await client.lrange(K.recentGames, 0, RECENT_GAMES_CAP - 1);
+      recentGames.length = 0;
+      for (const j of gamesJson) {
+        try { recentGames.push(JSON.parse(j)); } catch {}
+      }
+      console.log(`[valkey] hydrated (prefix=${PREFIX}): rooms=${roomHydrated} sessions=${sessionHydrated} queue=${queue.length} botOffer=${botOfferHydrated} users=${userHydrated} recentGames=${recentGames.length}`);
     },
 
     async close() {
@@ -171,6 +200,21 @@ const createValkeyStore = () => {
     deleteBotOfferFromStore(clientId) {
       if (!clientId) return;
       fnf(client.del(K.botOffer(clientId)));
+    },
+    // user — rating / wins / losses / draws 갱신 시 호출. 메모리 cache 는 caller 가 set.
+    persistUser(clientId, user) {
+      if (!clientId || !user) return;
+      fnf(client.set(K.user(clientId), JSON.stringify(user)));
+      fnf(client.sadd(K.users, clientId));
+    },
+    // recent game — LIST 의 head 에 push + 마지막 cap 까지만 유지.
+    // 메모리 cache 도 동일하게 unshift + cap.
+    persistRecentGame(entry) {
+      if (!entry) return;
+      recentGames.unshift(entry);
+      if (recentGames.length > RECENT_GAMES_CAP) recentGames.length = RECENT_GAMES_CAP;
+      fnf(client.lpush(K.recentGames, JSON.stringify(entry)));
+      fnf(client.ltrim(K.recentGames, 0, RECENT_GAMES_CAP - 1));
     },
   };
   return api;

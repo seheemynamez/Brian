@@ -103,6 +103,43 @@ const broadcastRoomsList = () => {
   });
 };
 
+// 랭킹 변경 시 모든 연결된 클라에 push. 게임 종료 직후 호출.
+// rooms_list 와 동일한 1-tick 합치기 패턴.
+let _rankingPending = false;
+const broadcastRankingUpdate = () => {
+  const wssRef = getWss();
+  if (!wssRef || _rankingPending) return;
+  _rankingPending = true;
+  setImmediate(() => {
+    _rankingPending = false;
+    const currentWss = getWss();
+    if (!currentWss) return;
+    const { getTopRanking } = require('../domain/users');
+    const entries = getTopRanking(10);
+    const payload = JSON.stringify({ type: 'ranking_list', entries });
+    for (const c of currentWss.clients) {
+      if (c.readyState === c.OPEN) c.send(payload);
+    }
+  });
+};
+
+let _recentGamesPending = false;
+const broadcastRecentGamesUpdate = () => {
+  const wssRef = getWss();
+  if (!wssRef || _recentGamesPending) return;
+  _recentGamesPending = true;
+  setImmediate(() => {
+    _recentGamesPending = false;
+    const currentWss = getWss();
+    if (!currentWss) return;
+    const { getRecentGames } = require('../domain/users');
+    const payload = JSON.stringify({ type: 'recent_games_list', entries: getRecentGames(10) });
+    for (const c of currentWss.clients) {
+      if (c.readyState === c.OPEN) c.send(payload);
+    }
+  });
+};
+
 module.exports = {
   send,
   sendToConnection,
@@ -115,4 +152,6 @@ module.exports = {
   playerStatusPayload,
   broadcastOnlineCount,
   broadcastRoomsList,
+  broadcastRankingUpdate,
+  broadcastRecentGamesUpdate,
 };
