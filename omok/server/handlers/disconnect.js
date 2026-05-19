@@ -83,11 +83,16 @@ const onPlayerDisconnect = (ws) => {
     return;
   }
 
-  // 봇 게임이라도 사람 게임과 완전히 동일한 흐름.
-  // turn timer / 봇 timer 멈추지 않음 — 사용자가 끊긴 동안에도 봇은 자기 차례면 응수하고,
-  // turn_skipped 가 발생하면 봇이 둠. 두 timer (turn / disconnect grace) 가 동시에 흘러
-  // 어느 쪽이든 먼저 만료되는 쪽이 종료 trigger. 사람 + 봇 둘 다 멈춘 채 방이 방치되는
-  // 상황 방지.
+  // PVP 는 기존대로 — turn timer / 봇 timer (없음) 가 동시에 흘러 grace 만료 또는
+  //   turn timer 만료 중 먼저 발동하는 쪽이 종료 trigger. 양쪽 다 멈춰 방치되는 상황 방지.
+  // 봇 게임은 사람이 끊긴 동안 game 자체를 일시정지 — turn timer + 봇 응수 schedule 멈춤.
+  //   이유: deploy / 일시 네트워크 끊김 사이에 봇이 사용자 차례 timeout 을 반복 흡수해
+  //   board 가 사용자 모르게 진행되는 사고 방지. resume_session / clientId reclaim 시 재개.
+  //   봇은 시간 손해 없으니 멈춰도 무해. grace 만료 시 abandon 처리는 그대로.
+  if (room.hasBot && room.status === 'playing') {
+    clearTurnTimer(room);
+    cancelBotTimers(room);
+  }
   const myColor = ws.color;
   const deadline = Date.now() + DISCONNECT_GRACE_MS;
   // slot 자체는 nullify 하지 않는다 (resume 시 메타 그대로 사용). ws 만 끊겼으니

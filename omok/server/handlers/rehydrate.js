@@ -14,6 +14,16 @@ const rehydrateTimers = () => {
   const store = getStore();
   for (const [code, room] of store.rooms) {
     if (room.status !== 'playing') continue;
+
+    // 봇 게임은 boot 직후 사람 ws 가 없으므로 timer / 봇 schedule 등록하지 않는다.
+    // 사람이 resume_session 또는 clientId reclaim 으로 돌아오면 그 핸들러가 startTurnTimer
+    // + scheduleBotMove 시작. boot 직후에 등록하면 사람이 reconnect 하기 전에 봇이 board
+    // 를 dominate 하는 사고 발생 (disconnect.js 와 같은 정책).
+    if (room.hasBot) {
+      log.event('room_rehydrated', { code, status: room.status, gameId: room.gameId, turn: room.turn, paused: 'bot_disconnect' });
+      continue;
+    }
+
     const now = Date.now();
     const remaining = (room.turnDeadline || 0) - now;
     if (remaining > 0) {
@@ -27,11 +37,6 @@ const rehydrateTimers = () => {
     } else {
       // turnDeadline 0 — 아직 게임 시작 안한 케이스 (혹시 모를 비정상). startTurnTimer 새로.
       startTurnTimer(room);
-    }
-    // 봇 차례면 봇 응수 스케줄링 재개
-    if (room.hasBot) {
-      const botColor = getBotColor(room);
-      if (botColor && room.turn === botColor) scheduleBotMove(room);
     }
     log.event('room_rehydrated', { code, status: room.status, gameId: room.gameId, turn: room.turn });
   }
