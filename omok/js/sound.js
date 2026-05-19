@@ -5,19 +5,28 @@
 import { state } from './state.js';
 
 let audioCtx = null;
-let audioReady = false;
 
+// AudioContext 의 lifecycle:
+//   created (state='suspended') --[user gesture 안의 resume()]--> running
+//   running --[브라우저 / 시스템 sleep / 탭 background]--> suspended (자동)
+// 따라서 한 번 만들고 끝이 아니라, suspended 일 때 매번 resume 시도해야 한다.
+// resume() 은 user gesture 밖에선 reject — silent catch.
 export const initAudio = () => {
-  if (audioReady) return;
-  audioReady = true;
-  try {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-  } catch {}
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch { return; }
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
 };
 
 const tone = (freq, duration, type = 'sine', volume = 0.18) => {
   if (state.muted || !audioCtx) return;
+  // 탭 백그라운드 / 시스템 sleep 후 자동 suspend 된 경우 매 사운드마다 복구 시도.
+  // 호출 시점이 user gesture 안이면 resume 성공해서 즉시 들림. 아니면 다음 클릭 때 복구.
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
   const t0 = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
