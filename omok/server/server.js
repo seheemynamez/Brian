@@ -169,3 +169,31 @@ wss.on('close', () => clearInterval(heartbeatTimer));
     });
   });
 })();
+
+// ============================================================
+// Graceful shutdown — Render redeploy / 수동 SIGTERM 대응.
+// ============================================================
+// 모든 ws 에 server_restarting 알림 + close(1012) → 클라가 명시적 "서버 업데이트 중" 표시.
+// valkey 의 write-through 가 fire-and-forget 이라 마지막 변경이 1.5초 안에 도달함을
+// 100% 보장 못 하지만, room state 는 매 move 마다 persist 되어 거의 최신이다.
+// boot 후 hydrate + rehydrateTimers 가 새 grace timer 등록 → 90s 안에 reconnect 시 정상.
+let _shuttingDown = false;
+const gracefulShutdown = (signal) => {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  log.event('server_shutdown', { signal });
+  const payload = JSON.stringify({ type: 'server_restarting' });
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN) {
+      try { ws.send(payload); } catch {}
+      try { ws.close(1012, 'restarting'); } catch {}  // 1012 = Service Restart
+    }
+  }
+  // Render 의 graceful period 안에서 정리. 1.5s 면 ws send 다 flush 되기 충분.
+  setTimeout(() => {
+    try { httpServer.close(); } catch {}
+    process.exit(0);
+  }, 1500);
+};
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));

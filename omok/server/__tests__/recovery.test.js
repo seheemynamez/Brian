@@ -1078,6 +1078,34 @@ test('RK3: PVP leave_room → 떠난 쪽 패배 + ratings 변동', async () => {
 });
 
 // ============================================================
+// 서버 deploy 시뮬레이션 — disconnect 동안 timer 동결 + reconnect 시 재개
+// ============================================================
+test('D1: 봇 게임 disconnect 후 reconnect → 보드/턴 보존 + timer 재개', async () => {
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'D1', clientId: 'cid-d1' });
+  sendJson(ws, { type: 'create_bot_game', nickname: 'D1', difficulty: 'easy', first: 'me' });
+  const gs = await waitForType(ws, 'game_start');
+  const sid = gs.sessionId;
+  sendJson(ws, { type: 'move', row: 7, col: 7 });
+  await waitForType(ws, 'move');
+  await sleep(600);                      // 봇 응수
+  ws.close();
+  await sleep(300);
+
+  const ws2 = await open();
+  sendJson(ws2, { type: 'resume_session', sessionId: sid, clientId: 'cid-d1', nickname: 'D1' });
+  const resumed = await waitForType(ws2, 'resume_success');
+  assert(resumed.board[7][7] === 1, `흑돌 (7,7) 보존 필요`);
+  // 봇 게임 + 사람 reconnect → bothPlayersOnline true → turn timer 시작
+  await waitForType(ws2, 'turn_started', 1500);
+});
+
+// D2 (PVP 양쪽 reconnect 시 timer 재개) 는 turn_started broadcast 의 timing 이
+// PR 안에서 안정적으로 검증하기 어려워 보류. 대신 npm run test:hydrate (PVP 시나리오)
+// 가 SIGTERM/restart 후 보드 보존 검증. 본 PR 의 핵심 로직 (bothPlayersOnline 분기)
+// 은 D1 (봇 게임) 으로 cover — 봇 게임/PVP 모두 동일 코드 경로.
+
+// ============================================================
 // runner
 // ============================================================
 (async () => {
