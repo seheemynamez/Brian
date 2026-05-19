@@ -63,6 +63,16 @@ const onResumeSession = (ws, msg) => {
   const oppColor = otherColor(sess.color);
   sendToPlayer(room, oppColor, { type: 'opponent_reconnected', color: sess.color });
   forEachSpectatorWs(room, (sWs) => send(sWs, { type: 'opponent_reconnected', color: sess.color }));
+  // 봇 게임은 disconnect 시 turn timer + 봇 schedule 멈춰뒀음 (disconnect.js).
+  // resume 시 사용자가 다시 둘 수 있게 turn timer 새로 시작 + 봇 차례면 봇 schedule.
+  // Lazy require — game/bot 이 resume 을 간접 참조할 수 있어 circular 회피.
+  if (room.hasBot && room.status === 'playing') {
+    const { startTurnTimer } = require('./game');
+    const { getBotColor, scheduleBotMove } = require('./bot');
+    startTurnTimer(room);
+    const botColor = getBotColor(room);
+    if (botColor && room.turn === botColor) scheduleBotMove(room);
+  }
   send(ws, {
     type: 'resume_success',
     code: room.code,
