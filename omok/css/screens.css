@@ -635,6 +635,34 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   font-variant-numeric: tabular-nums;
 }
 
+/* 펼치기 / 접기 토글 버튼 — 랭킹 / 최근 대국 공용 */
+.list-toggle {
+  align-self: center;
+  margin-top: 4px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.list-toggle:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+}
+.list-toggle.hidden { display: none; }
+
+/* 기본 — 4번째 이후는 숨김. .expanded 이면 전체 노출.
+   rank-item / recent-game-item 둘 다 적용. */
+.ranking-list:not(.expanded) > .rank-item:nth-child(n+4),
+.recent-games-list:not(.expanded) > .recent-game-item:nth-child(n+4) {
+  display: none;
+}
+
 /* 내 순위가 top 10 밖일 때 추가로 보여주는 별도 행 */
 .ranking-me-extra {
   margin-top: 4px;
