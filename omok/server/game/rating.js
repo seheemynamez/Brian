@@ -15,11 +15,12 @@ const INITIAL_RATING = 1200;
 const K_FACTOR = 32;
 
 // 봇 초기 rating — bot.js 의 BOT_IDS 와 매칭.
-// easy=Bronze, medium=Gold, hard=Diamond 시작.
+// 사람 user 와 동일하게 INITIAL_RATING 부터 시작. 실제 봇 강도 차이는 Elo 가
+// 게임 결과로 자연 보정 (easy 가 많이 지면 rating 낮아짐, hard 는 거의 안 짐).
 const BOT_INITIAL_RATING = {
-  _bot_easy: 1000,
-  _bot_medium: 1500,
-  _bot_hard: 1900,
+  _bot_easy:   INITIAL_RATING,
+  _bot_medium: INITIAL_RATING,
+  _bot_hard:   INITIAL_RATING,
 };
 
 // Elo expected score: A 가 B 에게 이길 기댓값 (0~1).
