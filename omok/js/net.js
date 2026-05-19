@@ -18,8 +18,8 @@ import { drawBoard } from './board.js';
 // - 그 외(로컬 개발, LAN, Render 직접 접속): 같은 origin
 // ============================================================
 // Render 배포 후 실제 URL로 교체 (예: wss://omok-server-xxxx.onrender.com/ws)
-const PROD_WS_URL     = 'wss://omok-server-u4rp.onrender.com/ws';
-const PROD_SHARE_BASE = 'https://omok-server-u4rp.onrender.com';
+const PROD_WS_URL     = 'wss://omok-server-5guo.onrender.com/ws';
+const PROD_SHARE_BASE = 'https://omok-server-5guo.onrender.com';
 
 const WS_URL = (() => {
   if (location.hostname === 'seheemynamez.github.io') return PROD_WS_URL;
@@ -128,11 +128,9 @@ export const connect = () => {
     // 로비 닉네임과 안정 식별자(clientId)를 서버에 알려둠 — 온라인 목록 + 차후 랭킹 기록용.
     if (state.myNick) sendMessage({ type: 'set_nickname', nickname: state.myNick, clientId: state.clientId });
     if (state.sessionId) {
-      // 게임 중 / 방 만들기 대기 중 / 재대국 대기 중 — 어느 상태이든 세션 복구 시도
+      // 게임 중 / 방 만들기 대기 중 / 재대국 대기 중 / 관전 중 — 어느 상태이든
+      // 세션 복구 시도. (Phase 2 이후 관전자도 sessionId 발급 → 일반 resume 흐름.)
       sendMessage({ type: 'resume_session', sessionId: state.sessionId, nickname: state.myNick });
-    } else if (state.role === 'spectator' && state.currentRoomCode && state.screenState === 'game') {
-      // 관전 중 끊김 → 같은 방으로 자동 재관전 (이슈 #9)
-      sendMessage({ type: 'spectate_room', code: state.currentRoomCode, nickname: state.myNick });
     } else if (state.waitingMode === 'queue' && state.screenState === 'waiting') {
       // 랜덤 매칭 대기 중 끊김 — 큐에 다시 등록
       sendMessage({ type: 'queue_join', nickname: state.myNick, clientId: state.clientId });

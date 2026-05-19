@@ -3,37 +3,30 @@
 // ============================================================
 
 const crypto = require('crypto');
-const { emptyBoard } = require('./game-logic');
-const connections = require('./connections');
+const { emptyBoard } = require('../game/game-logic');
+const connections = require('../connections');
+const { getStore } = require('../store');
 
 const MAX_NICK_LEN = 12;
 
-const rooms = new Map();      // code -> Room
-//
-// 자동 매칭 대기 큐. 항목: { connectionId, clientId, nickname, joinedAt }.
-// connectionId 가 unique key — handler 가 ws 가 아니라 connectionId 로 enqueue/dequeue.
-// 송신/타이머는 connections.getWsByConnectionId 로 ws 를 매번 resolve.
-// (이슈 #31 PR #2 — queue 에서 ws 객체 제거)
-const queue = [];
-//
-// sessionId → {
-//   role:        'player' | 'spectator',
-//   code:        roomCode,
-//   color?:      'black' | 'white'  (player only),
-//   clientId?:   localStorage UUID  (사람) | '_bot_easy/_medium/_hard'  (봇),
-//   nickname:    string,
-//   lastSeenAt:  ms epoch
-// }
-//
-// 이슈 #31: 도메인 상태의 unique key 로 ws 를 쓰지 않기 위해 session 정보 풍부화.
-// player·spectator 모두 session 발급 가능.
-const sessions = new Map();
+// 도메인 state 는 store 가 보관. backend 가 'memory' 면 in-process Map / Array,
+// 'valkey' 면 메모리 cache + Aiven 등 외부 redis-compat 으로 write-through.
+// (인터페이스는 Map / Array 와 동일해서 backend 교체에도 호출 측 코드 안 변함.)
+const store = getStore();
+const rooms = store.rooms;        // code -> Room
+const queue = store.queue;        // [{ connectionId, clientId, nickname, joinedAt, ... }]
+const sessions = store.sessions;  // sessionId -> { role, code, color?, clientId, nickname, lastSeenAt, ... }
 
 let onlineCount = 0;
 
 // ---- 접근자 ----
+// 모든 write 는 메모리 cache + (valkey backend 면) 외부 store 둘 다 동기 (write-through).
+// memory backend 에선 persist* 가 no-op.
 const getRoom    = (code) => rooms.get(code);
-const setRoom    = (code, room) => rooms.set(code, room);
+const setRoom    = (code, room) => {
+  rooms.set(code, room);
+  store.persistRoom(code, room);
+};
 const deleteRoom = (code) => {
   const room = rooms.get(code);
   if (room) {
@@ -44,6 +37,13 @@ const deleteRoom = (code) => {
     for (const sid of room.spectatorSessionIds || []) dropSession(sid);
   }
   rooms.delete(code);
+  store.deleteRoomFromStore(code);
+};
+
+// room 의 in-place mutation (board, status, turn 등) 후 호출 — store 에 sync.
+const markRoomDirty = (room) => {
+  if (!room || !room.code) return;
+  store.persistRoom(room.code, room);
 };
 
 // 로비 표시용 방 목록 요약 — 'over' 는 곧 사라질 상태라 굳이 노출하지 않음
@@ -69,8 +69,10 @@ const dropSession = (sid) => {
   if (!sid) return;
   sessions.delete(sid);
   connections.unbindSession(sid);
+  store.deleteSessionFromStore(sid);
 };
 // 세션 lastSeenAt 갱신 — heartbeat / 메시지 수신 시 호출.
+// touchSession 은 자주 호출돼서 valkey sync 안 함 (lastSeenAt 정확도가 그렇게 중요하지 않음).
 const touchSession = (sid) => {
   if (!sid) return;
   const sess = sessions.get(sid);
@@ -83,12 +85,15 @@ const enqueue = (entry) => {
   if (!entry || !entry.connectionId) return;
   if (queue.some((e) => e.connectionId === entry.connectionId)) return;
   queue.push(entry);
+  store.persistQueue();
 };
 const dequeueByConnectionId = (cid) => {
   if (!cid) return null;
   const i = queue.findIndex((e) => e.connectionId === cid);
   if (i < 0) return null;
-  return queue.splice(i, 1)[0];
+  const removed = queue.splice(i, 1)[0];
+  store.persistQueue();
+  return removed;
 };
 
 const incrementOnline = () => ++onlineCount;
@@ -143,30 +148,6 @@ const createRoom = (code) => ({
   updatedAt: Date.now(),
 });
 
-// Valkey 같은 store 에 저장하기 위한 직렬화 가능 형태로 변환.
-// Set 들은 array 로 풀고, 비-직렬화 필드 (있다면) 는 제외.
-const getSerializableRoomState = (room) => ({
-  code: room.code,
-  gameId: room.gameId,
-  players: {
-    black: room.players.black ? { ...room.players.black } : null,
-    white: room.players.white ? { ...room.players.white } : null,
-  },
-  spectatorSessionIds: Array.from(room.spectatorSessionIds || []),
-  board: room.board,
-  turn: room.turn,
-  turnDeadline: room.turnDeadline || 0,
-  status: room.status,
-  winner: room.winner,
-  winLine: room.winLine,
-  lastMove: room.lastMove,
-  rematchVotes: Array.from(room.rematchVotes || []),
-  loser: room.loser,
-  hasBot: !!room.hasBot,
-  createdAt: room.createdAt || 0,
-  updatedAt: room.updatedAt || 0,
-});
-
 // 새 게임 시작마다 발급. 랭킹·통계 키.
 const genGameId = () => crypto.randomBytes(10).toString('base64url');
 
@@ -184,7 +165,7 @@ const createPlayerSession = (room, color, opts) => {
     type,
   };
   if (type === 'bot') slot.difficulty = difficulty;
-  sessions.set(sid, {
+  const sessData = {
     role: 'player',
     code: room.code,
     color,
@@ -193,9 +174,12 @@ const createPlayerSession = (room, color, opts) => {
     type,
     ...(type === 'bot' && { difficulty }),
     lastSeenAt: Date.now(),
-  });
+  };
+  sessions.set(sid, sessData);
+  store.persistSession(sid, sessData);
   if (ws && type === 'human') connections.bindSession(ws, sid);
   room.players[color] = slot;
+  store.persistRoom(room.code, room);
   return slot;
 };
 
@@ -234,26 +218,28 @@ const attachSpectatorSession = (ws, room) => {
     }
   }
   const sid = genSessionId();
-  sessions.set(sid, {
+  const sessData = {
     role: 'spectator',
     code: room.code,
     color: null,
     clientId: ws.clientId || null,
     nickname: ws.nickname || '',
     lastSeenAt: Date.now(),
-  });
+  };
+  sessions.set(sid, sessData);
+  store.persistSession(sid, sessData);
   room.spectatorSessionIds.add(sid);
   connections.bindSession(ws, sid);
+  store.persistRoom(room.code, room);
   return { sid, droppedOldSid, droppedOldWs };
 };
 
 module.exports = {
   MAX_NICK_LEN,
-  getRoom, setRoom, deleteRoom, getRoomsList,
+  getRoom, setRoom, deleteRoom, markRoomDirty, getRoomsList,
   getSession, dropSession, touchSession,
   getQueue, enqueue, dequeueByConnectionId,
   incrementOnline, decrementOnline, getOnline,
   genCode, genSessionId, genGameId, sanitizeNick,
   createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
-  getSerializableRoomState,
 };
