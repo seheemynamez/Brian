@@ -290,7 +290,7 @@ export const updateRoomsList = (rooms) => {
       </div>
     `;
   }).join('');
-  wrap.innerHTML = html;
+  animateListUpdate(wrap, html, 'data-code');
 };
 
 // ---- 랭킹 / 최근 대국 ----
@@ -320,6 +320,47 @@ const tierBadgeHtml = (rating) => {
   const tier = tierOf(rating);
   const emoji = TIER_EMOJI[tier] || '⚙️';
   return `<span class="tier-badge tier-${tier.toLowerCase()}" title="${tier} · ${rating}">${emoji}</span>`;
+};
+
+// ===== 리스트 업데이트 애니메이션 =====
+// FLIP (First-Last-Invert-Play) 패턴 — 같은 key 의 row 가 위치 바뀌면 transform 으로
+// 자연스럽게 이동, 새 row 는 slide-in. innerHTML 교체 기반이라 leave 는 즉시 (skip).
+//   - wrap: 컨테이너 element
+//   - newHtml: 새 innerHTML
+//   - keyAttr: 각 row 의 unique key 속성 (예: 'data-cid' / 'data-code' / 'data-gid')
+const animateListUpdate = (wrap, newHtml, keyAttr) => {
+  if (!wrap) return;
+  // 1. First — 옛 위치 측정
+  const oldRects = new Map();
+  for (const el of wrap.querySelectorAll(`[${keyAttr}]`)) {
+    oldRects.set(el.getAttribute(keyAttr), el.getBoundingClientRect());
+  }
+  // 2. Last — innerHTML 교체
+  wrap.innerHTML = newHtml;
+  // 3. Invert + Play — 새 row 각각의 새 위치 측정, 옛 위치와 비교
+  for (const el of wrap.querySelectorAll(`[${keyAttr}]`)) {
+    const key = el.getAttribute(keyAttr);
+    const oldRect = oldRects.get(key);
+    if (!oldRect) {
+      // 새 row — slide-in
+      el.classList.add('list-enter');
+      el.addEventListener('animationend', () => el.classList.remove('list-enter'), { once: true });
+      continue;
+    }
+    const dy = oldRect.top - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 1) continue;
+    // invert
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    // next frame — play
+    requestAnimationFrame(() => {
+      el.style.transition = 'transform 0.35s ease-out';
+      el.style.transform = '';
+      el.addEventListener('transitionend', () => {
+        el.style.transition = '';
+      }, { once: true });
+    });
+  }
 };
 
 const renderRankItem = (entry, rank, { isMe }) => {
@@ -354,7 +395,8 @@ export const updateRanking = (entries) => {
   }
   const myCid = state.clientId;
   const top = state.ranking;  // 서버가 이미 limit 적용 (기본 10)
-  wrap.innerHTML = top.map((e, i) => renderRankItem(e, i + 1, { isMe: e.clientId === myCid })).join('');
+  const rankingHtml = top.map((e, i) => renderRankItem(e, i + 1, { isMe: e.clientId === myCid })).join('');
+  animateListUpdate(wrap, rankingHtml, 'data-cid');
 
   // 4개 이상이면 토글 버튼 노출 — 기본 3개만 보이고 펼치면 전체.
   if (toggle) toggle.classList.toggle('hidden', top.length <= 3);
@@ -411,7 +453,7 @@ const renderRecentGameItem = (g) => {
   };
   const reasonLabel = REASON_LABEL[g.reason] || g.reason || '';
   return `
-    <div class="recent-game-item">
+    <div class="recent-game-item" data-gid="${escapeText(g.gameId || '')}">
       <div class="recent-game-line">
         ${renderSide(g.black, 'black')}
         <span class="recent-game-vs">vs</span>
@@ -437,7 +479,7 @@ export const updateRecentGames = (entries) => {
     if (toggle) toggle.classList.add('hidden');
     return;
   }
-  wrap.innerHTML = state.recentGames.map(renderRecentGameItem).join('');
+  animateListUpdate(wrap, state.recentGames.map(renderRecentGameItem).join(''), 'data-gid');
   // 4개 이상이면 토글 버튼 노출.
   if (toggle) toggle.classList.toggle('hidden', state.recentGames.length <= 3);
 };
