@@ -10,7 +10,9 @@ const log = require('../infra/log');
 const {
   send, sendToPlayer, forEachSpectatorWs, broadcastRoom,
   playerIdsPayload, playerStatusPayload, broadcastRoomsList,
+  broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
+const { recordGameResult } = require('../domain/users');
 const { getSpectatorNames, sendSpectatorState } = require('./spectator');
 const {
   getBotColor, scheduleBotMove, afterSuccessfulMove,
@@ -145,6 +147,9 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRoom(room, { type: 'move', row, col, color });
     broadcastRoom(room, { type: 'game_over', winner: color, line: winLine, gameId: room.gameId, playerIds });
     broadcastRoomsList();
+    recordGameResult(room, { winnerColor: color, reason: 'five' });
+    broadcastRankingUpdate();
+    broadcastRecentGamesUpdate();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: color, reason: 'five' });
   } else if (isDraw(room.board)) {
     room.status = 'over';
@@ -154,6 +159,9 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRoom(room, { type: 'move', row, col, color });
     broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null, gameId: room.gameId, playerIds });
     broadcastRoomsList();
+    recordGameResult(room, { winnerColor: 'draw', reason: 'draw' });
+    broadcastRankingUpdate();
+    broadcastRecentGamesUpdate();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: 'draw', reason: 'draw' });
   } else {
     room.turn = otherColor(room.turn);

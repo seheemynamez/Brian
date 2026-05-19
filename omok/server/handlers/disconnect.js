@@ -13,10 +13,12 @@ const roomRuntime = require('../domain/room-runtime');
 const {
   send, sendToPlayer, forEachSpectatorWs,
   playerIdsPayload, broadcastRoomsList,
+  broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
 const { removeSpectator } = require('./spectator');
 const { clearTurnTimer } = require('./game');
 const { cancelBotTimers } = require('./bot');
+const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
 
 const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 30000;
@@ -50,6 +52,10 @@ const onLeaveRoom = (ws) => {
     room.winner = winnerColor;
     sendToPlayer(room, oppColor, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left' });
     forEachSpectatorWs(room, (s) => send(s, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left' }));
+    // 명시적 leave_room → 자진 포기로 간주, 랭킹 반영
+    recordGameResult(room, { winnerColor, reason: 'opponent_left' });
+    broadcastRankingUpdate();
+    broadcastRecentGamesUpdate();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: winnerColor, reason: 'opponent_left' });
   } else {
     sendToPlayer(room, oppColor, { type: 'opponent_left' });
@@ -112,10 +118,21 @@ const finalizeAbandon = (room, color) => {
     forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_abandoned', color, gameId: room.gameId, playerIds }));
     clearTurnTimer(room);
     cancelBotTimers(room);
+    // 양쪽 동시 끊김 (PVP) 인지 체크 — 사용자 결정으로 그 케이스는 rating 변화 없음.
+    // 봇 게임은 한 쪽 (사람) 끊김으로 봇은 영향 없으니 bothDisconnected 아님.
+    const oppColor = otherColor(color);
+    const oppSlot = room.players[oppColor];
+    const bothDisconnected = !room.hasBot && oppSlot && oppSlot.type === 'human' &&
+      !connections.getWsBySessionId(oppSlot.sessionId);
+    recordGameResult(room, { winnerColor: oppColor, reason: 'abandoned', bothDisconnected });
+    if (!bothDisconnected) {
+      broadcastRankingUpdate();
+      broadcastRecentGamesUpdate();
+    }
     clearPlayerSession(room, color);
     markRoomDirty(room);
     broadcastRoomsList();
-    log.event('game_over', { code: room.code, gameId: room.gameId, winner: otherColor(color), reason: 'abandoned' });
+    log.event('game_over', { code: room.code, gameId: room.gameId, winner: oppColor, reason: 'abandoned' });
     // 봇대전이면 rematch 의미 없으니 방 자체 폐쇄. 사람 대전은 status='over' 채로 유지
     // (남은 사람이 leave_room 누르거나 grace 만료될 때까지).
     if (room.hasBot) {

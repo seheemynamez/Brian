@@ -73,6 +73,8 @@ const validators = {
   bot_offer_decline: () => ok,
   request_rooms_list: () => ok,
   request_online_list: () => ok,
+  request_ranking: () => ok,
+  request_recent_games: () => ok,
 };
 
 const validateMessage = (msg) => {

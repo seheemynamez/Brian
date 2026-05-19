@@ -9,6 +9,7 @@ const {
 const connections = require('../connections');
 const { send, broadcastOnlineCount, broadcastRoomsList } = require('./send');
 const { getWss } = require('./state');
+const { getTopRanking, getRecentGames } = require('../domain/users');
 const log = require('../infra/log');
 
 // 로비에서 닉네임/clientId 동기화 — 방에 들어가기 전에도 온라인 목록 표시 + 랭킹용 식별자 확보.
@@ -71,4 +72,19 @@ const onCreateRoom = (ws, msg) => {
   log.event('room_created', { code, by: nickname });
 };
 
-module.exports = { onSetNickname, onRequestOnlineList, onCreateRoom };
+// 홈 진입 시 1회 요청 — 상위 N명 rating 순.
+const onRequestRanking = (ws, msg) => {
+  const limit = Math.min(50, Number(msg && msg.limit) || 10);
+  send(ws, { type: 'ranking_list', entries: getTopRanking(limit) });
+};
+
+// 홈 진입 시 1회 요청 — 최근 N개 게임 결과 (최신 먼저).
+const onRequestRecentGames = (ws, msg) => {
+  const limit = Math.min(50, Number(msg && msg.limit) || 10);
+  send(ws, { type: 'recent_games_list', entries: getRecentGames(limit) });
+};
+
+module.exports = {
+  onSetNickname, onRequestOnlineList, onCreateRoom,
+  onRequestRanking, onRequestRecentGames,
+};

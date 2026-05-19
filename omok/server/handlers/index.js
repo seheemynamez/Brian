@@ -9,7 +9,7 @@ const { send, broadcastOnlineCount } = require('./send');
 const { onEmote } = require('./emote');
 const { onQueueJoin, onQueueLeave, onBotOfferAccept, onBotOfferDecline } = require('./queue');
 const { onMove } = require('./game');
-const { onSetNickname, onRequestOnlineList, onCreateRoom } = require('./lobby');
+const { onSetNickname, onRequestOnlineList, onCreateRoom, onRequestRanking, onRequestRecentGames } = require('./lobby');
 const { onJoinRoom, onSpectateRoom } = require('./join');
 const { onResumeSession } = require('./resume');
 const { onPlayerDisconnect, onLeaveRoom } = require('./disconnect');
@@ -40,6 +40,10 @@ const handleMessage = (ws, msg) => {
       return send(ws, { type: 'rooms_list', rooms: getRoomsList() });
     case 'request_online_list':
       return onRequestOnlineList(ws);
+    case 'request_ranking':
+      return onRequestRanking(ws, msg);
+    case 'request_recent_games':
+      return onRequestRecentGames(ws, msg);
   }
 };
 
