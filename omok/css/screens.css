@@ -320,26 +320,16 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 14px;
-  /* grid: [color] [nick + tier 두 줄] [me-badge]
-     좁은 폭에서도 nick 과 tier/rating 이 겹치지 않게 nick 아래로 자연 wrap. */
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  column-gap: 10px;
-  row-gap: 2px;
+  display: flex;
   align-items: center;
+  gap: 10px;
   min-width: 0;
   overflow: hidden;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: border 0.2s, box-shadow 0.2s;
 }
-.player-card > .player-color { grid-column: 1; grid-row: 1 / span 2; }
-.player-card > .player-nick { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-card > .player-rating-row { grid-column: 2; grid-row: 2; margin-left: 0; }
-.player-card > .player-me-badge { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
-/* rating-row 가 없을 때 (waiting 등) color 가 single row 로 자연스럽게 가운데 */
-.player-card.waiting > .player-color { grid-row: 1; }
-.player-card.waiting > .player-me-badge { grid-row: 1; }
+.player-card > .player-nick { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-card.active {
   border-color: var(--accent-1);
   box-shadow: 0 0 0 1px var(--accent-1), 0 0 24px rgba(0, 229, 255, 0.30);
@@ -569,8 +559,12 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   .card { padding: 14px; }
   .card-grid { gap: 10px; }
   .players { gap: 8px; }
-  .player-card { padding: 10px; }
+  .player-card { padding: 10px; gap: 6px; }
   .player-nick { font-size: 14px; }
+  /* 좁은 모바일 — rating 숫자는 숨기고 티어 이모지만 노출 (공간 절약).
+     '나' 배지와 닉네임이 잘리지 않도록. tooltip(title) 에는 rating 그대로. */
+  .player-rating { display: none; }
+  .player-rating-row { margin-left: 2px; }
   .result { font-size: 22px; }
   .btn { padding: 10px 14px; font-size: 13px; }
 }
