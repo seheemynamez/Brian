@@ -3,7 +3,7 @@
 // ============================================================
 
 const {
-  getRoom, setRoom, deleteRoom, getRoomsList,
+  getRoom, setRoom, deleteRoom, markRoomDirty, getRoomsList,
   getSession, dropSession,
   getQueue, enqueue, dequeueByConnectionId,
   getOnline,
@@ -261,6 +261,7 @@ const onTurnTimeout = (room) => {
   room.turn = otherColor(room.turn);
   broadcastRoom(room, { type: 'turn_skipped', skipped, turn: room.turn });
   startTurnTimer(room);
+  markRoomDirty(room);
   // 봇 게임에서 사람이 시간 초과되면 봇 차례로 넘어가는데, 봇이 깨어나지 않던 버그.
   // afterSuccessfulMove 경로가 아닌 곳에서도 봇 차례면 즉시 스케줄.
   if (room.hasBot) {
@@ -341,6 +342,7 @@ const removeSpectator = (ws) => {
   // 명단에서는 즉시 제거 (다른 사용자에게 보여주는 spectator_list 갱신).
   if (room && sid) {
     room.spectatorSessionIds.delete(sid);
+    markRoomDirty(room);
     broadcastSpectators(room);
   }
   // session 자체는 짧은 grace 동안 유지 — 새로고침 / 비행기모드 reconnect 시
@@ -396,6 +398,7 @@ const startGame = (room) => {
   forEachSpectatorWs(room, (ws) => sendSpectatorState(ws, room));
 
   startTurnTimer(room);
+  markRoomDirty(room);
   broadcastRoomsList();
   log.event('game_started', {
     code: room.code,
@@ -643,7 +646,8 @@ const onSpectateRoom = (ws, msg) => {
 // 봇 제안 발송 이력 (clientId 단위) — queue 와 무관하게 유지.
 // 비행기모드 reconnect race 방어: 옛 ws 의 close 가 새 ws 의 queue_join 보다 먼저 fire
 // 되어 옛 entry 가 dequeue 된 경우에도, history 가 남아서 cooldown 으로 중복 발송 차단.
-const botOfferSentByClientId = new Map();
+// store.botOffer 를 통해 보관 → valkey backend 면 재시작 후에도 cooldown 유지.
+const botOfferSentByClientId = require('./store').getStore().botOffer;
 const BOT_OFFER_COOLDOWN_MS = 60_000;  // 발송 후 같은 사용자에게 다시 발송 가능한 최소 간격.
 
 // bot offer 타이머는 queue entry 에 부착 — ws 가 reconnect 로 교체돼도 상태 유지.
@@ -980,6 +984,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRoom(room, { type: 'move', row, col, color, turn: room.turn });
     startTurnTimer(room);
   }
+  markRoomDirty(room);
   afterSuccessfulMove(room, opts.actor === 'bot');
 };
 
@@ -1121,6 +1126,7 @@ const finalizeAbandon = (room, color) => {
     clearTurnTimer(room);
     cancelBotTimers(room);
     clearPlayerSession(room, color);
+    markRoomDirty(room);
     broadcastRoomsList();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: otherColor(color), reason: 'abandoned' });
     // 봇대전이면 rematch 의미 없으니 방 자체 폐쇄. 사람 대전은 status='over' 채로 유지
@@ -1156,10 +1162,42 @@ const finalizeAbandon = (room, color) => {
   }
 };
 
+// 서버 부팅 시 valkey 에서 hydrate 된 rooms 의 timer 를 재등록.
+// turnDeadline 이 미래면 남은 시간만큼 startTurnTimer. 이미 지났으면 즉시 onTurnTimeout.
+// 봇 차례면 봇 timer 도 다시 활성.
+const rehydrateTimers = () => {
+  const { getStore } = require('./store');
+  const store = getStore();
+  for (const [code, room] of store.rooms) {
+    if (room.status !== 'playing') continue;
+    const now = Date.now();
+    const remaining = (room.turnDeadline || 0) - now;
+    if (remaining > 0) {
+      // 남은 시간만큼 turn timer 재등록 (startTurnTimer 는 항상 TURN_TIMEOUT_MS 새로 시작
+      // 하지만 hydrate 케이스에선 남은 시간 그대로 가야 자연스러움)
+      const handle = setTimeout(() => onTurnTimeout(room), remaining);
+      roomRuntime.setTimer(code, 'turnTimer', handle);
+    } else if (room.turnDeadline > 0) {
+      // 이미 지남 — 곧바로 turn skip 처리
+      setImmediate(() => onTurnTimeout(room));
+    } else {
+      // turnDeadline 0 — 아직 게임 시작 안한 케이스 (혹시 모를 비정상). startTurnTimer 새로.
+      startTurnTimer(room);
+    }
+    // 봇 차례면 봇 응수 스케줄링 재개
+    if (room.hasBot) {
+      const botColor = getBotColor(room);
+      if (botColor && room.turn === botColor) scheduleBotMove(room);
+    }
+    log.event('room_rehydrated', { code, status: room.status, gameId: room.gameId, turn: room.turn });
+  }
+};
+
 module.exports = {
   init,
   handleMessage,
   onPlayerDisconnect,
   onQueueLeave,
   broadcastOnlineCount,
+  rehydrateTimers,
 };

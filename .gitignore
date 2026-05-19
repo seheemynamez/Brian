@@ -11,3 +11,8 @@
 
 # Node
 node_modules/
+
+# Env (secrets — VALKEY_URL 등). .env.example 만 commit.
+.env
+.env.local
+.env.*.local

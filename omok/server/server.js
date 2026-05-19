@@ -13,6 +13,7 @@ const connections = require('./connections');
 const handlers = require('./handlers');
 const { validateMessage, MAX_MESSAGE_BYTES } = require('./validators');
 const { checkRateLimit, clearForConnection } = require('./rate-limit');
+const { getStore } = require('./store');
 const log = require('./log');
 
 const PORT = Number(process.env.PORT) || 8080;
@@ -144,10 +145,27 @@ const heartbeatTimer = setInterval(() => {
 heartbeatTimer.unref?.();
 wss.on('close', () => clearInterval(heartbeatTimer));
 
-httpServer.listen(PORT, () => {
-  log.event('server_start', {
-    port: PORT,
-    heartbeat_ms: HEARTBEAT_INTERVAL_MS,
-    allowed_origins: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS.join(',') : 'any',
+(async () => {
+  // Store 초기화 — STORE_BACKEND=valkey 면 외부 연결 + hydrate.
+  // memory backend 면 모든 lifecycle no-op.
+  const store = getStore();
+  try {
+    await store.connect();
+    await store.hydrate();
+    // hydrate 후 진행 중인 방들의 timer 재등록
+    handlers.rehydrateTimers();
+    log.event('store_ready', { backend: store.backend });
+  } catch (e) {
+    console.error('[store] init 실패:', e && e.message);
+    // valkey 가 죽어도 서버는 메모리만으로 동작 (지속성 보장 안 됨).
+  }
+
+  httpServer.listen(PORT, () => {
+    log.event('server_start', {
+      port: PORT,
+      heartbeat_ms: HEARTBEAT_INTERVAL_MS,
+      allowed_origins: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS.join(',') : 'any',
+      store: store.backend,
+    });
   });
-});
+})();
