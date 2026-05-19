@@ -366,48 +366,55 @@ const animateListUpdate = (wrap, newHtml, keyAttr) => {
 const renderRankItem = (entry, rank, { isMe }) => {
   const nick = escapeText(entry.nickname || '?');
   const botMark = entry.isBot ? `<span class="rank-bot-mark" title="봇">🤖</span>` : '';
+  const meBadge = isMe ? `<span class="rank-me-badge">나</span>` : '';
   const rec = `${entry.wins || 0}승 ${entry.losses || 0}패${(entry.draws || 0) ? ` ${entry.draws}무` : ''}`;
   const meClass = isMe ? ' is-me' : '';
   return `
     <div class="rank-item${meClass}" data-cid="${escapeText(entry.clientId || '')}">
       <div class="rank-num">${rank}</div>
       <div>${tierBadgeHtml(entry.rating || 0)}</div>
-      <div class="rank-nick">${nick}${botMark}</div>
+      <div class="rank-nick">${nick}${botMark}${meBadge}</div>
       <div class="rank-rating">${entry.rating ?? '-'}</div>
       <div class="rank-record">${rec}</div>
     </div>
   `;
 };
 
-export const updateRanking = (entries) => {
-  state.ranking = Array.isArray(entries) ? entries : [];
+// msg: { entries, me } — entries 는 top N, me 는 본인 entry+rank (또는 null=미등록).
+export const updateRanking = (msg) => {
+  const entries = msg && Array.isArray(msg.entries) ? msg.entries : [];
+  const me = msg && msg.me ? msg.me : null;
+  state.ranking = entries;
   const wrap = $('ranking-list');
   const count = $('ranking-count');
   const meExtra = $('me-rank-extra');
   const toggle = $('ranking-toggle');
   if (!wrap) return;
-  count.textContent = state.ranking.length;
-  if (!state.ranking.length) {
+  count.textContent = entries.length;
+  if (!entries.length) {
     wrap.innerHTML = '<div class="rooms-empty">아직 랭킹 데이터가 없어요</div>';
     if (meExtra) meExtra.classList.add('hidden');
     if (toggle) toggle.classList.add('hidden');
     return;
   }
   const myCid = state.clientId;
-  const top = state.ranking;  // 서버가 이미 limit 적용 (기본 10)
-  const rankingHtml = top.map((e, i) => renderRankItem(e, i + 1, { isMe: e.clientId === myCid })).join('');
+  const rankingHtml = entries.map((e, i) => renderRankItem(e, i + 1, { isMe: e.clientId === myCid })).join('');
   animateListUpdate(wrap, rankingHtml, 'data-cid');
 
   // 4개 이상이면 토글 버튼 노출 — 기본 3개만 보이고 펼치면 전체.
-  if (toggle) toggle.classList.toggle('hidden', top.length <= 3);
+  if (toggle) toggle.classList.toggle('hidden', entries.length <= 3);
 
-  // 내가 top 안에 있으면 보조 행 숨김. 없으면 서버에서 별도로 제공 안 하니
-  // (현재는 top 10 만 보냄) "내 정보 비공개" 처리 안 함 — 향후 확장 시 추가.
+  // 본인 row — top N 밖에 있으면 me-extra 에 표시. top 안이면 hidden.
+  // me === null (미등록) 도 hidden.
   if (meExtra) {
-    const meInTop = top.some((e) => e.clientId === myCid);
-    meExtra.classList.toggle('hidden', meInTop || !myCid);
-    // 향후: 별도 request_my_rank 핸들러 추가 후 여기서 fill.
-    if (!meInTop) meExtra.innerHTML = '';
+    const meInTop = me && entries.some((e) => e.clientId === me.clientId);
+    if (!me || meInTop) {
+      meExtra.classList.add('hidden');
+      meExtra.innerHTML = '';
+    } else {
+      meExtra.classList.remove('hidden');
+      meExtra.innerHTML = renderRankItem(me, me.rank, { isMe: true });
+    }
   }
 };
 
