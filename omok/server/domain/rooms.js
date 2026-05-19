@@ -3,9 +3,9 @@
 // ============================================================
 
 const crypto = require('crypto');
-const { emptyBoard } = require('./game-logic');
-const connections = require('./connections');
-const { getStore } = require('./store');
+const { emptyBoard } = require('../game/game-logic');
+const connections = require('../connections');
+const { getStore } = require('../store');
 
 const MAX_NICK_LEN = 12;
 

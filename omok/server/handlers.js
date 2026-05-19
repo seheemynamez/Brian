@@ -9,18 +9,18 @@ const {
   getOnline,
   genCode, genGameId, sanitizeNick,
   createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
-} = require('./rooms');
+} = require('./domain/rooms');
 const connections = require('./connections');
-const roomRuntime = require('./room-runtime');
-const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game-logic');
-const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('./renju');
+const roomRuntime = require('./domain/room-runtime');
+const { emptyBoard, checkWin, isDraw, BOARD_SIZE } = require('./game/game-logic');
+const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('./game/renju');
 const {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
   decideBotEmote, recordBotEmote, newBotEmoteState, thinkTimeMs,
-} = require('./bot');
+} = require('./game/bot');
 // generateMove 는 워커 풀의 async 래퍼 사용 — 메인 이벤트 루프 블로킹 회피.
-const { generateMoveAsync } = require('./bot-pool');
-const log = require('./log');
+const { generateMoveAsync } = require('./game/bot-pool');
+const log = require('./infra/log');
 
 const TURN_TIMEOUT_MS                = Number(process.env.TURN_TIMEOUT_MS)                || 30000;
 const DISCONNECT_GRACE_MS            = Number(process.env.DISCONNECT_GRACE_MS)            || 30000;
