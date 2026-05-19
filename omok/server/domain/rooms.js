@@ -148,30 +148,6 @@ const createRoom = (code) => ({
   updatedAt: Date.now(),
 });
 
-// Valkey 같은 store 에 저장하기 위한 직렬화 가능 형태로 변환.
-// Set 들은 array 로 풀고, 비-직렬화 필드 (있다면) 는 제외.
-const getSerializableRoomState = (room) => ({
-  code: room.code,
-  gameId: room.gameId,
-  players: {
-    black: room.players.black ? { ...room.players.black } : null,
-    white: room.players.white ? { ...room.players.white } : null,
-  },
-  spectatorSessionIds: Array.from(room.spectatorSessionIds || []),
-  board: room.board,
-  turn: room.turn,
-  turnDeadline: room.turnDeadline || 0,
-  status: room.status,
-  winner: room.winner,
-  winLine: room.winLine,
-  lastMove: room.lastMove,
-  rematchVotes: Array.from(room.rematchVotes || []),
-  loser: room.loser,
-  hasBot: !!room.hasBot,
-  createdAt: room.createdAt || 0,
-  updatedAt: room.updatedAt || 0,
-});
-
 // 새 게임 시작마다 발급. 랭킹·통계 키.
 const genGameId = () => crypto.randomBytes(10).toString('base64url');
 
@@ -266,5 +242,4 @@ module.exports = {
   incrementOnline, decrementOnline, getOnline,
   genCode, genSessionId, genGameId, sanitizeNick,
   createRoom, createPlayerSession, clearPlayerSession, attachSpectatorSession,
-  getSerializableRoomState,
 };

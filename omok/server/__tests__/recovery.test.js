@@ -960,9 +960,10 @@ test('RC5: 다른 clientId 가 join_room 하면 기존대로 spectator (reclaim 
 // Phase 4+5 — JSON 직렬화 가능한 room state
 // ============================================================
 
-test('J1: getSerializableRoomState 출력에 비-직렬화 타입 없음', async () => {
+test('J1: serializeRoom 출력에 비-직렬화 타입 없음', async () => {
   // 직접 module 을 require 해서 state shape 확인. server 와 같은 cwd 라 가능.
   const rooms = require('../domain/rooms');
+  const { serializeRoom } = require('../store/serialize');
   const room = rooms.createRoom('JSON');
   rooms.setRoom('JSON', room);
   rooms.createPlayerSession(room, 'black', {
@@ -974,7 +975,7 @@ test('J1: getSerializableRoomState 출력에 비-직렬화 타입 없음', async
   room.spectatorSessionIds.add('sess-A');
   room.spectatorSessionIds.add('sess-B');
   room.rematchVotes.add('black');
-  const ser = rooms.getSerializableRoomState(room);
+  const ser = serializeRoom(room);
   // 직렬화 시 throw 안 해야 + 결과에 banned types 없어야
   const json = JSON.stringify(ser);
   assert(typeof json === 'string' && json.length > 0, 'JSON.stringify failed');

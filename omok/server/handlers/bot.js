@@ -69,8 +69,6 @@ const scheduleBotMove = (room) => {
 const cancelBotTimers = (room) => {
   if (!room) return;
   roomRuntime.clearTimer(room.code, 'botMoveTimer');
-  // room.botOfferTimer 는 옛 코드의 잔재 (실제 set 안 됨) — 안전하게 정리.
-  roomRuntime.clearTimer(room.code, 'botOfferTimer');
 };
 
 // 매 성공적인 move 직후 호출 — 봇 게임이면 emote / 다음 봇 차례 처리.
