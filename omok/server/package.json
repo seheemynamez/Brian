@@ -6,7 +6,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
-    "test": "STORE_BACKEND=memory BOT_OFFER_DELAY_MS=1000 DISCONNECT_GRACE_MS=1500 SPECTATOR_DISCONNECT_GRACE_MS=500 PORT=18080 STATIC_ROOT=. node server.js & SERVER_PID=$!; trap \"kill $SERVER_PID 2>/dev/null\" EXIT; sleep 1; node __tests__/recovery.test.js"
+    "test": "STORE_BACKEND=memory BOT_OFFER_DELAY_MS=1000 DISCONNECT_GRACE_MS=1500 SPECTATOR_DISCONNECT_GRACE_MS=500 PORT=18080 STATIC_ROOT=. node server.js & SERVER_PID=$!; trap \"kill $SERVER_PID 2>/dev/null\" EXIT; sleep 1; node __tests__/recovery.test.js",
+    "test:valkey": "bash scripts/test-valkey.sh",
+    "test:hydrate": "node --env-file-if-exists=.env scripts/test-hydrate.js"
   },
   "dependencies": {
     "ioredis": "^5.10.1",

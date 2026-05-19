@@ -6,15 +6,15 @@
 const http = require('http');
 const path = require('path');
 const { WebSocketServer } = require('ws');
-const { makeStaticHandler } = require('./http-static');
-const { makeShareHandler } = require('./share');
-const { incrementOnline, decrementOnline, getOnline, touchSession } = require('./rooms');
+const { makeStaticHandler } = require('./infra/http-static');
+const { makeShareHandler } = require('./infra/share');
+const { incrementOnline, decrementOnline, getOnline, touchSession } = require('./domain/rooms');
 const connections = require('./connections');
 const handlers = require('./handlers');
-const { validateMessage, MAX_MESSAGE_BYTES } = require('./validators');
-const { checkRateLimit, clearForConnection } = require('./rate-limit');
+const { validateMessage, MAX_MESSAGE_BYTES } = require('./infra/validators');
+const { checkRateLimit, clearForConnection } = require('./infra/rate-limit');
 const { getStore } = require('./store');
-const log = require('./log');
+const log = require('./infra/log');
 
 const PORT = Number(process.env.PORT) || 8080;
 const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 30000;

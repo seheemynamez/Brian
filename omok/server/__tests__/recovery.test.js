@@ -678,7 +678,7 @@ test('F2: 옛 큐 entry 가 close 로 사라진 후 새 ws 재진입 → bot_off
 });
 
 // 정책 import — 정책 값이 바뀌어도 테스트 안 깨짐.
-const { POLICIES } = require('../rate-limit');
+const { POLICIES } = require('../infra/rate-limit');
 
 test('P2: rate-limit hits at policy limit for clientId', async () => {
   // request_online_list 는 짧은 windowMs 라 테스트하기 좋음.
@@ -960,9 +960,10 @@ test('RC5: 다른 clientId 가 join_room 하면 기존대로 spectator (reclaim 
 // Phase 4+5 — JSON 직렬화 가능한 room state
 // ============================================================
 
-test('J1: getSerializableRoomState 출력에 비-직렬화 타입 없음', async () => {
+test('J1: serializeRoom 출력에 비-직렬화 타입 없음', async () => {
   // 직접 module 을 require 해서 state shape 확인. server 와 같은 cwd 라 가능.
-  const rooms = require('../rooms');
+  const rooms = require('../domain/rooms');
+  const { serializeRoom } = require('../store/serialize');
   const room = rooms.createRoom('JSON');
   rooms.setRoom('JSON', room);
   rooms.createPlayerSession(room, 'black', {
@@ -974,7 +975,7 @@ test('J1: getSerializableRoomState 출력에 비-직렬화 타입 없음', async
   room.spectatorSessionIds.add('sess-A');
   room.spectatorSessionIds.add('sess-B');
   room.rematchVotes.add('black');
-  const ser = rooms.getSerializableRoomState(room);
+  const ser = serializeRoom(room);
   // 직렬화 시 throw 안 해야 + 결과에 banned types 없어야
   const json = JSON.stringify(ser);
   assert(typeof json === 'string' && json.length > 0, 'JSON.stringify failed');
@@ -992,7 +993,7 @@ test('J1: getSerializableRoomState 출력에 비-직렬화 타입 없음', async
 });
 
 test('J2: room 자체에도 timer field 가 없음 (runtime 분리)', async () => {
-  const rooms = require('../rooms');
+  const rooms = require('../domain/rooms');
   const room = rooms.createRoom('NOTM');
   rooms.setRoom('NOTM', room);
   for (const banned of ['turnTimer', 'botMoveTimer', 'botOfferTimer', 'disconnectTimers']) {

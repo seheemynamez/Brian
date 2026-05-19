@@ -5,7 +5,7 @@
 // 도달하지 않도록 1차 게이트 역할을 한다. 화이트리스트(emote key, difficulty 값,
 // 게임 룰 등) 비즈니스 검증은 handlers.js 에 그대로 두고, 여기서는 형식·범위만 본다.
 
-const { BOARD_SIZE } = require('./game-logic');
+const { BOARD_SIZE } = require('../game/game-logic');
 
 const NICK_MAX = 24;
 const ID_MAX = 64;
