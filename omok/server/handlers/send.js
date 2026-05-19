@@ -140,6 +140,20 @@ const broadcastRecentGamesUpdate = () => {
   });
 };
 
+// 양쪽 player 가 모두 online 인지 — PVP 는 두 사람 다 ws 활성, 봇 게임은 사람만 활성.
+// resume/reclaim 후 turn timer 재개 결정에 사용.
+const bothPlayersOnline = (room) => {
+  if (!room || !room.players) return false;
+  for (const color of ['black', 'white']) {
+    const slot = room.players[color];
+    if (!slot) return false;
+    if (slot.type === 'bot') continue;
+    const ws = connections.getWsBySessionId(slot.sessionId);
+    if (!ws || ws.readyState !== ws.OPEN) return false;
+  }
+  return true;
+};
+
 module.exports = {
   send,
   sendToConnection,
@@ -150,6 +164,7 @@ module.exports = {
   broadcastRoom,
   playerIdsPayload,
   playerStatusPayload,
+  bothPlayersOnline,
   broadcastOnlineCount,
   broadcastRoomsList,
   broadcastRankingUpdate,

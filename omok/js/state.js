@@ -26,6 +26,7 @@ export const EMOTES = [
 export const state = {
   ws: null,
   connected: false,
+  serverRestarting: false,       // server_restarting 메시지를 받은 직후 close 시 overlay 메시지 유지용
   screenState: 'lobby',          // lobby | waiting | game
 
   // 게임

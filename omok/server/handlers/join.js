@@ -66,15 +66,18 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
   sendToPlayer(room, oppColor, { type: 'opponent_reconnected', color });
   forEachSpectatorWs(room, (sWs) => send(sWs, { type: 'opponent_reconnected', color }));
 
-  // 봇 게임은 disconnect 시 turn timer + 봇 schedule 멈춰뒀음 (disconnect.js).
-  // reclaim 시 사용자가 다시 둘 수 있게 turn timer 새로 시작 + 봇 차례면 봇 schedule.
-  // resume.js 와 동일한 로직.
-  if (room.hasBot && room.status === 'playing') {
-    const { startTurnTimer } = require('./game');
-    const { getBotColor, scheduleBotMove } = require('./bot');
-    startTurnTimer(room);
-    const botColor = getBotColor(room);
-    if (botColor && room.turn === botColor) scheduleBotMove(room);
+  // 봇 게임 / PVP 모두 — 양쪽 모두 online 일 때만 turn timer 재개. resume.js 와 동일 정책.
+  if (room.status === 'playing') {
+    const { bothPlayersOnline } = require('./send');
+    if (bothPlayersOnline(room)) {
+      const { startTurnTimer } = require('./game');
+      startTurnTimer(room);
+      if (room.hasBot) {
+        const { getBotColor, scheduleBotMove } = require('./bot');
+        const botColor = getBotColor(room);
+        if (botColor && room.turn === botColor) scheduleBotMove(room);
+      }
+    }
   }
 
   // resume_success 페이로드로 응답 — FE 의 기존 onResumeSuccess 가 처리해 game 화면 전환.

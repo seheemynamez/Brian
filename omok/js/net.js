@@ -117,6 +117,7 @@ export const connect = () => {
   state.ws.addEventListener('open', () => {
     state.connected = true;
     reconnectAttempt = 0;
+    state.serverRestarting = false;  // 새 server 가 떴음. flag 리셋.
     // app-level ping: 모바일 브라우저는 WebSocket protocol-level ping 노출이 어렵다.
     // 일정 간격으로 {type:'ping'} 을 직접 보내 서버가 살아있다고 판단하게 한다.
     clearAppPingTimer();
@@ -151,8 +152,14 @@ export const connect = () => {
     state.connected = false;
     clearAppPingTimer();
     updateConnStatus();
+    // 게임 중이면 timer tick 동결 — server 가 죽은 동안 카운트다운 계속 가지 않게.
+    // resume_success 가 새 turnDeadline 으로 재시작 시킴.
+    if (state.screenState === 'game') stopTimerTick();
     if (state.sessionId && state.screenState === 'game' && !state.gameOver) {
-      setReconnectOverlay(true, '연결이 끊겨 다시 연결하고 있어요...');
+      // server_restarting 으로 명시적 알림을 받았으면 그 메시지 유지, 아니면 일반 reconnect 문구.
+      if (!state.serverRestarting) {
+        setReconnectOverlay(true, '연결이 끊겨 다시 연결하고 있어요...');
+      }
     } else if (state.screenState === 'waiting') {
       // 대기 화면(랜덤 매칭 / 방 만들기) — 안내 문구로 상황 표시
       const detail = document.getElementById('waiting-detail');
@@ -200,6 +207,18 @@ const dispatch = (msg) => {
     case 'bot_offer':          return onBotOffer();
     case 'player_replaced':    return onPlayerReplaced();
     case 'error':              return onError(msg);
+    case 'server_restarting':  return onServerRestarting();
+  }
+};
+
+const onServerRestarting = () => {
+  state.serverRestarting = true;
+  // 게임 화면이면 명시적 점검 안내. close 후 reconnect 가 일어나도 안내 유지.
+  if (state.screenState === 'game') {
+    stopTimerTick();
+    setReconnectOverlay(true, '🛠 서버 업데이트 중입니다.\n잠시 후 자동으로 이어집니다 (보드/타이머 그대로).');
+  } else {
+    setReconnectOverlay(true, '🛠 서버 업데이트 중입니다.\n잠시만 기다려주세요.');
   }
 };
 

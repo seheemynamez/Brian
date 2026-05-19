@@ -1,13 +1,19 @@
 // ============================================================
-// 서버 부팅 시 valkey 에서 hydrate 된 rooms 의 timer 를 재등록.
-// turnDeadline 이 미래면 남은 시간만큼 startTurnTimer. 이미 지났으면 즉시 onTurnTimeout.
-// 봇 차례면 봇 timer 도 다시 활성.
+// 서버 부팅 시 valkey 에서 hydrate 된 rooms 의 timer / grace 재등록.
+// ============================================================
+// 정책 (deploy 일시정지):
+//   - boot 직후 모든 player ws 가 없으므로 turn timer 는 등록하지 않는다.
+//   - 사용자가 resume_session / clientId reclaim 으로 돌아오면 그 핸들러가
+//     bothPlayersOnline 확인 후 startTurnTimer + scheduleBotMove 재개.
+//   - 각 player 색에 새 disconnect grace timer 등록 — DISCONNECT_GRACE_MS (90s)
+//     안에 reconnect 못 하면 finalizeAbandon. Render deploy 1분 + 사용자 reconnect
+//     여유까지 보장. (deploy 직전 grace timer 는 메모리 setTimeout 이라 죽었음.)
 // ============================================================
 
 const roomRuntime = require('../domain/room-runtime');
 const log = require('../infra/log');
-const { startTurnTimer, onTurnTimeout } = require('./game');
-const { getBotColor, scheduleBotMove } = require('./bot');
+
+const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 90000;
 
 const rehydrateTimers = () => {
   const { getStore } = require('../store');
@@ -15,30 +21,23 @@ const rehydrateTimers = () => {
   for (const [code, room] of store.rooms) {
     if (room.status !== 'playing') continue;
 
-    // 봇 게임은 boot 직후 사람 ws 가 없으므로 timer / 봇 schedule 등록하지 않는다.
-    // 사람이 resume_session 또는 clientId reclaim 으로 돌아오면 그 핸들러가 startTurnTimer
-    // + scheduleBotMove 시작. boot 직후에 등록하면 사람이 reconnect 하기 전에 봇이 board
-    // 를 dominate 하는 사고 발생 (disconnect.js 와 같은 정책).
-    if (room.hasBot) {
-      log.event('room_rehydrated', { code, status: room.status, gameId: room.gameId, turn: room.turn, paused: 'bot_disconnect' });
-      continue;
+    // boot 직후 모든 player 가 disconnect 상태로 간주. turn timer 미등록.
+    // 각 사람 player 에 grace timer 신규 등록 (reconnect 까지 여유 보장).
+    // Lazy require — disconnect.js 가 send/users 등 의존성을 거꾸로 가져갈 수 있어 분리.
+    const { finalizeAbandon } = require('./disconnect');
+    for (const color of ['black', 'white']) {
+      const slot = room.players?.[color];
+      if (!slot) continue;
+      if (slot.type === 'bot') continue;  // 봇은 grace 안 함
+      roomRuntime.setDisconnectTimer(
+        code, color,
+        setTimeout(() => finalizeAbandon(room, color), DISCONNECT_GRACE_MS),
+      );
     }
-
-    const now = Date.now();
-    const remaining = (room.turnDeadline || 0) - now;
-    if (remaining > 0) {
-      // 남은 시간만큼 turn timer 재등록 (startTurnTimer 는 항상 TURN_TIMEOUT_MS 새로 시작
-      // 하지만 hydrate 케이스에선 남은 시간 그대로 가야 자연스러움)
-      const handle = setTimeout(() => onTurnTimeout(room), remaining);
-      roomRuntime.setTimer(code, 'turnTimer', handle);
-    } else if (room.turnDeadline > 0) {
-      // 이미 지남 — 곧바로 turn skip 처리
-      setImmediate(() => onTurnTimeout(room));
-    } else {
-      // turnDeadline 0 — 아직 게임 시작 안한 케이스 (혹시 모를 비정상). startTurnTimer 새로.
-      startTurnTimer(room);
-    }
-    log.event('room_rehydrated', { code, status: room.status, gameId: room.gameId, turn: room.turn });
+    log.event('room_rehydrated', {
+      code, status: room.status, gameId: room.gameId, turn: room.turn,
+      paused: 'awaiting_reconnect',
+    });
   }
 };
 

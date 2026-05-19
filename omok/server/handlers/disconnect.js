@@ -21,7 +21,8 @@ const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
 
-const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 30000;
+// Render free-tier deploy 가 보통 60s 안쪽 → 사용자 reconnect 여유까지 합쳐 90s.
+const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 90000;
 
 const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 
@@ -89,15 +90,14 @@ const onPlayerDisconnect = (ws) => {
     return;
   }
 
-  // PVP 는 기존대로 — turn timer / 봇 timer (없음) 가 동시에 흘러 grace 만료 또는
-  //   turn timer 만료 중 먼저 발동하는 쪽이 종료 trigger. 양쪽 다 멈춰 방치되는 상황 방지.
-  // 봇 게임은 사람이 끊긴 동안 game 자체를 일시정지 — turn timer + 봇 응수 schedule 멈춤.
-  //   이유: deploy / 일시 네트워크 끊김 사이에 봇이 사용자 차례 timeout 을 반복 흡수해
-  //   board 가 사용자 모르게 진행되는 사고 방지. resume_session / clientId reclaim 시 재개.
-  //   봇은 시간 손해 없으니 멈춰도 무해. grace 만료 시 abandon 처리는 그대로.
-  if (room.hasBot && room.status === 'playing') {
+  // 봇 게임 / PVP 모두 — 사람이 끊긴 동안 turn timer 동결.
+  // 의도: deploy / 일시 네트워크 끊김 동안 turn 이 일방적으로 토글되어 reconnect 후
+  //   상태가 엉키는 사고 방지. resume_session / reclaim 시 양쪽 다 online 일 때 재개.
+  // grace timer 는 그대로 작동 (DISCONNECT_GRACE_MS 만료 시 abandon).
+  if (room.status === 'playing') {
     clearTurnTimer(room);
-    cancelBotTimers(room);
+    if (room.hasBot) cancelBotTimers(room);
+    markRoomDirty(room);  // turnDeadline=0 도 valkey 에 sync (deploy hydrate 후 일관)
   }
   const myColor = ws.color;
   const deadline = Date.now() + DISCONNECT_GRACE_MS;
