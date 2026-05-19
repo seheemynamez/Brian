@@ -78,6 +78,7 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
   }
 
   // resume_success 페이로드로 응답 — FE 의 기존 onResumeSuccess 가 처리해 game 화면 전환.
+  const { buildPlayerRatings } = require('../domain/users');
   send(ws, {
     type: 'resume_success',
     code: room.code,
@@ -88,6 +89,7 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
     board: room.board,
     turn: room.turn,
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
+    ratings: buildPlayerRatings(room),
     playerStatus: playerStatusPayload(room),
     status: room.status,
     winner: room.winner,

@@ -320,15 +320,26 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 14px;
-  display: flex;
+  /* grid: [color] [nick + tier 두 줄] [me-badge]
+     좁은 폭에서도 nick 과 tier/rating 이 겹치지 않게 nick 아래로 자연 wrap. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 10px;
+  row-gap: 2px;
   align-items: center;
-  gap: 10px;
   min-width: 0;
   overflow: hidden;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: border 0.2s, box-shadow 0.2s;
 }
+.player-card > .player-color { grid-column: 1; grid-row: 1 / span 2; }
+.player-card > .player-nick { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-card > .player-rating-row { grid-column: 2; grid-row: 2; margin-left: 0; }
+.player-card > .player-me-badge { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+/* rating-row 가 없을 때 (waiting 등) color 가 single row 로 자연스럽게 가운데 */
+.player-card.waiting > .player-color { grid-row: 1; }
+.player-card.waiting > .player-me-badge { grid-row: 1; }
 .player-card.active {
   border-color: var(--accent-1);
   box-shadow: 0 0 0 1px var(--accent-1), 0 0 24px rgba(0, 229, 255, 0.30);
@@ -355,6 +366,28 @@
 }
 .player-color.black { background: #0c0c0c; color: white; }
 .player-color.white { background: #fff; color: #0c0c0c; }
+
+/* 게임 화면 — 닉 옆 티어 + 레이팅 */
+.player-rating-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.player-rating-row.hidden { display: none; }
+.player-tier {
+  font-size: 16px;
+  line-height: 1;
+  cursor: help;
+}
+.player-rating {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+.player-card.waiting .player-rating-row { display: none; }
 
 /* 온라인 상태 indicator — 흑/백 라벨 우하단에 작은 동그라미 */
 .player-color::after {
@@ -540,4 +573,143 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   .player-nick { font-size: 14px; }
   .result { font-size: 22px; }
   .btn { padding: 10px 14px; font-size: 13px; }
+}
+
+/* ============================================================
+   랭킹 / 최근 대국 — 로비 하단
+   ============================================================ */
+.ranking-list .rank-item,
+.recent-games-list .recent-game-item {
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border 0.15s, background 0.15s;
+}
+
+/* 랭킹 row — rank | tier | nickname (+bot) | rating | record */
+.rank-item {
+  display: grid;
+  grid-template-columns: 28px 24px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.rank-item.is-me {
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.10), rgba(179, 136, 255, 0.08));
+  border-color: rgba(0, 229, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.20) inset;
+}
+.rank-num {
+  font-weight: 800;
+  color: var(--ink-muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.rank-item.is-me .rank-num { color: var(--accent-1); }
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  cursor: help;
+}
+.rank-nick {
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rank-bot-mark {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.rank-rating {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: var(--ink);
+  font-size: 13px;
+}
+.rank-record {
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 내 순위가 top 10 밖일 때 추가로 보여주는 별도 행 */
+.ranking-me-extra {
+  margin-top: 4px;
+}
+.ranking-me-extra .rank-item {
+  /* 같은 .rank-item.is-me 스타일 자연히 상속 */
+}
+
+/* 최근 대국 row — time | black vs white | winner */
+.recent-game-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  font-size: 12px;
+}
+.recent-game-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--ink-muted);
+}
+.recent-game-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.recent-game-side.is-winner {
+  color: var(--ink);
+  font-weight: 700;
+}
+.recent-game-side .side-color-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.side-color-dot.black { background: #1a1130; border: 1px solid var(--border-strong); }
+.side-color-dot.white { background: #f0f0ff; border: 1px solid var(--border-strong); }
+.recent-game-vs {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+.recent-game-time {
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.rating-delta {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rating-delta.up   { color: var(--good); }
+.rating-delta.down { color: var(--bad); }
+.rating-delta.zero { color: var(--ink-faint); }
+.recent-game-reason {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* 모바일 가로 매우 좁을 때 — record 만 다음 줄로 wrap */
+@media (max-width: 380px) {
+  .rank-item { grid-template-columns: 24px 24px 1fr auto; }
+  .rank-record { grid-column: 1 / -1; text-align: right; padding-top: 2px; }
 }

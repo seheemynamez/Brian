@@ -73,6 +73,7 @@ const onResumeSession = (ws, msg) => {
     const botColor = getBotColor(room);
     if (botColor && room.turn === botColor) scheduleBotMove(room);
   }
+  const { buildPlayerRatings } = require('../domain/users');
   send(ws, {
     type: 'resume_success',
     code: room.code,
@@ -83,6 +84,7 @@ const onResumeSession = (ws, msg) => {
     board: room.board,
     turn: room.turn,
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
+    ratings: buildPlayerRatings(room),
     playerStatus: playerStatusPayload(room),
     status: room.status,
     winner: room.winner,

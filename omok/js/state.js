@@ -47,6 +47,7 @@ export const state = {
 
   // 양 플레이어
   nicknames: { black: '', white: '' },
+  ratings: { black: null, white: null },  // game_start 시점의 rating. 게임 화면 티어 표시용.
   myNick: '',
   // 양 플레이어의 connection 상태 — 게임 화면의 online indicator 용.
   // 'online' | 'offline'. game_start/resume_success/spectate_success 시 서버가 동기화.
@@ -67,6 +68,8 @@ export const state = {
   // 로비
   onlineCount: 0,
   roomsList: [],
+  ranking: [],                   // [{ clientId, nickname, rating, tier, wins, losses, draws, isBot }]
+  recentGames: [],               // [{ gameId, endedAt, winner, reason, isBot, black, white }]
 
   // 영구 클라이언트 ID — 같은 브라우저는 같은 ID. 서버에서 자기 자신끼리 매칭되는 것을 막는 용도.
   clientId: (() => {

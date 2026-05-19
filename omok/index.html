@@ -168,6 +168,27 @@
         </div>
       </div>
 
+      <div class="rooms-section ranking-section">
+        <div class="rooms-header">
+          <span class="rooms-title">🏆 랭킹</span>
+          <span class="rooms-count" id="ranking-count">0</span>
+        </div>
+        <div id="ranking-list" class="rooms-list ranking-list">
+          <div class="rooms-empty">아직 랭킹 데이터가 없어요</div>
+        </div>
+        <div id="me-rank-extra" class="ranking-me-extra hidden"></div>
+      </div>
+
+      <div class="rooms-section recent-games-section">
+        <div class="rooms-header">
+          <span class="rooms-title">📜 최근 대국</span>
+          <span class="rooms-count" id="recent-games-count">0</span>
+        </div>
+        <div id="recent-games-list" class="rooms-list recent-games-list">
+          <div class="rooms-empty">아직 종료된 대국이 없어요</div>
+        </div>
+      </div>
+
       <a class="other-games" href="https://seheemynamez.github.io/" target="_blank" rel="noopener">
         🎲 다른 게임은 어떠세요? →
       </a>
@@ -195,12 +216,20 @@
         <div class="player-card" id="player-black">
           <div class="player-color black" id="black-color">흑</div>
           <div class="player-nick" id="black-nick">흑 플레이어</div>
+          <div class="player-rating-row" id="black-rating-row">
+            <span class="player-tier" id="black-tier"></span>
+            <span class="player-rating" id="black-rating"></span>
+          </div>
           <div class="player-me-badge hidden" id="black-me">나</div>
         </div>
         <div class="vs" id="vs-divider">VS</div>
         <div class="player-card" id="player-white">
           <div class="player-color white" id="white-color">백</div>
           <div class="player-nick" id="white-nick">백 플레이어</div>
+          <div class="player-rating-row" id="white-rating-row">
+            <span class="player-tier" id="white-tier"></span>
+            <span class="player-rating" id="white-rating"></span>
+          </div>
           <div class="player-me-badge hidden" id="white-me">나</div>
         </div>
       </div>
