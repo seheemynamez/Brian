@@ -1027,7 +1027,7 @@ test('RK1: 봇 게임 leave_room → 사람 rating 감소 + recent_games 적재'
   const list = await waitForType(ws, 'ranking_list');
   const me = list.entries.find((e) => e.clientId === 'cid-rk1');
   assert(me, 'me not in ranking after game');
-  assert(me.rating < 1500, `expected rating < 1500 after loss, got ${me.rating}`);
+  assert(me.rating < 1200, `expected rating < 1200 (INITIAL) after loss, got ${me.rating}`);
   assert(me.losses === 1, `expected losses=1, got ${me.losses}`);
   assert(typeof me.tier === 'string' && me.tier.length > 0, 'tier missing');
 
@@ -1071,9 +1071,9 @@ test('RK3: PVP leave_room → 떠난 쪽 패배 + ratings 변동', async () => {
   const h = list.entries.find((e) => e.clientId === 'cid-rk3-host');
   const g = list.entries.find((e) => e.clientId === 'cid-rk3-guest');
   assert(h && g, 'host/guest not in ranking');
-  // zero-sum
-  assert(h.rating + g.rating === 3000, `zero-sum 깨짐: host=${h.rating} guest=${g.rating}`);
-  assert(h.rating < 1500 && g.rating > 1500, 'host should lose, guest should win');
+  // zero-sum (양쪽 INITIAL_RATING=1200 시작 → 합 2400 유지)
+  assert(h.rating + g.rating === 2400, `zero-sum 깨짐: host=${h.rating} guest=${g.rating}`);
+  assert(h.rating < 1200 && g.rating > 1200, 'host should lose, guest should win');
   assert(h.losses === 1 && g.wins === 1, `wins/losses 카운트 오류`);
 });
 

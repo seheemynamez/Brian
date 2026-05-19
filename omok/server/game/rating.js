@@ -8,7 +8,10 @@
 
 'use strict';
 
-const INITIAL_RATING = 1500;
+// 신규 사용자 시작 rating — Bronze 구간 (1100-1299) 의 가운데.
+// 1500 (Gold) 으로 시작하면 첫 게임 전부터 top 10 안에 들어가 어색.
+// medium 봇 (1500) 과 의도된 격차로 1-2판 이기면 +25 정도씩 올라옴.
+const INITIAL_RATING = 1200;
 const K_FACTOR = 32;
 
 // 봇 초기 rating — bot.js 의 BOT_IDS 와 매칭.
