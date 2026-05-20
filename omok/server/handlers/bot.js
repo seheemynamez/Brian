@@ -67,6 +67,22 @@ const scheduleBotMove = (room) => {
       applyMove(room, botColor, move[0], move[1], { actor: 'bot' });
     }).catch((err) => {
       console.error('[bot] generateMoveAsync 실패:', err && err.message);
+      // Worker timeout / crash 등으로 봇이 응수 못한 경우 — game/bot.js 의 generateMove
+      // 를 sync 로 직접 호출 (easy 난이도 fallback, sub-second). 차례 잃지 않게 즉시 둠.
+      // 약수가 될 수 있지만 무응답 → 사용자 무한 timeout 보다 낫다.
+      const current = getRoom(code);
+      if (!current || current !== room || room.status !== 'playing' || room.turn !== botColor) return;
+      try {
+        const { generateMove } = require('../game/bot');
+        const fallback = generateMove(room.board, botColor, 'easy');
+        if (fallback && room.board[fallback[0]][fallback[1]] === 0) {
+          const { applyMove } = require('./game');
+          applyMove(room, botColor, fallback[0], fallback[1], { actor: 'bot' });
+          console.error('[bot] fallback (easy sync) move 적용:', fallback);
+        }
+      } catch (e2) {
+        console.error('[bot] fallback 도 실패:', e2 && e2.message);
+      }
     });
   }, delay));
 };

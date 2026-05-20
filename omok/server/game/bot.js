@@ -398,10 +398,11 @@ const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 3);
 //     이전 (3,15) 보다 후보 5개 적음. early ~66ms.
 const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 10);
 
-// 상: 7-ply × top 6 — 깊이 2 단계 더 깊이. 콤보 / 강제 응수를 더 정밀 추적.
-//     폭은 6 으로 좁혀 α-β 가지치기 극대화. early worst 4.2s (one_stone) — delay 와
-//     합쳐도 15s 안 유지 (worst 약 6s). 사고시간 (delay) 은 medium 수준으로 분배.
-const generateMoveHard = (board, color) => searchBestMove(board, color, 7, 6);
+// 상: 6-ply × top 6 — 이전 (5, 8) 대비 depth +1, 폭 -2. α-β 가지치기 극대화.
+//     local one_stone worst 945ms, early 306ms. Render free-tier 가 로컬 대비 5-10배
+//     느릴 수 있어 worst case ≈ 5-10s — turn timeout 30s 안에 안전.
+//     이전 (7, 6) 은 local 4.2s 였는데 Render 에선 20-30s 초과해 timeout 발생 → revert.
+const generateMoveHard = (board, color) => searchBestMove(board, color, 6, 6);
 
 const GENERATORS = {
   easy:   generateMoveEasy,
