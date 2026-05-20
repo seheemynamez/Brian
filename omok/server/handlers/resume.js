@@ -48,6 +48,16 @@ const onResumeSession = (ws, msg) => {
     return send(ws, { type: 'resume_failed', reason: 'not_found' });
   }
   roomRuntime.clearDisconnectTimer(room.code, sess.color);
+  // 옛 ws (좀비 — 비행기모드 등으로 close 가 지연된 경우) 가 같은 sid 에 바인딩돼 있으면
+  // 정리. 그렇지 않으면 옛 ws 의 뒤늦은 close 이벤트가 onPlayerDisconnect 를 다시
+  // trigger 해서 grace timer 가 재시작되고, 정상 게임 중인 새 ws 가 패배 처리됨.
+  const oldWs = connections.getWsBySessionId(sid);
+  if (oldWs && oldWs !== ws) {
+    oldWs.roomCode = null;
+    oldWs.color = null;
+    oldWs.role = null;
+    oldWs.sessionId = null;
+  }
   ws.roomCode = room.code;
   ws.color = sess.color;
   ws.role = 'player';

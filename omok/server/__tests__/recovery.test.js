@@ -1272,6 +1272,40 @@ test('VIS9: 방장이 자신이 queue_join → 자기 방에 매칭 안 됨', as
   host.close(); second.close();
 });
 
+// ============================================================
+// Z — 좀비 ws (비행기모드 reconnect 후 옛 ws 지연 close) 시나리오
+// ============================================================
+// 사용자 보고 버그: A 비행기모드 → 재접속 → 잘 두고 있다가 갑자기 미복귀 판정 (A 패배).
+// 가설: 새 ws 로 resume_session 성공 후, 옛 좀비 ws 의 close 가 뒤늦게 fire 되며
+//       disconnect handler 가 다시 호출돼 grace timer 가 재시작.
+
+test('Z1: resume 후 옛 좀비 ws 의 지연 close 가 grace timer 재시작하면 안 됨', async () => {
+  const { host, guest, hostSid } = await bootstrapRoom({
+    hostClientId: 'cid-z1a', guestClientId: 'cid-z1b',
+  });
+  // host (옛 ws) 는 close 안 함 — 비행기모드 좀비 시뮬레이션
+
+  // 새 ws 로 resume_session
+  const host2 = await open();
+  sendJson(host2, { type: 'set_nickname', nickname: 'H', clientId: 'cid-z1a' });
+  sendJson(host2, { type: 'resume_session', sessionId: hostSid, nickname: 'H' });
+  await waitForType(host2, 'resume_success');
+
+  // 잠시 정상 진행 (move 한 번 — '잘 두고 있는' 상태)
+  sendJson(host2, { type: 'move', row: 7, col: 7 });
+  await waitFor(guest, (m) => m.type === 'move' && m.row === 7 && m.col === 7);
+
+  // 옛 host ws 가 뒤늦게 close — 비행기모드 OFF 후 TCP 정리되며 fire
+  host.close();
+  guest.received.length = 0;
+
+  // GRACE 만료 시간만큼 대기 — host2 가 패배 처리되면 안 됨
+  await sleep(GRACE + 500);
+  const abandoned = guest.received.find((m) => m.type === 'opponent_abandoned');
+  assert(!abandoned, `옛 ws 의 지연 close 가 grace timer 재시작 시키면 안 됨. got: ${JSON.stringify(abandoned)}`);
+  host2.close(); guest.close();
+});
+
 test('VIS10: 큐 대기 중 누가 공개 방 만들면 즉시 매칭 (reverse 흐름)', async () => {
   // A 가 먼저 queue_join → 대기 (빈 public 방 없음)
   const waiter = await open();
