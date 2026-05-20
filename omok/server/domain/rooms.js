@@ -46,14 +46,20 @@ const markRoomDirty = (room) => {
   store.persistRoom(room.code, room);
 };
 
-// 로비 표시용 방 목록 요약 — 'over' 는 곧 사라질 상태라 굳이 노출하지 않음
+// 로비 표시용 방 목록 요약 — 'over' 는 곧 사라질 상태라 굳이 노출하지 않음.
+// Private 방은 'waiting' 상태에선 안 보여줌 (초대받은 사람만 참여 가능).
+// 매칭 성사 (playing) 후엔 visibility 무관하게 노출 (관전 모집).
+// visibility 누락된 legacy 데이터는 'public' 으로 처리.
 const getRoomsList = () => {
   const out = [];
   for (const [code, room] of rooms) {
     if (room.status !== 'waiting' && room.status !== 'playing') continue;
+    const visibility = room.visibility || 'public';
+    if (room.status === 'waiting' && visibility === 'private') continue;
     out.push({
       code,
       status: room.status,
+      visibility,
       nicknames: {
         black: room.players.black?.nickname || '',
         white: room.players.white?.nickname || '',
@@ -62,6 +68,30 @@ const getRoomsList = () => {
     });
   }
   return out;
+};
+
+// 랜덤 매칭용 — 자동 매칭 가능한 빈 public 방 찾기.
+// 조건: waiting + public + black 슬롯 있음 + 그 ws 가 활성 (OPEN) + white 슬롯 비어있음
+//       + 봇 게임 아님.
+// excludeClientId: 자기 방엔 매칭 안 되게 (방장이 큐 누른 경우 방어).
+// FIFO: 가장 오래 대기한 (createdAt 작은) 방 우선.
+// 좀비 방 (black slot 은 살아있지만 ws 는 끊긴 grace 중 상태) 은 제외.
+const findEmptyPublicRoom = (excludeClientId = null) => {
+  const candidates = [];
+  for (const room of rooms.values()) {
+    if (room.status !== 'waiting') continue;
+    const visibility = room.visibility || 'public';
+    if (visibility !== 'public') continue;
+    if (room.hasBot) continue;
+    if (!room.players.black || room.players.white) continue;
+    if (excludeClientId && room.players.black.clientId === excludeClientId) continue;
+    // 방장 ws 활성 검증 — 끊긴 방장의 좀비 방은 매칭 대상 아님.
+    const blackWs = connections.getWsBySessionId(room.players.black.sessionId);
+    if (!blackWs || blackWs.readyState !== blackWs.OPEN) continue;
+    candidates.push(room);
+  }
+  candidates.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  return candidates[0] || null;
 };
 
 const getSession  = (sid) => sessions.get(sid);
@@ -124,7 +154,7 @@ const sanitizeNick = (nick) => {
 //   - players 는 ws 가 아니라 metadata object.
 //   - timer handle, worker handle 같은 직렬화 불가능한 객체는 room-runtime.js 에 분리.
 //   - room 자체는 (rematchVotes Set, spectatorSessionIds Set 만 제외하면) JSON 직렬화 가능.
-const createRoom = (code) => ({
+const createRoom = (code, visibility = 'public') => ({
   code,
   // gameId — startGame 시마다 새로 발급. 재대국마다 변경. 랭킹/통계 사전 작업.
   gameId: null,
@@ -138,6 +168,10 @@ const createRoom = (code) => ({
   turn: 'black',
   turnDeadline: 0,
   status: 'waiting',              // waiting | playing | over
+  // 'public' (default) — 'waiting' 상태에서도 로비 목록 노출, 랜덤 매칭 대상.
+  // 'private' — 'waiting' 상태에선 로비에 안 보임. 코드/초대링크로만 진입.
+  //   매칭 성사 (playing) 후엔 두 가지 모두 로비에 노출 (관전 모집).
+  visibility: visibility === 'private' ? 'private' : 'public',
   winner: null,
   winLine: null,
   lastMove: null,
@@ -236,7 +270,7 @@ const attachSpectatorSession = (ws, room) => {
 
 module.exports = {
   MAX_NICK_LEN,
-  getRoom, setRoom, deleteRoom, markRoomDirty, getRoomsList,
+  getRoom, setRoom, deleteRoom, markRoomDirty, getRoomsList, findEmptyPublicRoom,
   getSession, dropSession, touchSession,
   getQueue, enqueue, dequeueByConnectionId,
   incrementOnline, decrementOnline, getOnline,

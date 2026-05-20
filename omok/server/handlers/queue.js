@@ -7,6 +7,7 @@ const {
   getQueue, enqueue, dequeueByConnectionId,
   genCode,
   createRoom, createPlayerSession,
+  findEmptyPublicRoom, markRoomDirty,
 } = require('../domain/rooms');
 const connections = require('../connections');
 const { send } = require('./send');
@@ -76,6 +77,34 @@ const onQueueJoin = (ws, msg) => {
     return send(ws, { type: 'queue_waiting' });
   }
 
+  // ── 우선순위 1: 빈 public 방이 있으면 그 방에 합류 (랜덤 매칭의 핵심 신규 동작) ──
+  // FIFO — 가장 오래 대기한 public 방 우선. 방장이 큐를 누른 경우 자기 방 제외.
+  const emptyRoom = findEmptyPublicRoom(ws.clientId);
+  if (emptyRoom) {
+    const code = emptyRoom.code;
+    const opponentSlot = emptyRoom.players.black;
+    const opponentWs = opponentSlot
+      ? connections.getWsBySessionId(opponentSlot.sessionId)
+      : null;
+    // 옛 방장 ws 가 사라진 경우 race — fallback: 그 방 건너뛰고 큐 처리.
+    if (opponentWs && opponentWs.readyState === opponentWs.OPEN) {
+      ws.roomCode = code;
+      ws.color = 'white';
+      ws.role = 'player';
+      createPlayerSession(emptyRoom, 'white', {
+        type: 'human', ws, clientId: ws.clientId || null, nickname: ws.nickname,
+      });
+      send(ws, { type: 'matched', code });
+      send(opponentWs, { type: 'matched', code });
+      markRoomDirty(emptyRoom);
+      log.event('queue_matched_into_public', { code, a: opponentSlot.nickname, b: ws.nickname });
+      const { startGame } = require('./game');
+      startGame(emptyRoom);
+      return;
+    }
+  }
+
+  // ── 우선순위 2: 큐 매칭 (기존 로직) ──
   // 같은 clientId 의 좀비 큐 항목 정리 + 옛 entry 의 timer/sent 상태 상속.
   // (이슈 #5/#6, 그리고 비행기모드 reconnect: 옛 ws 가 close 안 됐는데 새 ws 가 reconnect 한 경우)
   let inheritedJoinedAt = null;
@@ -181,6 +210,36 @@ const onBotOfferDecline = (_ws) => {
   // entry.botOfferSentAt 도 세팅된 상태라 같은 entry 에 대해서 다시 발송되지 않음.
 };
 
+// 새로 만들어진 공개 방에 큐 대기자가 있으면 즉시 매칭.
+// onCreateRoom 끝부분에서 호출 — visibility=public 일 때만.
+// 큐가 FIFO 라 가장 오래 기다린 사람이 매칭됨. 자기 자신 (host) 의 clientId 와는 매칭 안 됨.
+const tryMatchWaiterIntoNewRoom = (room, hostWs) => {
+  const q = getQueue();
+  for (let i = 0; i < q.length; i++) {
+    const entry = q[i];
+    if (hostWs.clientId && entry.clientId === hostWs.clientId) continue;
+    const waiterWs = connections.getWsByConnectionId(entry.connectionId);
+    if (!waiterWs || waiterWs.readyState !== waiterWs.OPEN) continue;
+    // 매칭 — q 에서 제거, bot offer timer 해제, white 슬롯 채움
+    q.splice(i, 1);
+    clearBotOfferTimer(entry);
+    waiterWs.inQueue = false;
+    waiterWs.roomCode = room.code;
+    waiterWs.color = 'white';
+    waiterWs.role = 'player';
+    createPlayerSession(room, 'white', {
+      type: 'human', ws: waiterWs, clientId: waiterWs.clientId || null, nickname: waiterWs.nickname,
+    });
+    send(hostWs,   { type: 'matched', code: room.code });
+    send(waiterWs, { type: 'matched', code: room.code });
+    log.event('room_matched_with_queue_waiter', { code: room.code, host: hostWs.nickname, waiter: waiterWs.nickname });
+    const { startGame } = require('./game');
+    startGame(room);
+    return true;
+  }
+  return false;
+};
+
 module.exports = {
   botOfferSentByClientId,
   BOT_OFFER_COOLDOWN_MS,
@@ -190,4 +249,5 @@ module.exports = {
   onQueueLeave,
   onBotOfferAccept,
   onBotOfferDecline,
+  tryMatchWaiterIntoNewRoom,
 };

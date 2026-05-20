@@ -59,12 +59,7 @@ const ensureNick = () => {
 // 닉네임은 페이지 진입 시 자동 부여되어 있고, 비어 있어도 ensureNick() 이 fallback 으로 채워준다.
 // 따라서 '닉네임을 먼저 입력하세요' 에러는 발생하지 않는다.
 const setupLobby = () => {
-  $('btn-create').addEventListener('click', () => {
-    setLobbyError('');
-    const nick = ensureNick();
-    initAudio();
-    sendMessage({ type: 'create_room', nickname: nick });
-  });
+  // btn-create 핸들러는 setupCreateRoomModal 에서 모달 wiring 과 함께 등록됨.
   $('btn-join').addEventListener('click', () => {
     setLobbyError('');
     const code = $('code-input').value.trim().toUpperCase();
@@ -268,6 +263,55 @@ const setupBotGame = () => {
   state.openBotGameModal = showModal;
 };
 
+// ---- 방 만들기 모달 ----
+// "방 만들기" 카드 클릭 → 모달 (visibility 선택) → "만들기" 클릭 시 서버에 create_room.
+const setupCreateRoomModal = () => {
+  const overlay = $('create-room-overlay');
+  let visibility = 'public';   // 기본값
+
+  const hintEl = $('visibility-hint');
+  const hintTextByValue = {
+    public:  '🌐 공개: 로비 "열려있는 방" 에 노출 + 랜덤 매칭 대상',
+    private: '🔒 비공개: 코드/초대링크로만 입장 가능 (매칭 후엔 관전 노출)',
+  };
+
+  // 토글 그룹 — bot 모달 패턴 그대로
+  overlay.querySelectorAll('.bot-toggle-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      const btn = e.target.closest('.bot-toggle-btn');
+      if (!btn) return;
+      row.querySelectorAll('.bot-toggle-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      visibility = btn.dataset.value;
+      if (hintEl && hintTextByValue[visibility]) hintEl.textContent = hintTextByValue[visibility];
+    });
+  });
+
+  const showModal = () => {
+    // 매번 기본값 public 으로 리셋
+    visibility = 'public';
+    overlay.querySelectorAll('.bot-toggle-row[data-group="visibility"] .bot-toggle-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.value === 'public');
+    });
+    if (hintEl) hintEl.textContent = hintTextByValue.public;
+    overlay.classList.remove('hidden');
+  };
+  const hideModal = () => overlay.classList.add('hidden');
+
+  $('btn-create').addEventListener('click', () => {
+    setLobbyError('');
+    ensureNick();
+    initAudio();
+    showModal();
+  });
+  $('btn-create-room-cancel').addEventListener('click', hideModal);
+  $('btn-create-room-confirm').addEventListener('click', () => {
+    const nick = ensureNick();
+    sendMessage({ type: 'create_room', nickname: nick, visibility });
+    hideModal();
+  });
+};
+
 // ---- 접속자 목록 팝업 ----
 // 상단 '🟢 N명 온라인' 칩 클릭 → 서버에 목록 요청 (응답은 net.js 의 dispatch 가 받아 ui.js 의 showOnlineList 호출).
 const setupOnlineListPopup = () => {
@@ -418,6 +462,7 @@ setupGame();
 setupCopyLinks();
 setupOnlineListPopup();
 setupBotGame();
+setupCreateRoomModal();
 setupDirectJoinModal();
 setupMute();
 setupEmote();
