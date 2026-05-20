@@ -206,6 +206,35 @@ function tickTimer() {
 
 export { startTimerTick };
 
+// 상대 끊김 시 turn timer 정지 + grace deadline 카운트다운 표시.
+// 서버가 disconnect 동안 turn timer 를 동결 (clearTurnTimer) 하므로 UI 도 동결돼야
+// 사용자가 "타이머 다 됐는데 진행 안 됨" 으로 헷갈리지 않음.
+export const pauseTurnTimer = (graceDeadline) => {
+  stopTimerTick();
+  state.disconnectDeadline = graceDeadline || null;
+  if (!state.disconnectDeadline) {
+    $('timer-text').textContent = '⏸';
+    $('timer-fill').style.width = '0%';
+    return;
+  }
+  // grace deadline 까지 카운트다운 — 매초 갱신.
+  const tickPaused = () => {
+    if (!state.disconnectDeadline) return;
+    const remainMs = Math.max(0, state.disconnectDeadline - Date.now());
+    const remainSec = Math.ceil(remainMs / 1000);
+    $('timer-text').textContent = `⏸ ${remainSec}s`;
+    $('timer-fill').style.width = '0%';
+  };
+  tickPaused();
+  state.timerTickHandle = setInterval(tickPaused, 250);
+};
+
+// 상대 재연결. grace countdown 멈춤. 다음 turn_started 가 startTimerTick 로 정상 재개.
+export const resumeTurnTimer = () => {
+  state.disconnectDeadline = null;
+  stopTimerTick();
+};
+
 // ---- 게임 종료 UI ----
 export const showGameOver = (winner, reason) => {
   const card = $('game-over');

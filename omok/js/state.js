@@ -62,6 +62,10 @@ export const state = {
   // 타이머
   turnDeadline: null,
   timerTickHandle: null,
+  // 상대가 끊긴 상태에서 grace 안에 복귀해야 하는 deadline.
+  // opponent_disconnected.deadline 으로 set, opponent_reconnected 시 null.
+  // 값이 있으면 turn timer 는 일시정지 + 이 deadline 으로 카운트다운 표시.
+  disconnectDeadline: null,
 
   // 오디오
   muted: localStorage.getItem('omok_muted') === '1',

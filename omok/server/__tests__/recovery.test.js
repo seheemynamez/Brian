@@ -339,6 +339,19 @@ test('T16: app-level ping receives pong', async () => {
   ws.close();
 });
 
+test('T2b: opponent_disconnected payload 에 deadline 포함 (FE 동적 카운트다운용)', async () => {
+  // FE 의 pauseTurnTimer 가 grace deadline 을 받아 "⏸ Ns" 카운트다운 표시.
+  // 이전엔 "30초" 하드코딩이라 실제 grace (90s) 와 안 맞아 사용자 혼란.
+  const { host, guest } = await bootstrapRoom({ hostClientId: 'cid-T2b-h', guestClientId: 'cid-T2b-g' });
+  host.close();
+  const evt = await waitFor(guest, (m) => m.type === 'opponent_disconnected' && m.color === 'black', 1500);
+  assert(typeof evt.deadline === 'number', `deadline 필드 필수 (FE 가 grace 카운트다운에 사용), got ${typeof evt.deadline}`);
+  const now = Date.now();
+  assert(evt.deadline > now, `deadline 은 미래여야 함, got ${evt.deadline} now ${now}`);
+  assert(evt.deadline <= now + GRACE + 500, `deadline 은 now+grace 근방, got ${evt.deadline} expected <= ${now + GRACE + 500}`);
+  guest.close();
+});
+
 // ============================================================
 // R 시나리오 — latent risk probes
 // ============================================================
