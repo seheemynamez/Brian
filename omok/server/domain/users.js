@@ -11,6 +11,16 @@ const {
   INITIAL_RATING, BOT_INITIAL_RATING,
   computeDeltas, getTier, resultForBlack,
 } = require('../game/rating');
+const { BOT_NICKNAMES } = require('../game/bot');
+
+// 봇 clientId 식별 — recordGameResult 의 nickname 덮어쓰기 추적용.
+const isBotClientId = (cid) => typeof cid === 'string' && cid.startsWith('_bot_');
+const expectedBotNickname = (cid) => {
+  if (cid === '_bot_easy')   return BOT_NICKNAMES.easy;
+  if (cid === '_bot_medium') return BOT_NICKNAMES.medium;
+  if (cid === '_bot_hard')   return BOT_NICKNAMES.hard;
+  return null;
+};
 
 const store = getStore();
 const users = store.users;
@@ -103,6 +113,22 @@ const recordGameResult = (room, { winnerColor, reason, bothDisconnected = false 
   if (winnerColor === 'black')      { blackUser.wins++;  whiteUser.losses++; }
   else if (winnerColor === 'white') { whiteUser.wins++;  blackUser.losses++; }
   else                              { blackUser.draws++; whiteUser.draws++;  }
+  // 봇 user.nickname 이 잘못 덮어쓰기 되는 버그 추적용 logging — 봇 slot 의 nickname 이
+  // BOT_NICKNAMES 와 다른 값이면 어딘가에서 mutation 이 일어났다는 단서.
+  for (const [color, slot, user] of [['black', blackSlot, blackUser], ['white', whiteSlot, whiteUser]]) {
+    if (isBotClientId(slot.clientId)) {
+      const expected = expectedBotNickname(slot.clientId);
+      if (slot.nickname && expected && slot.nickname !== expected) {
+        console.error('[BOT_NICKNAME_WARN] recordGameResult', {
+          code: room.code, gameId: room.gameId, color,
+          botClientId: slot.clientId, expected, gotSlotNickname: slot.nickname,
+          oppColor: color === 'black' ? 'white' : 'black',
+          oppNickname: (color === 'black' ? whiteSlot : blackSlot).nickname,
+          oppClientId: (color === 'black' ? whiteSlot : blackSlot).clientId,
+        });
+      }
+    }
+  }
   if (blackSlot.nickname) blackUser.nickname = blackSlot.nickname;
   if (whiteSlot.nickname) whiteUser.nickname = whiteSlot.nickname;
   blackUser.updatedAt = Date.now();

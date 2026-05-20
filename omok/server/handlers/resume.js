@@ -65,7 +65,15 @@ const onResumeSession = (ws, msg) => {
   if (sess.clientId) connections.bindClient(ws, sess.clientId);
   if (msg.nickname) {
     const n = sanitizeNick(msg.nickname) || slot.nickname;
-    slot.nickname = n;
+    // SANITY — 봇 slot 의 nickname 을 사람 입력으로 덮어쓰는 path 는 존재하면 안 됨.
+    if (slot.type === 'bot') {
+      console.error('[BOT_NICKNAME_WARN] resume tried to mutate bot slot', {
+        code: room.code, color: sess.color, botClientId: slot.clientId,
+        wsClientId: sess.clientId, attemptedNickname: n,
+      });
+    } else {
+      slot.nickname = n;
+    }
     ws.nickname = n;
   } else {
     ws.nickname = slot.nickname;

@@ -55,7 +55,16 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
   // 닉네임 갱신
   if (nicknameOverride) {
     const n = sanitizeNick(nicknameOverride) || slot.nickname;
-    slot.nickname = n;
+    // SANITY — 봇 slot 의 nickname 을 사람 입력으로 덮어쓰는 path 는 존재하면 안 됨.
+    // findPlayerColorByClientId 가 slot.type==='human' 만 매치하지만 방어용 로깅.
+    if (slot.type === 'bot') {
+      console.error('[BOT_NICKNAME_WARN] reclaim tried to mutate bot slot', {
+        code: room.code, color, botClientId: slot.clientId,
+        wsClientId: ws.clientId, attemptedNickname: n,
+      });
+    } else {
+      slot.nickname = n;
+    }
     ws.nickname = n;
   } else {
     ws.nickname = slot.nickname;
