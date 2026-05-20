@@ -41,6 +41,25 @@ const onTurnTimeout = (room) => {
   if (room.status !== 'playing') return;
   const skipped = room.turn;
   room.turn = otherColor(room.turn);
+  // 봇 게임에서 사람 차례 timeout → 봇 차례로 토글 → 봇이 둠. 만약 사람 ws 가
+  // 좀비 (close fire 안 됨) 상태로 timeout 이 반복되면 봇이 끝까지 혼자 진행해서
+  // 사람이 패배 + 봇 user record 가 잘못 update 되는 버그 추적용 logging.
+  if (room.hasBot) {
+    const humanColor = skipped;
+    const humanSlot = room.players[humanColor];
+    if (humanSlot && humanSlot.type === 'human') {
+      const { getWsBySessionId } = require('../connections');
+      const humanWs = getWsBySessionId(humanSlot.sessionId);
+      const humanOnline = humanWs && humanWs.readyState === humanWs.OPEN;
+      if (!humanOnline) {
+        console.error('[BOT_GAME_TURN_TIMEOUT_OFFLINE] human timed out while offline (bot will continue solo)', {
+          code: room.code, gameId: room.gameId,
+          humanColor, humanClientId: humanSlot.clientId, humanNickname: humanSlot.nickname,
+          sessionId: humanSlot.sessionId,
+        });
+      }
+    }
+  }
   broadcastRoom(room, { type: 'turn_skipped', skipped, turn: room.turn });
   startTurnTimer(room);
   markRoomDirty(room);
