@@ -33,20 +33,31 @@ const getBotColor = (room) => {
   return null;
 };
 
+// BOT_TRACE=1 환경 변수로 토글. 봇 멈춤 reproduce 시 어느 분기에서 schedule skip 됐는지
+// 추적용. prod 평소엔 비활성 (log noise 방지).
+const BOT_TRACE = process.env.BOT_TRACE === '1';
+const trace = (msg) => { if (BOT_TRACE) console.error(`[bot-trace] ${msg}`); };
+
 // 봇 차례 → 워커 풀에 generateMove 요청 → 결과를 applyMove 로 적용.
 // onMove 는 사람 ws 입력 전용 (rate-limit/validators 가 들어옴). 봇은 그 경로를 우회.
 const scheduleBotMove = (room) => {
-  if (!room || !room.hasBot) return;
-  if (room.status !== 'playing') return;
+  if (!room || !room.hasBot) { trace(`scheduleBotMove SKIP: no room/no bot`); return; }
+  if (room.status !== 'playing') { trace(`scheduleBotMove SKIP: status=${room.status} room=${room.code}`); return; }
   const botColor = getBotColor(room);
-  if (!botColor) return;
+  if (!botColor) { trace(`scheduleBotMove SKIP: no botColor room=${room.code}`); return; }
   const bot = room.players[botColor];
-  if (room.turn !== botColor) return;
+  if (room.turn !== botColor) { trace(`scheduleBotMove SKIP: turn=${room.turn} botColor=${botColor} room=${room.code}`); return; }
   // 사람 player 가 offline (좀비 ws — close 가 fire 안 된 채 응답 없는 상태) 이면
   // 봇이 두지 않음. 좀비 + turn timeout 으로 봇이 혼자 게임을 끝까지 진행해 사람이
   // 부재중 패배 처리되던 버그 방지.
+  // 이 분기로 들어왔다는 건 사람이 끊긴 상태 → 새로고침으로 ws 재연결 시 풀림.
+  // 사용자가 "30s 넘게 멈춤 → 새로고침하면 풀림" 보고한 정황과 일치.
   const { bothPlayersOnline } = require('./send');
-  if (!bothPlayersOnline(room)) return;
+  if (!bothPlayersOnline(room)) {
+    trace(`scheduleBotMove SKIP (bothPlayersOnline=false): room=${room.code} botColor=${botColor} difficulty=${bot.difficulty}`);
+    return;
+  }
+  trace(`scheduleBotMove START: room=${room.code} botColor=${botColor} difficulty=${bot.difficulty} stones=${countStones(room.board)}`);
   const delay = thinkTimeMs(bot.difficulty);
   const code = room.code;
   roomRuntime.setTimer(code, 'botMoveTimer', setTimeout(() => {
@@ -114,7 +125,12 @@ const afterSuccessfulMove = (room, movedByBot) => {
   // 진행 중: 직전 수가 봇/사람 분기 → 적절한 emote → 봇 차례면 다음 수 스케줄
   const trigger = movedByBot ? 'bot_moved' : 'opponent_moved';
   setTimeout(() => tryBotEmote(room, trigger), 300);
-  if (room.turn === botColor) scheduleBotMove(room);
+  if (room.turn === botColor) {
+    trace(`afterSuccessfulMove → schedule bot: room=${room.code} botColor=${botColor} movedByBot=${movedByBot}`);
+    scheduleBotMove(room);
+  } else {
+    trace(`afterSuccessfulMove → no bot schedule (turn=${room.turn}): room=${room.code}`);
+  }
 };
 
 // ============================================================

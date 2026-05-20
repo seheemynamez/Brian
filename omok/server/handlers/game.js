@@ -36,6 +36,32 @@ const startTurnTimer = (room) => {
 const clearTurnTimer = (room) => {
   roomRuntime.clearTimer(room.code, 'turnTimer');
   room.turnDeadline = 0;
+  room.turnRemainMs = 0;
+};
+
+// 일시 정지 — disconnect 시 사용. 현 turn 의 남은 시간을 turnRemainMs 에 저장 후 timer 정지.
+// resume/reclaim 시 resumeTurnTimer 가 그 값으로 timer 재개 (남은 시간 보존).
+// clearTurnTimer 와 다른 점: turnRemainMs 를 0 으로 안 만듦.
+const pauseTurnTimer = (room) => {
+  if (room.turnDeadline > 0) {
+    room.turnRemainMs = Math.max(0, room.turnDeadline - Date.now());
+  }
+  roomRuntime.clearTimer(room.code, 'turnTimer');
+  room.turnDeadline = 0;
+};
+
+// resume/reclaim 시 사용 — pauseTurnTimer 가 저장한 turnRemainMs 로 timer 재개.
+// turnRemainMs 가 0 이면 (정상 진행 중인 새 turn) 새 TURN_TIMEOUT_MS 로 시작.
+// 호출 후 turnRemainMs 는 0 으로 reset (다음 disconnect 위해).
+// 양쪽 다 online 일 때만 호출하는 게 원칙 (resume.js / join.js 에서 가드).
+const resumeTurnTimer = (room) => {
+  const remain = (room.turnRemainMs && room.turnRemainMs > 0) ? room.turnRemainMs : TURN_TIMEOUT_MS;
+  room.turnDeadline = Date.now() + remain;
+  roomRuntime.setTimer(room.code, 'turnTimer', setTimeout(() => onTurnTimeout(room), remain));
+  room.turnRemainMs = 0;
+  // 양쪽 + spectator 다 새 deadline 받게 turn_started broadcast 재사용.
+  // 클라 onTurnStarted 가 state.turnDeadline 만 update — 다른 부수 효과 없음.
+  broadcastRoom(room, { type: 'turn_started', turn: room.turn, deadline: room.turnDeadline, timeoutMs: TURN_TIMEOUT_MS });
 };
 
 const onTurnTimeout = (room) => {
@@ -204,6 +230,8 @@ const applyMove = (room, color, row, col, opts) => {
 module.exports = {
   startTurnTimer,
   clearTurnTimer,
+  pauseTurnTimer,
+  resumeTurnTimer,
   onTurnTimeout,
   applyMove,
   onMove,

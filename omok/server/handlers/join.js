@@ -76,11 +76,12 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
   forEachSpectatorWs(room, (sWs) => send(sWs, { type: 'opponent_reconnected', color }));
 
   // 봇 게임 / PVP 모두 — 양쪽 모두 online 일 때만 turn timer 재개. resume.js 와 동일 정책.
+  // resumeTurnTimer 가 pauseTurnTimer 가 저장한 turnRemainMs 로 재개 → 새로고침 시 보존.
   if (room.status === 'playing') {
     const { bothPlayersOnline } = require('./send');
     if (bothPlayersOnline(room)) {
-      const { startTurnTimer } = require('./game');
-      startTurnTimer(room);
+      const { resumeTurnTimer } = require('./game');
+      resumeTurnTimer(room);
       if (room.hasBot) {
         const { getBotColor, scheduleBotMove } = require('./bot');
         const botColor = getBotColor(room);
