@@ -117,7 +117,15 @@ function dirHasOpenThree(board, r, c, dr, dc, color) {
 
 function countOpenThrees(board, r, c, color) {
   let n = 0;
-  for (const [dr, dc] of DIRS) if (dirHasOpenThree(board, r, c, dr, dc, color)) n++;
+  for (const [dr, dc] of DIRS) {
+    // 같은 line 에 four (= 한 수에 5목) 가 있으면 그 line 은 "four" 레벨이지 "three" 가 아님.
+    // renju 표준의 highest-threat 우선 규칙 (4 > 3) — line 단위 분류로 카운트.
+    // 이 가드 없으면 jump four `XXX.X` (한 line 에 4 + 3 가 함께 존재) 가 open three 로도
+    // 동시에 잡혀 쌍삼 false positive 발생. consecutive `XXXX` 는 dirHasOpenThree 가
+    // 자연히 false (virtual 두면 5목, open four X) 라 이 가드 없어도 영향 없음.
+    if (lineHasFour(lineAt(board, r, c, dr, dc, color))) continue;
+    if (dirHasOpenThree(board, r, c, dr, dc, color)) n++;
+  }
   return n;
 }
 

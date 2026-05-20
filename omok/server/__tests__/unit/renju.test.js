@@ -202,6 +202,36 @@ describe('checkForbidden — pre-existing 3 가 (r,c) 와 무관할 때 (false p
   });
 });
 
+describe('checkForbidden — highest-threat 우선 (한 line 의 4 가 3 보다 우선)', () => {
+  // 버그: dirHasOpenThree 가 jump four (XXX.X) 패턴이 있는 line 에서도 open three 를 잡음.
+  // 같은 line 이 four + three 양쪽으로 카운트되어 쌍삼 false positive 발생.
+  // Fix: countOpenThrees 가 line 에 four 가 있으면 그 방향 skip — highest-threat 규칙 적용.
+
+  test('가로 jump four (XXX.X) + 세로 open 3: line 자체가 four 분류 → 쌍삼 X → 합법', () => {
+    // (6,6) 두면:
+    //   가로 (6,5)(6,6)(6,7) BBB + (6,9) B + (6,8) 빈칸 = `XXX.X` jump four (col 8 두면 5목)
+    //                      → 동시에 BBB 가 open three 처럼 보일 수 있음 (col 4 두면 BBBB open four).
+    //   세로 (5,6)(6,6)(7,6) BBB → open three.
+    // 표준 renju: 가로는 four (5목 한 수 직전) 이지 three 가 아님. four 1 + three 1 = 합법.
+    const b = emptyBoard();
+    place(b, 'black', [[6, 5], [6, 7], [6, 9]]); // 가로 jump four pre
+    place(b, 'black', [[5, 6], [7, 6]]);          // 세로 open 3 pre
+    place(b, 'black', [[6, 6]]);                  // 테스트 대상
+    assert.equal(checkForbidden(b, 6, 6, 'black'), null,
+      '가로 jump four 가 동시에 open three 로도 카운트되면 안 됨 — highest-threat 규칙');
+  });
+
+  test('대조: 가로 진짜 open 3 + 세로 open 3 (양쪽 모두 four 아님) → 쌍삼', () => {
+    // 가로 (6,5)(6,6)(6,7) BBB 만 — 끝 col 4, col 8 둘 다 빈칸 (col 9 안 둠). 진짜 open three.
+    // 세로 BBB → open three. countOpenThrees=2 → 쌍삼.
+    const b = emptyBoard();
+    place(b, 'black', [[6, 5], [6, 7]]);          // 가로 BBB pre (col 4, 8 빈칸)
+    place(b, 'black', [[5, 6], [7, 6]]);          // 세로 open 3 pre
+    place(b, 'black', [[6, 6]]);
+    assert.deepEqual(checkForbidden(b, 6, 6, 'black'), { reason: 'double_three' });
+  });
+});
+
 describe('checkForbidden — 우선순위 (5목 > overline > 4-4 > 3-3)', () => {
   test('5목 형성 + overline 가능 패턴 → null (5목 승리 우선)', () => {
     // 가로 정확히 5: (7,3)(7,4)(7,5)(7,6)(7,7) — but no 6
