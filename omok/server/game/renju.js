@@ -87,6 +87,10 @@ function lineHasFour(line) {
 
 // 열린 3: 한 수 더 두면 열린 4 가 형성되는 형태.
 // 알고리즘: 중심 주변 ±4 빈 칸에 가상 배치 후 그 자리 기준 열린 4 확인.
+// 단순 lineHasOpenFour 만으로는 부족 — (r,c) 와 무관하게 line 어딘가 만들어진 open four
+// 까지 잡아서 false positive 가 생김 (e.g. (5,8) 두는데 (5,2)(5,3)(5,5) 의 기존 BB_B 가
+// 가로 open three 로 잘못 카운트). 따라서 .XXXX. 가 (r,c) 와 virtual placement 둘 다
+// 포함하는 경우만 인정.
 function dirHasOpenThree(board, r, c, dr, dc, color) {
   const me = colorNumOf(color);
   for (let i = -4; i <= 4; i++) {
@@ -98,7 +102,13 @@ function dirHasOpenThree(board, r, c, dr, dc, color) {
     board[nr][nc] = me;
     const sub = lineAt(board, nr, nc, dr, dc, color);
     board[nr][nc] = 0;
-    if (lineHasOpenFour(sub)) return true;
+    // (r,c) 는 virtual placement (line center) 의 반대쪽 i 칸 → line idx = CENTER - i.
+    const rcIdx = CENTER - i;
+    for (let k = Math.max(0, CENTER - 4); k <= Math.min(sub.length - 6, CENTER - 1); k++) {
+      if (sub.substr(k, 6) !== '.XXXX.') continue;
+      // .XXXX. 의 X 4 칸: k+1..k+4. (r,c) 가 그 중 하나여야 (r,c) 가 만든 open three.
+      if (rcIdx >= k + 1 && rcIdx <= k + 4) return true;
+    }
   }
   return false;
 }

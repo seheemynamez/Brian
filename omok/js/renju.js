@@ -83,7 +83,13 @@ function dirHasOpenThree(board, r, c, dr, dc, color) {
     board[nr][nc] = me;
     const sub = lineAt(board, nr, nc, dr, dc, color);
     board[nr][nc] = 0;
-    if (lineHasOpenFour(sub)) return true;
+    // (r,c) 는 virtual placement (line center) 의 반대쪽 i 칸 → line idx = CENTER - i.
+    const rcIdx = CENTER - i;
+    for (let k = Math.max(0, CENTER - 4); k <= Math.min(sub.length - 6, CENTER - 1); k++) {
+      if (sub.substr(k, 6) !== '.XXXX.') continue;
+      // .XXXX. 의 X 4 칸: k+1..k+4. (r,c) 가 그 중 하나여야 (r,c) 가 만든 open three.
+      if (rcIdx >= k + 1 && rcIdx <= k + 4) return true;
+    }
   }
   return false;
 }
