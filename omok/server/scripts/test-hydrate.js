@@ -180,6 +180,76 @@ const main = async () => {
     host2.close();
     await sleep(200);
 
+    // ============================================================
+    // Phase 6: 빠른 연속 다수 수 + 즉시 SIGTERM → 마지막 수까지 모두 보존
+    // ============================================================
+    // 사용자 보고 버그 (deploy 시 마지막 1-2수 누락) 회귀 보호.
+    // persistRoom 이 fire-and-forget 이고 graceful shutdown 이 valkey client 의
+    // pending command 를 flush 하지 않으면 SIGTERM 직전 수가 누락됨.
+    //
+    // 시나리오:
+    //   - 새 PVP 방, 양쪽 번갈아 5수 (마지막 수 후 sleep 거의 없음)
+    //   - 즉시 SIGTERM (= deploy 시뮬레이션)
+    //   - restart + resume → 5수 모두 보존되는지 확인.
+    // 직전 phase 의 server 정리 후 새로 시작 (PORT 충돌 방지).
+    await stopServer(server);
+    server = null;
+
+    console.log('=== Phase 6: 연속 5수 + 즉시 SIGTERM → 마지막 수 보존 ===');
+    server = startServer();
+    await waitForServerReady(server);
+
+    const h3 = await open();
+    sendJson(h3, { type: 'set_nickname', nickname: 'H6', clientId: 'cid-hyd6-h' });
+    sendJson(h3, { type: 'create_room', nickname: 'H6' });
+    const created6 = await waitForType(h3, 'room_created');
+    const code6 = created6.code;
+    const g3 = await open();
+    sendJson(g3, { type: 'set_nickname', nickname: 'G6', clientId: 'cid-hyd6-g' });
+    sendJson(g3, { type: 'join_room', code: code6, nickname: 'G6' });
+    const hStart = await waitForType(h3, 'game_start');
+    const gStart = await waitForType(g3, 'game_start');
+    const hSid6 = hStart.sessionId;
+    const hCol6 = hStart.you;
+    const blackWs6 = (hCol6 === 'black') ? h3 : g3;
+    const whiteWs6 = (hCol6 === 'black') ? g3 : h3;
+
+    // 5수 빠르게 (양쪽 번갈아 — black, white, black, white, black) — 잘 떨어진 자리.
+    const moves = [[7,7], [8,8], [7,8], [8,7], [6,6]];
+    for (let i = 0; i < moves.length; i++) {
+      const ws = (i % 2 === 0) ? blackWs6 : whiteWs6;
+      sendJson(ws, { type: 'move', row: moves[i][0], col: moves[i][1] });
+      await waitFor(h3, (m) => m.type === 'move' && m.row === moves[i][0] && m.col === moves[i][1], 2000);
+    }
+    // 마지막 수 직후 — sleep 거의 없이 (50ms 만) SIGTERM
+    await sleep(50);
+
+    console.log(`  5 moves applied, sending SIGTERM 50ms after last move`);
+    h3.close(); g3.close();
+    await stopServer(server);
+    server = null;
+
+    // Restart + resume + 5수 모두 보존 검증
+    server = startServer();
+    await waitForServerReady(server);
+    const h3b = await open();
+    sendJson(h3b, { type: 'resume_session', sessionId: hSid6, clientId: 'cid-hyd6-h', nickname: 'H6' });
+    const resumed6 = await waitForType(h3b, 'resume_success', 10000);
+    const b6 = resumed6.board;
+    const lastVals = moves.map(([r, c], i) => {
+      const expected = (i % 2 === 0) ? 1 : 2;  // 0,2,4 = black=1; 1,3 = white=2
+      const got = b6[r][c];
+      return { idx: i, pos: [r, c], expected, got, ok: got === expected };
+    });
+    const missing = lastVals.filter((x) => !x.ok);
+    if (missing.length > 0) {
+      console.error('  ✗ 누락된 수 (graceful shutdown 이 valkey pending write 안 flush):', missing);
+      throw new Error(`5수 중 ${missing.length}수 누락 — graceful shutdown bug 재현`);
+    }
+    console.log(`  ✓ 5수 모두 보존 (graceful shutdown 이 store.close() 로 valkey flush)\n`);
+    h3b.close();
+    await sleep(200);
+
     console.log('✓ HYDRATE TEST PASSED');
     exitCode = 0;
   } catch (e) {
