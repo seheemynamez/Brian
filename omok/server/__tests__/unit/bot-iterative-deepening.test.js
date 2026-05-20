@@ -5,7 +5,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { generateMove } = require('../../game/bot');
+const { generateMove, searchBestMove } = require('../../game/bot');
 
 const SIZE = 15;
 const empty = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
@@ -62,9 +62,6 @@ describe('Bot ID — 5목 즉시 발견 (winning move) 시 ID 조기 종료', ()
 });
 
 describe('Bot ID — abort 시나리오', () => {
-  // 실제 timeout 발동은 hard d6 의 빈 보드 worst case (10s+) 가 필요한데 unit test
-  // 안에서 너무 오래 걸림. 대신 generateMove 의 반환 shape (aborted 필드) + cfg 일치만 검증.
-  // 실제 abort behavior 는 prod 로그의 reached < cfgMaxDepth 사례로 확인.
   test('반환 shape — aborted bool, elapsedMs number, cfgMaxDepth/cfgTopK 일치', () => {
     const b = empty();
     b[7][7] = 2;
@@ -74,5 +71,68 @@ describe('Bot ID — abort 시나리오', () => {
     assert.equal(typeof r.reachedDepth, 'number');
     assert.equal(typeof r.cfgMaxDepth, 'number');
     assert.equal(typeof r.cfgTopK, 'number');
+  });
+
+  // 핵심: deadline 발동 검증 — PR #78 의 hotfix 회귀 방지.
+  // 이전 AbortController + setTimeout 방식은 worker 의 동기 흐름 점령으로 abort 안 됨.
+  // deadline 직접 비교 (Date.now() > deadline) 가 동기 안에서도 발동하는지.
+  test('짧은 timeoutMs 강제 시 hard 봇 aborted=true + reached < cfgMaxDepth', () => {
+    const b = empty();
+    b[7][7] = 2;
+    // 1ms — d1 도 못 끝낼 만큼 짧음. 실제론 d1 한 후보 평가 후 deadline 초과 감지 → break.
+    const r = generateMove(b, 'black', 'hard', { timeoutMs: 1 });
+    assert.equal(r.aborted, true, 'aborted=true 여야 — deadline 초과로 ID 중단됨');
+    assert.ok(r.reachedDepth < r.cfgMaxDepth, `reached(${r.reachedDepth}) < cfgMax(${r.cfgMaxDepth})`);
+    // d1 시작 후 abort 면 bestMove 가 partial best — 그래도 null 아님 (orderCandidatesAtRoot
+    // 결과의 1번 후보가 cands[0] 으로 들어가 partial best 됨).
+    // OR generateMove 가 ID 의 첫 depth 도 못 끝내서 null 반환. 둘 다 OK.
+  });
+
+  test('짧은 timeoutMs 강제 시 medium 봇 동일 — aborted=true + 일관성', () => {
+    const b = empty();
+    b[7][7] = 2;
+    const r = generateMove(b, 'black', 'medium', { timeoutMs: 1 });
+    assert.equal(r.aborted, true);
+    assert.ok(r.reachedDepth < r.cfgMaxDepth);
+  });
+
+  test('충분한 timeoutMs 시 정상 완료 (aborted=false, reached=cfgMax)', () => {
+    const b = empty();
+    b[7][7] = 2;
+    // easy 는 무조건 빠르게 끝남 — abort 절대 발동 안 함 검증.
+    const r = generateMove(b, 'black', 'easy');
+    assert.equal(r.aborted, false);
+    assert.equal(r.reachedDepth, r.cfgMaxDepth);
+    assert.ok(r.move);
+  });
+});
+
+describe('Bot ID — searchBestMove deadline 직접 검증 (PR #78 회귀)', () => {
+  // searchBestMove 직접 호출 — deadline 이 한 search 안에서 동작하는지.
+  // Date.now() > deadline 비교가 매 후보 평가 후 발동해야 함. setTimeout/AbortSignal 의존 X.
+  test('과거 deadline 주면 complete=false 즉시 반환', () => {
+    const b = empty();
+    b[7][7] = 2;
+    // 이미 1초 전 시각. 모든 후보 평가 전 즉시 abort.
+    const past = Date.now() - 1000;
+    const r = searchBestMove(b, 'black', 4, 10, { deadline: past });
+    assert.equal(r.complete, false, 'complete=false 여야 (deadline 초과)');
+  });
+
+  test('미래 deadline 충분히 길면 complete=true + move 있음', () => {
+    const b = empty();
+    b[7][7] = 2;
+    const future = Date.now() + 30000;  // 30s 후 — 어떤 d 도 끝남
+    const r = searchBestMove(b, 'black', 2, 5, { deadline: future });
+    assert.equal(r.complete, true);
+    assert.ok(r.move);
+  });
+
+  test('opts 안 줘도 (deadline=undefined) 정상 작동 — backward compat', () => {
+    const b = empty();
+    b[7][7] = 2;
+    const r = searchBestMove(b, 'black', 2, 5);
+    assert.equal(r.complete, true);
+    assert.ok(r.move);
   });
 });

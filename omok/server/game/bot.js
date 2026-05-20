@@ -453,10 +453,13 @@ const getSearchConfig = (difficulty) => DIFFICULTY_CONFIG[difficulty] || DIFFICU
 // 비교해 자체 abort. 동기 흐름이라 worker 의 이벤트 루프와 무관 — 즉시 작동.
 // (이전 AbortController + setTimeout 방식은 worker 이벤트 루프 점령으로 setTimeout 콜백
 //  영원히 발동 안 해서 search 끝까지 진행 → worker_timeout 22s 초과로 terminate 됨.)
-const generateMove = (board, color, difficulty) => {
+// opts.timeoutMs 가 주어지면 cfg.timeoutMs 대신 사용 — 단위 테스트에서 짧은 deadline
+// 강제할 때 활용. prod 호출 (handlers/bot.js) 은 opts 없음 → cfg 기본 사용.
+const generateMove = (board, color, difficulty, opts = {}) => {
   const cfg = getSearchConfig(difficulty);
   const t0 = Date.now();
-  const deadline = t0 + cfg.timeoutMs;
+  const timeoutMs = (typeof opts.timeoutMs === 'number') ? opts.timeoutMs : cfg.timeoutMs;
+  const deadline = t0 + timeoutMs;
   let bestMove = null;
   let reachedDepth = 0;
   let aborted = false;
@@ -606,6 +609,7 @@ const thinkTimeMs = (difficulty) => {
 module.exports = {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
   generateMove,
+  searchBestMove,                       // 단위 테스트 (deadline 발동 검증) 용
   countStones, getSearchConfig,         // 로깅 / 디버그용
   decideBotEmote, recordBotEmote, newBotEmoteState,
   thinkTimeMs,
