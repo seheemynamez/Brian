@@ -85,6 +85,15 @@ const onPlayerDisconnect = (ws) => {
   const room = getRoom(ws.roomCode);
   if (!room) return;
 
+  // 옛 ws 가 뒤늦게 close 된 경우 (비행기모드 좀비) — 이미 새 ws 로 sid 가 rebind 됐다면
+  // 그 player 는 사실상 online. 옛 ws 의 close 로 grace timer 시작하면 안 됨.
+  // resume.js 에서도 옛 ws.roomCode 를 정리하지만, 그 정리 시점과 close fire 시점이
+  // 어긋날 수 있어 여기서 한번 더 가드 (defense in depth).
+  if (ws.sessionId && ws.color) {
+    const activeWs = connections.getWsBySessionId(ws.sessionId);
+    if (activeWs && activeWs !== ws) return;  // 다른 ws 가 이 sid 의 active — 무시
+  }
+
   if (room.status !== 'playing' && room.status !== 'waiting' && room.status !== 'over') {
     onLeaveRoom(ws);
     return;
