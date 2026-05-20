@@ -173,12 +173,15 @@ wss.on('close', () => clearInterval(heartbeatTimer));
 // ============================================================
 // Graceful shutdown — Render redeploy / 수동 SIGTERM 대응.
 // ============================================================
-// 모든 ws 에 server_restarting 알림 + close(1012) → 클라가 명시적 "서버 업데이트 중" 표시.
-// valkey 의 write-through 가 fire-and-forget 이라 마지막 변경이 1.5초 안에 도달함을
-// 100% 보장 못 하지만, room state 는 매 move 마다 persist 되어 거의 최신이다.
-// boot 후 hydrate + rehydrateTimers 가 새 grace timer 등록 → 90s 안에 reconnect 시 정상.
+// 흐름:
+//   1) 모든 ws 에 server_restarting + close(1012) — 클라가 "서버 업데이트 중" 표시
+//   2) 1.5s 대기 (ws send 가 TCP 로 flush 될 시간)
+//   3) store.close() — valkey client.quit() 호출 → ioredis 가 pending command 모두
+//      서버에 보낸 후 close. 직전에 발생한 마지막 수의 persistRoom 같은 fire-and-forget
+//      write 가 valkey 에 도달함을 보장. 이게 빠지면 마지막 1-2 수가 hydrate 시 누락.
+//   4) httpServer.close + process.exit
 let _shuttingDown = false;
-const gracefulShutdown = (signal) => {
+const gracefulShutdown = async (signal) => {
   if (_shuttingDown) return;
   _shuttingDown = true;
   log.event('server_shutdown', { signal });
@@ -189,11 +192,17 @@ const gracefulShutdown = (signal) => {
       try { ws.close(1012, 'restarting'); } catch {}  // 1012 = Service Restart
     }
   }
-  // Render 의 graceful period 안에서 정리. 1.5s 면 ws send 다 flush 되기 충분.
-  setTimeout(() => {
-    try { httpServer.close(); } catch {}
-    process.exit(0);
-  }, 1500);
+  // ws send TCP flush 대기.
+  await new Promise((r) => setTimeout(r, 1500));
+  // valkey 의 pending writes (마지막 수의 persistRoom 등) 모두 flush 후 connection 정리.
+  try {
+    const s = require('./store').getStore();
+    if (typeof s.close === 'function') await s.close();
+  } catch (e) {
+    console.error('[shutdown] store.close 실패:', e && e.message);
+  }
+  try { httpServer.close(); } catch {}
+  process.exit(0);
 };
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => { gracefulShutdown('SIGTERM'); });
+process.on('SIGINT',  () => { gracefulShutdown('SIGINT');  });
