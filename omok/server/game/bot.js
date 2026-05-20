@@ -137,18 +137,18 @@ const PATTERN_SCORES = [
   ['.O.O.',    150],
 ];
 
-// 4 방향 각각의 전체 라인을 # 센티넬과 함께 1D 문자열로 수집.
-const getAllLines = (board, color) => {
-  const me = colorNumOf(color);
-  const opp = me === 1 ? 2 : 1;
+// Color-agnostic 4 방향 라인 — 'B' (흑) / 'W' (백) / '.' (빈) / '#' (경계).
+// 한 번 빌드해서 양 색 평가 두 번에 재사용 → 보드 scan 비용 절반 절약.
+// (이전엔 getAllLines(me) + getAllLines(opp) 2회 호출 — 같은 보드 두 번 scan 했음.)
+const getRawLines = (board) => {
   const lines = [];
   const ch = (r, c) => {
     if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return '#';
-    if (board[r][c] === me) return 'O';
-    if (board[r][c] === opp) return 'X';
+    const v = board[r][c];
+    if (v === 1) return 'B';
+    if (v === 2) return 'W';
     return '.';
   };
-
   // 가로
   for (let r = 0; r < SIZE; r++) {
     let s = '#';
@@ -161,18 +161,18 @@ const getAllLines = (board, color) => {
     for (let r = 0; r < SIZE; r++) s += ch(r, c);
     lines.push(s + '#');
   }
-  // 대각 \ — 왼쪽 위 → 오른쪽 아래
+  // 대각 \
   for (let i = 0; i < SIZE; i++) {
     let s = '#', r = 0, c = i;
     while (r < SIZE && c < SIZE) { s += ch(r, c); r++; c++; }
-    if (s.length >= 6) lines.push(s + '#');  // 5목 가능한 길이만
+    if (s.length >= 6) lines.push(s + '#');
   }
   for (let i = 1; i < SIZE; i++) {
     let s = '#', r = i, c = 0;
     while (r < SIZE && c < SIZE) { s += ch(r, c); r++; c++; }
     if (s.length >= 6) lines.push(s + '#');
   }
-  // 대각 / — 왼쪽 아래 → 오른쪽 위
+  // 대각 /
   for (let i = 0; i < SIZE; i++) {
     let s = '#', r = 0, c = i;
     while (r < SIZE && c >= 0) { s += ch(r, c); r++; c--; }
@@ -186,27 +186,48 @@ const getAllLines = (board, color) => {
   return lines;
 };
 
-const scoreFor = (board, color) => {
-  const lines = getAllLines(board, color);
+// PATTERN_SCORES 의 'O' / 'X' 를 색 별로 미리 변환한 사본.
+// 매칭 시 line 도 변환 없이 그대로 사용 — 매번 변환하는 비용 제거.
+const PATTERN_SCORES_B = PATTERN_SCORES.map(([p, s]) => [
+  p.replace(/O/g, 'B').replace(/X/g, 'W'), s,
+]);
+const PATTERN_SCORES_W = PATTERN_SCORES.map(([p, s]) => [
+  p.replace(/O/g, 'W').replace(/X/g, 'B'), s,
+]);
+
+const scoreLines = (lines, patternList) => {
   let total = 0;
   for (const line of lines) {
-    for (const [pattern, score] of PATTERN_SCORES) {
+    for (const [pattern, score] of patternList) {
       let idx = 0;
       while ((idx = line.indexOf(pattern, idx)) !== -1) {
         total += score;
-        idx += 1;  // 겹치는 점프 패턴까지 잡도록 1씩 전진
+        idx += 1;  // 점프 패턴 겹침 잡도록 1씩 전진
       }
     }
   }
   return total;
 };
 
+// scoreFor 는 backward compat — classifyState 등 외부에서 단일 색 점수 필요 시.
+// 라인을 두 번 빌드하지 않게 evaluatePosition 에서는 별도 경로 사용.
+const scoreFor = (board, color) => {
+  const lines = getRawLines(board);
+  return scoreLines(lines, color === 'black' ? PATTERN_SCORES_B : PATTERN_SCORES_W);
+};
+
 // 평가: 자기 점수 - 상대 점수 × DEFENSIVE_BIAS (1.1).
 // 상대 위협이 같은 크기여도 약간 더 무겁게 다뤄 봇이 공격보다 방어를 살짝 우선시.
 // 동률 시점에서 자기 패턴 발전이 아닌 상대 차단 쪽으로 기울어짐.
+//
+// 라인 빌드 1회 + 매칭 2회 (이전: 라인 2회 + 매칭 2회). hot path 라 큰 가속.
 const DEFENSIVE_BIAS = 1.1;
-const evaluatePosition = (board, myColor) =>
-  scoreFor(board, myColor) - scoreFor(board, otherColor(myColor)) * DEFENSIVE_BIAS;
+const evaluatePosition = (board, myColor) => {
+  const lines = getRawLines(board);
+  const myPats = (myColor === 'black') ? PATTERN_SCORES_B : PATTERN_SCORES_W;
+  const oppPats = (myColor === 'black') ? PATTERN_SCORES_W : PATTERN_SCORES_B;
+  return scoreLines(lines, myPats) - scoreLines(lines, oppPats) * DEFENSIVE_BIAS;
+};
 
 // ============================================================
 // 무브 정렬
@@ -311,6 +332,70 @@ const findWinningMove = (board, color) => {
 };
 
 // ============================================================
+// Zobrist hashing — TT 키 생성
+// ============================================================
+// 225 cells × 2 colors = 450 random 32bit numbers. 보드의 모든 흑/백 돌의 XOR.
+// makeMove 시 board[r][c] = me → hash ^= TABLE[(r*SIZE+c)*2 + (me-1)] (incremental).
+// undoMove 도 같은 XOR — symmetric (XOR 자기 자신은 identity).
+// LCG 시드 고정 — worker 재시작에 관계없이 같은 보드 → 같은 hash. 충돌 적음
+// (15×15 가지 수가 32bit 공간 대비 충분히 작음).
+const ZOBRIST_TABLE = (() => {
+  const arr = new Uint32Array(SIZE * SIZE * 2);
+  let s = 0xdeadbeef >>> 0;
+  for (let i = 0; i < arr.length; i++) {
+    // xorshift32 — 빠르고 분산 좋음
+    s ^= s << 13; s >>>= 0;
+    s ^= s >>> 17;
+    s ^= s << 5; s >>>= 0;
+    arr[i] = s;
+  }
+  return arr;
+})();
+// 현 차례 색 표현 — 같은 보드라도 누가 둘 차례냐로 평가 달라짐. TT 키 분리.
+const ZOBRIST_TURN = 0x9e3779b9;
+
+// 보드 전체 hash 계산 — searchBestMove 진입 시 한 번만. 이후 minimax 내부에선 incremental.
+const computeBoardHash = (board) => {
+  let h = 0;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const v = board[r][c];
+      if (v === 0) continue;
+      h ^= ZOBRIST_TABLE[(r * SIZE + c) * 2 + (v - 1)];
+    }
+  }
+  return h >>> 0;
+};
+
+// ============================================================
+// Transposition Table — search 중 같은 보드 상태 재만남 시 cache hit
+// ============================================================
+// flag 의미:
+//   EXACT — 전체 자식 탐색 완료. score 는 정확한 minimax 값.
+//   LOWER — β-cutoff 일어남. 실제 score 는 ≥ 저장값 (cut-node).
+//   UPPER — α-cutoff 일어남. 실제 score 는 ≤ 저장값 (all-node).
+// probe 시 alpha/beta 범위 보고 cutoff 가능한지 판단.
+const TT_EXACT = 0, TT_LOWER = 1, TT_UPPER = 2;
+const TT_MAX_ENTRIES = 100000;  // 메모리 보호 — ~4MB 예상
+
+const probeTT = (tt, key, depth, alpha, beta) => {
+  const e = tt.get(key);
+  if (!e || e.depth < depth) return null;
+  if (e.flag === TT_EXACT) return e.score;
+  if (e.flag === TT_LOWER && e.score >= beta) return e.score;
+  if (e.flag === TT_UPPER && e.score <= alpha) return e.score;
+  return null;
+};
+
+const storeTT = (tt, key, depth, score, flag) => {
+  // size 초과 시 단순 clear — LRU 까진 안 감 (구현 비용 vs 효과).
+  // ID 한 번에 100k entries 거의 안 채워짐 (depth 6, topK 10 면 트리 전체 ~10^6 노드인데
+  // 대부분 αβ cutoff 로 안 들어감).
+  if (tt.size >= TT_MAX_ENTRIES) tt.clear();
+  tt.set(key, { depth, score, flag });
+};
+
+// ============================================================
 // 미니맥스 + 알파베타 (정렬된 상위 K 후보만 탐색)
 // ============================================================
 // 시간 초과 시 minimax / searchBestMove 가 이 sentinel 반환. caller 가 incomplete
@@ -324,20 +409,39 @@ const findWinningMove = (board, color) => {
 //   직후 5/20 19:50-19:51). deadline 직접 비교는 동기 흐름 안에서 즉시 평가됨 — 안전.
 const ABORTED = Symbol('search_aborted');
 
-const minimax = (board, depth, color, myColor, alpha, beta, topK, deadline) => {
+const minimax = (board, hash, depth, color, myColor, alpha, beta, topK, deadline, tt) => {
   if (deadline && Date.now() > deadline) return ABORTED;
-  if (depth === 0) return evaluatePosition(board, myColor);
+
+  // TT probe — color 정보를 hash 에 XOR 로 묶어 turn-aware key 만듦.
+  const ttKey = (color === 'black') ? (hash >>> 0) : ((hash ^ ZOBRIST_TURN) >>> 0);
+  if (tt) {
+    const cached = probeTT(tt, ttKey, depth, alpha, beta);
+    if (cached !== null) return cached;
+  }
+  const alphaOrig = alpha;
+
+  if (depth === 0) {
+    const score = evaluatePosition(board, myColor);
+    if (tt) storeTT(tt, ttKey, 0, score, TT_EXACT);
+    return score;
+  }
 
   // 단축회로: 이 차례에 즉시 5목 만들 수 있으면 더 깊이 갈 필요 없음.
   // cheap ordering 이 결정적 cell 을 top K 에 못 넣어도 안전하게 잡힘.
   const win = findWinningMove(board, color);
   if (win) {
     const isMax = (color === myColor);
-    return isMax ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
+    const winScore = isMax ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
+    if (tt) storeTT(tt, ttKey, depth, winScore, TT_EXACT);
+    return winScore;
   }
 
   const cands = orderCandidatesCheap(board, color, topK);
-  if (!cands.length) return evaluatePosition(board, myColor);
+  if (!cands.length) {
+    const score = evaluatePosition(board, myColor);
+    if (tt) storeTT(tt, ttKey, depth, score, TT_EXACT);
+    return score;
+  }
 
   const me = colorNumOf(color);
   const isMaximizing = (color === myColor);
@@ -346,13 +450,15 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK, deadline) => {
   for (const [r, c] of cands) {
     if (deadline && Date.now() > deadline) return ABORTED;
     board[r][c] = me;
+    const moveKey = ZOBRIST_TABLE[(r * SIZE + c) * 2 + (me - 1)];
+    const newHash = (hash ^ moveKey) >>> 0;
     const winLine = checkWinRenju(board, r, c, color);
     let score;
     if (winLine) {
       // depth 보정 — 같은 승리라도 빨리 이기는/지는 게 더 좋은/나쁜 결과
       score = isMaximizing ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
     } else {
-      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta, topK, deadline);
+      score = minimax(board, newHash, depth - 1, otherColor(color), myColor, alpha, beta, topK, deadline, tt);
     }
     board[r][c] = 0;
     if (score === ABORTED) return ABORTED;
@@ -365,15 +471,35 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK, deadline) => {
     }
     if (beta <= alpha) break;
   }
+
+  // TT store: flag 는 best vs original αβ window 비교로 결정
+  if (tt) {
+    let flag;
+    if (isMaximizing) {
+      if (best <= alphaOrig) flag = TT_UPPER;       // α-cutoff: 실제값은 ≤ best
+      else if (best >= beta) flag = TT_LOWER;       // β-cutoff: 실제값은 ≥ best
+      else flag = TT_EXACT;
+    } else {
+      // Min 노드: best <= original β 면 LOWER (실제 ≥), best >= alpha 면 UPPER 가 안 되고
+      // 그냥 standard fail-low/fail-high 의 mirror. 단순화: maximizing 기준 그대로 적용 가능
+      // (αβ 의 대칭성 — 같은 cutoff 조건에서 flag 의미는 동일).
+      if (best <= alphaOrig) flag = TT_UPPER;
+      else if (best >= beta) flag = TT_LOWER;
+      else flag = TT_EXACT;
+    }
+    storeTT(tt, ttKey, depth, best, flag);
+  }
+
   return best;
 };
 
-// searchBestMove — opts.deadline (Date.now() + N) 시각 받음. 반환 shape:
-//   { move: [r,c]|null, complete: bool, win: bool, score: number }
+// searchBestMove — opts.deadline (Date.now() + N), opts.tt (선택적 Transposition Table).
+// 반환 shape: { move: [r,c]|null, complete: bool, win: bool, score: number }
 // complete=false 면 deadline 초과 중도 종료 — 그 depth 의 best 는 partial 이라 신뢰 X.
 // win=true 면 발견된 best 가 5목 / forced win (이론적 최선) — caller 는 ID 종료 가능.
 const searchBestMove = (board, color, depth, topK, opts = {}) => {
   const deadline = opts.deadline;
+  const tt = opts.tt;  // generateMove 가 ID 모든 depth 공유 위해 전달. 없으면 search 안 cache.
   const cands = orderCandidatesAtRoot(board, color, color, topK);
   if (!cands.length) {
     const fb = getCandidatesWithFallback(board, color);
@@ -384,6 +510,7 @@ const searchBestMove = (board, color, depth, topK, opts = {}) => {
   }
 
   const me = colorNumOf(color);
+  const initialHash = computeBoardHash(board);
   let bestMove = cands[0];
   let bestScore = -Infinity;
   let alpha = -Infinity, beta = Infinity;
@@ -393,12 +520,14 @@ const searchBestMove = (board, color, depth, topK, opts = {}) => {
       return { move: bestMove, complete: false, win: false, score: bestScore };
     }
     board[r][c] = me;
+    const moveKey = ZOBRIST_TABLE[(r * SIZE + c) * 2 + (me - 1)];
+    const newHash = (initialHash ^ moveKey) >>> 0;
     const winLine = checkWinRenju(board, r, c, color);
     let score;
     if (winLine) {
       score = 100000;
     } else {
-      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta, topK, deadline);
+      score = minimax(board, newHash, depth - 1, otherColor(color), color, alpha, beta, topK, deadline, tt);
     }
     board[r][c] = 0;
     if (score === ABORTED) {
@@ -507,12 +636,15 @@ const generateMove = (board, color, difficulty, opts = {}) => {
   const t0 = Date.now();
   const timeoutMs = (typeof opts.timeoutMs === 'number') ? opts.timeoutMs : cfg.timeoutMs;
   const deadline = t0 + timeoutMs;
+  // ID 의 모든 depth 가 공유하는 TT — d3 에서 만난 위치를 d4 의 sub-tree 에서도 재사용.
+  // generateMove 호출마다 새로 생성 — 다른 봇 게임 / 다른 search 에 오염 없음.
+  const tt = new Map();
   let bestMove = null;
   let reachedDepth = 0;
   let aborted = false;
   for (let d = 1; d <= cfg.maxDepth; d++) {
     if (Date.now() > deadline) { aborted = true; break; }
-    const r = searchBestMove(board, color, d, cfg.topK, { deadline });
+    const r = searchBestMove(board, color, d, cfg.topK, { deadline, tt });
     if (!r) break;
     if (r.complete) {
       if (r.move) bestMove = r.move;
@@ -571,9 +703,13 @@ const PERSONALITY = {
 };
 
 // 보드 상태 분류 — 봇 관점에서 winning/pressured/losing/even
+// Step 1 일관성: getRawLines 한 번으로 양 색 점수 모두 계산.
 const classifyState = (board, botColor) => {
-  const my = scoreFor(board, botColor);
-  const opp = scoreFor(board, otherColor(botColor));
+  const lines = getRawLines(board);
+  const myPats = (botColor === 'black') ? PATTERN_SCORES_B : PATTERN_SCORES_W;
+  const oppPats = (botColor === 'black') ? PATTERN_SCORES_W : PATTERN_SCORES_B;
+  const my = scoreLines(lines, myPats);
+  const opp = scoreLines(lines, oppPats);
   const delta = my - opp;
   if (delta >= 500) return 'winning';
   if (delta <= -500) return 'losing';
