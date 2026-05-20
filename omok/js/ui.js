@@ -322,7 +322,7 @@ const renderRatingChange = () => {
       <span class="rating-label">${escapeText(nick)}</span>
       <span class="rating-value">${before} → ${after}</span>
       <span class="rating-delta ${deltaCls}">(${sign}${delta})</span>
-      <span class="rating-tier" title="${tierBefore} → ${tierAfter}">${emojiBefore} → ${emojiAfter} ${tierAfter} ${tierArrow}</span>
+      <span class="rating-tier" title="${tierBefore} → ${tierAfter}">${emojiBefore} → ${emojiAfter} ${tierArrow}</span>
     </div>`;
   };
 
