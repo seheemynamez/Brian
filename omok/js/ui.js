@@ -13,6 +13,7 @@ export const showScreen = (name) => {
   $('screen-lobby').classList.toggle('hidden', name !== 'lobby');
   $('screen-waiting').classList.toggle('hidden', name !== 'waiting');
   $('screen-game').classList.toggle('hidden', name !== 'game');
+  $('screen-help').classList.toggle('hidden', name !== 'help');
   if (name !== 'game') {
     $('game-over').classList.add('hidden');
     // 게임 화면을 떠나면 이모트 피커도 닫고 FAB도 숨김
