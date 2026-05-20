@@ -389,19 +389,19 @@ const searchBestMove = (board, color, depth, topK) => {
 // ============================================================
 // 난이도별 generator
 // ============================================================
-// 하: 2-ply × top 5 — 상대 1수 응수는 보지만 후보 폭을 좁혀
-//     루트 정렬에 의존하므로 좋은 수도 자주 놓침. 입문자가 21% 승률 → ~50% 목표.
-//     즉시 승리수 (5목) 는 root 에서 무조건 잡힘.
-const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 5);
+// 하: 2-ply × top 3 — 상대 1수 응수는 보지만 후보 폭을 매우 좁혀
+//     루트 정렬에 의존. 좋은 수 자주 놓침. 입문자도 더 자주 이기게 약화.
+//     즉시 승리수 (5목) 는 root 에서 무조건 잡힘. early ~9ms.
+const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 3);
 
-// 중: 3-ply × top 15 — depth 한 단계 줄여 상대 응수의 응수까지 보지 않음.
-//     폭은 넓혀도 깊이 부족으로 콤보·강제 응수 차단력 ↓.
-//     사용자 13% 승률 → ~35-45% 로 적정 도전 수준.
-const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 15);
+// 중: 3-ply × top 10 — depth 는 3 유지하되 폭 좁혀 콤보·강제 응수 차단력 약간 ↓.
+//     이전 (3,15) 보다 후보 5개 적음. early ~66ms.
+const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 10);
 
-// 상: 5-ply × top 8 — 깊이 한 단계 더 올려 자기 콤보·상대 강제 응수를 2수 더 깊이 추적.
-//     폭은 8 로 좁혀 α-β 가지치기 효율 ↑. 의도된 끝판 — 변경 없음.
-const generateMoveHard = (board, color) => searchBestMove(board, color, 5, 8);
+// 상: 7-ply × top 6 — 깊이 2 단계 더 깊이. 콤보 / 강제 응수를 더 정밀 추적.
+//     폭은 6 으로 좁혀 α-β 가지치기 극대화. early worst 4.2s (one_stone) — delay 와
+//     합쳐도 15s 안 유지 (worst 약 6s). 사고시간 (delay) 은 medium 수준으로 분배.
+const generateMoveHard = (board, color) => searchBestMove(board, color, 7, 6);
 
 const GENERATORS = {
   easy:   generateMoveEasy,
@@ -521,10 +521,12 @@ const recordBotEmote = (emoteState, key, now) => {
 // ============================================================
 // 사람 느낌의 사고시간 — 실제 탐색 시간이 이보다 길면 자연스럽게 그만큼 걸림.
 // 짧은 쪽은 "생각하는 척" 최소 딜레이, 긴 쪽은 자연스러운 최대.
+// 상 봇은 generateMove 자체가 깊은 탐색 (worst 4s) 이라 delay 는 중 수준으로 줄여서
+// 합산 사고시간을 조절. delay 줄여 확보한 budget 을 탐색에 더 씀.
 const BOT_THINK_MS_RANGE = {
-  easy:   [400, 900],
-  medium: [900, 1800],
-  hard:   [1400, 2800],
+  easy:   [300, 700],
+  medium: [700, 1400],
+  hard:   [900, 1800],
 };
 const thinkTimeMs = (difficulty) => {
   const r = BOT_THINK_MS_RANGE[difficulty] || BOT_THINK_MS_RANGE.medium;
