@@ -398,25 +398,41 @@ const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 3);
 //     이전 (3,15) 보다 후보 5개 적음. early ~66ms.
 const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 10);
 
-// 상: 5-ply × top 16 (정상 단계) + 초반 (≤ 4 stones) 은 4-ply × top 8 로 단축.
+// 상: 단계별 (stones 수) 로 depth/topK 조절. Render free tier (0.1 vCPU burst) 슬로우다운
+// (worst ×25 추정) 안에 worker_timeout 22s 내 응수 보장.
 //
-//   왜 초반만 단축?
+//   stones 0-4  → d4×t8   (worst ~150ms local / ~4s Render)
+//   stones 5-9  → d4×t10  (worst ~310ms / ~8s Render)
+//   stones 10+  → d5×t10  (worst ~630ms / ~16s Render)
+//
+//   왜 단계별?
 //     빈 보드 근처는 후보들이 다 비슷한 점수로 평가됨 → α-β 가지치기 거의 못 함.
-//     local 측정: one_stone d5×t12 = 3.3s, d5×t16 = 10.8s — Render 5-10× 슬로우 가정시
-//     turn timeout (30s) 초과. d4×t8 은 60-150ms 범위라 Render 에서도 1s 이내 안전.
-//     5수 이상부터는 결정적 응수 / 패턴이 생겨 αβ 잘 자르므로 d5 유지.
-//
-//   정상 단계 (5수+) 에서 d5×t16 인 이유:
-//     이전 hotfix 의 d5×t12 보다 후보 4 개 늘려 강화 ("top 만 조절해 상향" 요청 충족).
-//     local early 1.44s, mid 568ms, mid_dense 27ms — Render ~10s 이내.
+//     local 측정: one_stone d5×t12 = 3.3s, d5×t16 = 10.8s — Render 25× 슬로우다운 가정시
+//     50-270s. 5/20 prod 에서 d7×t6 / d6×t6 모두 worker_timeout 발생 확인됨.
+//     보드가 채워지면 αβ 가지치기 잘 작동 → 깊이/폭 늘려도 안전.
 const countStones = (board) => {
   let n = 0;
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c]) n++;
   return n;
 };
+
+// 난이도 + 현재 보드 상태에 맞는 search config 반환.
+// 로깅에서 "어느 강도에서 timeout 났는지" 식별용으로도 사용 — handlers/bot.js 의 catch.
+const getSearchConfig = (board, difficulty) => {
+  if (difficulty === 'easy')   return { depth: 2, topK: 3 };
+  if (difficulty === 'medium') return { depth: 3, topK: 10 };
+  if (difficulty === 'hard') {
+    const stones = countStones(board);
+    if (stones < 5)  return { depth: 4, topK: 8 };
+    if (stones < 10) return { depth: 4, topK: 10 };
+    return { depth: 5, topK: 10 };
+  }
+  return { depth: 3, topK: 10 }; // fallback (= medium)
+};
+
 const generateMoveHard = (board, color) => {
-  if (countStones(board) < 5) return searchBestMove(board, color, 4, 8);
-  return searchBestMove(board, color, 5, 16);
+  const { depth, topK } = getSearchConfig(board, 'hard');
+  return searchBestMove(board, color, depth, topK);
 };
 
 const GENERATORS = {
@@ -552,6 +568,7 @@ const thinkTimeMs = (difficulty) => {
 module.exports = {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
   generateMove,
+  countStones, getSearchConfig,         // 로깅 / 디버그용
   decideBotEmote, recordBotEmote, newBotEmoteState,
   thinkTimeMs,
 };
