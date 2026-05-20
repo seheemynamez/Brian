@@ -285,45 +285,50 @@ export const showGameOver = (winner, reason) => {
   updateTurnUI();
 };
 
-// 게임 종료 화면 — 본인의 tier 가 변동된 경우에만 한 줄 표시.
-// 의도: 모든 게임마다 점수 등락 보여줄 필요 X — tier 변동은 이벤트성이라 강조.
-//   tier 동일 (예: Gold → Gold): 표시 X (rating-change row hidden)
-//   tier 변동 (예: Bronze → Silver ↑): "1290 → 1310 (+20) 🥉 → 🥈 Silver" 한 줄
-// 관전자/상대 rating 은 표시 X (당사자만).
+// 게임 종료 화면 — tier 가 변동된 사람의 줄만 표시 (양쪽/관전자 모두 같은 화면).
+// 의도:
+//   - 모든 게임마다 점수 등락 보여줄 필요 X — tier 변동은 이벤트성이라 강조.
+//   - 변동된 사람 = 본인/상대 무관. A 만 변동되면 A 한 줄, B 만이면 B 한 줄, 둘 다면 두 줄.
+//   - 관전자 화면에도 동일 (당사자 한정 X — tier 변동 자체가 이벤트라 모두에게 노출).
+//   - 양쪽 다 tier 동일 → row 자체 hidden (rating delta 만 있는 경우엔 표시 X).
 const renderRatingChange = () => {
   const el = $('rating-change');
   if (!el) return;
   const hide = () => { el.classList.add('hidden'); el.innerHTML = ''; };
 
-  if (!state.lastRatingDeltas || !state.ratings || state.role !== 'player' || !state.myColor) {
-    return hide();
-  }
-  const myColor = state.myColor;
-  const after = state.ratings[myColor];
-  const delta = state.lastRatingDeltas[myColor];
-  if (after == null || delta == null) return hide();
-
-  const before = after - delta;
-  const tierBefore = tierOf(before);
-  const tierAfter  = tierOf(after);
-  // tier 동일이면 표시 안 함 (사용자 요청: tier 변동 시만).
-  if (tierBefore === tierAfter) return hide();
+  if (!state.lastRatingDeltas || !state.ratings) return hide();
 
   const TIERS_ASC = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master'];
-  const up = TIERS_ASC.indexOf(tierAfter) > TIERS_ASC.indexOf(tierBefore);
-  const tierArrow = up
-    ? '<span class="tier-up">↑</span>'
-    : '<span class="tier-down">↓</span>';
-  const sign = delta > 0 ? '+' : '';
-  const deltaCls = delta > 0 ? 'pos' : (delta < 0 ? 'neg' : 'zero');
-  const emojiBefore = TIER_EMOJI[tierBefore] || '⚙️';
-  const emojiAfter  = TIER_EMOJI[tierAfter]  || '⚙️';
+  const buildLine = (color) => {
+    const after = state.ratings?.[color];
+    const delta = state.lastRatingDeltas?.[color];
+    if (after == null || delta == null) return '';
+    const before = after - delta;
+    const tierBefore = tierOf(before);
+    const tierAfter  = tierOf(after);
+    if (tierBefore === tierAfter) return '';  // tier 동일 — 표시 X
 
-  el.innerHTML = `<div class="rating-line">
-    <span class="rating-value">${before} → ${after}</span>
-    <span class="rating-delta ${deltaCls}">(${sign}${delta})</span>
-    <span class="rating-tier" title="${tierBefore} → ${tierAfter}">${emojiBefore} → ${emojiAfter} ${tierAfter} ${tierArrow}</span>
-  </div>`;
+    const up = TIERS_ASC.indexOf(tierAfter) > TIERS_ASC.indexOf(tierBefore);
+    const tierArrow = up
+      ? '<span class="tier-up">↑</span>'
+      : '<span class="tier-down">↓</span>';
+    const sign = delta > 0 ? '+' : '';
+    const deltaCls = delta > 0 ? 'pos' : 'neg';
+    const emojiBefore = TIER_EMOJI[tierBefore] || '⚙️';
+    const emojiAfter  = TIER_EMOJI[tierAfter]  || '⚙️';
+    const nick = state.nicknames?.[color] || (color === 'black' ? '흑' : '백');
+
+    return `<div class="rating-line">
+      <span class="rating-label">${escapeText(nick)}</span>
+      <span class="rating-value">${before} → ${after}</span>
+      <span class="rating-delta ${deltaCls}">(${sign}${delta})</span>
+      <span class="rating-tier" title="${tierBefore} → ${tierAfter}">${emojiBefore} → ${emojiAfter} ${tierAfter} ${tierArrow}</span>
+    </div>`;
+  };
+
+  const lines = buildLine('black') + buildLine('white');
+  if (!lines) return hide();   // 양쪽 다 tier 동일
+  el.innerHTML = lines;
   el.classList.remove('hidden');
 };
 
