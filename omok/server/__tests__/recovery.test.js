@@ -1272,6 +1272,50 @@ test('VIS9: 방장이 자신이 queue_join → 자기 방에 매칭 안 됨', as
   host.close(); second.close();
 });
 
+test('VIS10: 큐 대기 중 누가 공개 방 만들면 즉시 매칭 (reverse 흐름)', async () => {
+  // A 가 먼저 queue_join → 대기 (빈 public 방 없음)
+  const waiter = await open();
+  sendJson(waiter, { type: 'set_nickname', nickname: 'V10W', clientId: 'cid-vis10-w' });
+  sendJson(waiter, { type: 'queue_join', nickname: 'V10W', clientId: 'cid-vis10-w' });
+  await waitForType(waiter, 'queue_waiting', 2000);
+
+  // B 가 공개 방 만들기 → A 와 즉시 매칭되어야 함
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'V10H', clientId: 'cid-vis10-h' });
+  sendJson(host, { type: 'create_room', nickname: 'V10H', visibility: 'public' });
+  const created = await waitForType(host, 'room_created');
+  // B 도 matched 받음 (자기 방에 A 가 합류)
+  const hostMatched = await waitForType(host, 'matched', 2000);
+  assert(hostMatched.code === created.code);
+  // A 도 같은 방으로 matched
+  const waiterMatched = await waitForType(waiter, 'matched', 2000);
+  assert(waiterMatched.code === created.code, `expected matched into ${created.code}, got ${waiterMatched.code}`);
+  await waitForType(host, 'game_start');
+  await waitForType(waiter, 'game_start');
+  host.close(); waiter.close();
+});
+
+test('VIS11: 큐 대기 중 누가 비공개 방 만들면 매칭 안 됨', async () => {
+  const waiter = await open();
+  sendJson(waiter, { type: 'set_nickname', nickname: 'V11W', clientId: 'cid-vis11-w' });
+  sendJson(waiter, { type: 'queue_join', nickname: 'V11W', clientId: 'cid-vis11-w' });
+  await waitForType(waiter, 'queue_waiting', 2000);
+
+  // B 가 private 방 만듦 → A 는 그대로 큐 대기
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'V11H', clientId: 'cid-vis11-h' });
+  sendJson(host, { type: 'create_room', nickname: 'V11H', visibility: 'private' });
+  await waitForType(host, 'room_created');
+
+  // A 의 received 에 matched 가 오지 않아야 함 — 1초 정도 대기 후 확인
+  await sleep(800);
+  const matched = waiter.received.find((m) => m.type === 'matched');
+  assert(!matched, `private 방 만들기로 큐 대기자가 매칭되면 안 됨, got ${JSON.stringify(matched)}`);
+
+  sendJson(waiter, { type: 'queue_leave' });
+  host.close(); waiter.close();
+});
+
 // ============================================================
 // runner
 // ============================================================

@@ -70,10 +70,17 @@ const onCreateRoom = (ws, msg) => {
     type: 'human', ws, clientId: ws.clientId || null, nickname,
   });
   send(ws, { type: 'room_created', code, sessionId: slot.sessionId, visibility });
-  // private 방도 broadcast 는 함 — getRoomsList 가 필터링.
-  // (다른 방에 매칭/관전 중인 사람들 화면 동기화에 필요 없지만, 일관성 위해 호출)
-  broadcastRoomsList();
   log.event('room_created', { code, by: nickname, visibility });
+
+  // 공개 방 만든 직후 큐에 대기자가 있으면 그 사람과 즉시 매칭.
+  // (반대 흐름: 큐 → 방 만들기. 사용자가 "랜덤 매칭" 누른 뒤 다른 사람이 방 만들면 자동 매칭).
+  if (visibility === 'public') {
+    const { tryMatchWaiterIntoNewRoom } = require('./queue');
+    const matched = tryMatchWaiterIntoNewRoom(room, ws);
+    // 매칭 됐으면 startGame 안에서 자체적으로 broadcastRoomsList 호출됨.
+    if (matched) return;
+  }
+  broadcastRoomsList();
 };
 
 // 홈 진입 시 1회 요청 — 상위 N명 rating 순 + 본인 entry/순위.

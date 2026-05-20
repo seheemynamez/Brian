@@ -210,6 +210,36 @@ const onBotOfferDecline = (_ws) => {
   // entry.botOfferSentAt 도 세팅된 상태라 같은 entry 에 대해서 다시 발송되지 않음.
 };
 
+// 새로 만들어진 공개 방에 큐 대기자가 있으면 즉시 매칭.
+// onCreateRoom 끝부분에서 호출 — visibility=public 일 때만.
+// 큐가 FIFO 라 가장 오래 기다린 사람이 매칭됨. 자기 자신 (host) 의 clientId 와는 매칭 안 됨.
+const tryMatchWaiterIntoNewRoom = (room, hostWs) => {
+  const q = getQueue();
+  for (let i = 0; i < q.length; i++) {
+    const entry = q[i];
+    if (hostWs.clientId && entry.clientId === hostWs.clientId) continue;
+    const waiterWs = connections.getWsByConnectionId(entry.connectionId);
+    if (!waiterWs || waiterWs.readyState !== waiterWs.OPEN) continue;
+    // 매칭 — q 에서 제거, bot offer timer 해제, white 슬롯 채움
+    q.splice(i, 1);
+    clearBotOfferTimer(entry);
+    waiterWs.inQueue = false;
+    waiterWs.roomCode = room.code;
+    waiterWs.color = 'white';
+    waiterWs.role = 'player';
+    createPlayerSession(room, 'white', {
+      type: 'human', ws: waiterWs, clientId: waiterWs.clientId || null, nickname: waiterWs.nickname,
+    });
+    send(hostWs,   { type: 'matched', code: room.code });
+    send(waiterWs, { type: 'matched', code: room.code });
+    log.event('room_matched_with_queue_waiter', { code: room.code, host: hostWs.nickname, waiter: waiterWs.nickname });
+    const { startGame } = require('./game');
+    startGame(room);
+    return true;
+  }
+  return false;
+};
+
 module.exports = {
   botOfferSentByClientId,
   BOT_OFFER_COOLDOWN_MS,
@@ -219,4 +249,5 @@ module.exports = {
   onQueueLeave,
   onBotOfferAccept,
   onBotOfferDecline,
+  tryMatchWaiterIntoNewRoom,
 };
