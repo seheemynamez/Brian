@@ -1273,6 +1273,92 @@ test('VIS9: 방장이 자신이 queue_join → 자기 방에 매칭 안 됨', as
 });
 
 // ============================================================
+// BG — 봇 게임 끊김 / hydrate / nickname 보존 시나리오
+// ============================================================
+
+// BG2 — 사용자 보고 버그 재현:
+// 봇 게임 중 사람 ws zombie (close 안 fire + heartbeat pong 도 안 옴) + turn 응답 없음
+// → onTurnTimeout 발화 → 차례 봇으로 토글 → scheduleBotMove → 봇 둠 → afterSuccessfulMove
+// → 사람 차례 → 다시 onTurnTimeout 반복으로 봇이 혼자 게임을 끝까지 진행하면 안 됨.
+// 진짜 zombie 시뮬: ws._socket.pause() 로 incoming/outgoing 모두 멈춤 → ping 받지만
+// pong 자동 응답 안 됨 → server 의 ws.isAlive=false → bothPlayersOnline=false.
+test('BG2: 봇 게임 — 사람 응답 없는 zombie 상태에서 봇이 혼자 두면 안 됨', async () => {
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'BG2U', clientId: 'cid-bg2' });
+  sendJson(ws, { type: 'create_bot_game', difficulty: 'easy', first: 'me', nickname: 'BG2U' });
+  await waitForType(ws, 'game_start');
+  // 진짜 zombie 시뮬: TCP socket 자체를 pause — ping 받지만 pong 자동 응답 못 함.
+  // server 의 다음 heartbeat cycle (~2s test) 에서 ws.isAlive=false. 그 다음 cycle (4s) 에 terminate.
+  ws._socket?.pause();
+  ws.received.length = 0;
+  // 12초 대기: 2 heartbeat cycle + turn timeout 1회 이상.
+  await sleep(12000);
+  // socket.pause 라 ws.received 안 채워짐. 봇이 두면 server log 에 game_over 또는 move broadcast.
+  // 정확한 검증 어렵지만 — heartbeat terminate 가 정상 작동했다면 ws 가 server side 에서 close
+  // 되어 onPlayerDisconnect → grace timer 시작 → 정상 abandon 흐름.
+  // 이 test 의 핵심은 봇 게임이 사람 부재 중에 무한 진행되지 않는다는 것 — 별도 ws 로 server
+  // 상태 확인.
+  ws._socket?.resume();   // 청소 위해 다시 풀어줌
+  ws.close();
+  await sleep(200);
+  // 새 ws 로 rooms_list 조회 — 봇 게임 방이 그래도 살아있거나 사라졌어야 함 (계속 두진 않음).
+  const probe = await open();
+  sendJson(probe, { type: 'set_nickname', nickname: 'P', clientId: 'cid-bg2-p' });
+  sendJson(probe, { type: 'request_rooms_list' });
+  const list = await waitForType(probe, 'rooms_list');
+  // BG2U 가 black 인 봇 방이 status='playing' 으로 계속 진행 중이면 NG.
+  // 정상은: heartbeat terminate + grace 만료로 finalizeAbandon → 방 폐쇄 (status='over' 또는 사라짐).
+  const bg2Room = list.rooms.find((r) => r.nicknames.black === 'BG2U');
+  if (bg2Room) {
+    assert(bg2Room.status !== 'playing',
+      `사람 zombie 12초 후 봇 게임이 계속 playing 이면 안 됨 — fix 가 안 됐을 가능성. got: ${JSON.stringify(bg2Room)}`);
+  }
+  // 추가로 봇 user nickname 도 보존됐는지 확인
+  sendJson(probe, { type: 'request_ranking', limit: 100 });
+  const ranking = await waitForType(probe, 'ranking_list');
+  const botEntry = ranking.entries.find((e) => e.clientId === '_bot_easy');
+  if (botEntry) {
+    assert(botEntry.nickname !== 'BG2U',
+      `봇 user nickname 이 사용자 닉으로 바뀌면 안 됨, got: ${botEntry.nickname}`);
+  }
+  probe.close();
+}, 30000);
+
+test('BG1: 봇 게임 끊김 → grace 만료 → finalizeAbandon 후에도 봇 user nickname 보존', async () => {
+  const userNick = 'BG1User';
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: userNick, clientId: 'cid-bg1' });
+  sendJson(ws, { type: 'create_bot_game', difficulty: 'easy', first: 'me', nickname: userNick });
+  await waitForType(ws, 'game_start');
+
+  // 사람 ws close → grace 만료 → finalizeAbandon → 봇이 abandoned 승리 → recordGameResult
+  ws.close();
+  await sleep(GRACE + 500);
+
+  // 새 ws 로 랭킹 조회 → 봇 user 의 nickname 확인
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'Obs', clientId: 'cid-bg1-obs' });
+  sendJson(obs, { type: 'request_ranking', limit: 100 });
+  const list = await waitForType(obs, 'ranking_list');
+  const botEntry = list.entries.find((e) => e.clientId === '_bot_easy');
+  assert(botEntry, '_bot_easy user 가 ranking 에 등록되어 있어야 함');
+  assert(botEntry.nickname !== userNick,
+    `봇 user nickname 이 사용자 닉(${userNick}) 으로 바뀌면 안 됨, got: ${botEntry.nickname}`);
+  // recent_games 도 확인 — black/white nickname 이 swap 안 됐는지
+  sendJson(obs, { type: 'request_recent_games' });
+  const games = await waitForType(obs, 'recent_games_list');
+  const myGame = games.entries.find((g) =>
+    g.black.clientId === 'cid-bg1' || g.white.clientId === 'cid-bg1');
+  if (myGame) {
+    // 봇 슬롯의 nickname 은 봇 닉이어야 함 (사용자 닉 X)
+    const botSide = myGame.black.clientId === '_bot_easy' ? myGame.black : myGame.white;
+    assert(botSide.nickname !== userNick,
+      `recent_games 의 봇 nickname 이 사용자 닉으로 바뀌면 안 됨, got: ${botSide.nickname}`);
+  }
+  obs.close();
+});
+
+// ============================================================
 // Z — 좀비 ws (비행기모드 reconnect 후 옛 ws 지연 close) 시나리오
 // ============================================================
 // 사용자 보고 버그: A 비행기모드 → 재접속 → 잘 두고 있다가 갑자기 미복귀 판정 (A 패배).

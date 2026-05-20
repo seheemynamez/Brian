@@ -144,6 +144,10 @@ const broadcastRecentGamesUpdate = () => {
 
 // 양쪽 player 가 모두 online 인지 — PVP 는 두 사람 다 ws 활성, 봇 게임은 사람만 활성.
 // resume/reclaim 후 turn timer 재개 결정에 사용.
+// 봇 게임의 turn timeout / scheduleBotMove 가드에도 사용 — 사용자가 zombie ws
+// (close 안 fire 됐지만 응답 없음 — 모바일 background 등) 일 때 봇이 혼자 게임을
+// 끝까지 진행하는 버그 방지. ws.isAlive=false 는 heartbeat cycle 동안 pong
+// 응답 안 받은 상태 (server.js heartbeat 가 갱신).
 const bothPlayersOnline = (room) => {
   if (!room || !room.players) return false;
   for (const color of ['black', 'white']) {
@@ -152,6 +156,7 @@ const bothPlayersOnline = (room) => {
     if (slot.type === 'bot') continue;
     const ws = connections.getWsBySessionId(slot.sessionId);
     if (!ws || ws.readyState !== ws.OPEN) return false;
+    if (ws.isAlive === false) return false;
   }
   return true;
 };

@@ -41,6 +41,11 @@ const scheduleBotMove = (room) => {
   if (!botColor) return;
   const bot = room.players[botColor];
   if (room.turn !== botColor) return;
+  // 사람 player 가 offline (좀비 ws — close 가 fire 안 된 채 응답 없는 상태) 이면
+  // 봇이 두지 않음. 좀비 + turn timeout 으로 봇이 혼자 게임을 끝까지 진행해 사람이
+  // 부재중 패배 처리되던 버그 방지.
+  const { bothPlayersOnline } = require('./send');
+  if (!bothPlayersOnline(room)) return;
   const delay = thinkTimeMs(bot.difficulty);
   const code = room.code;
   roomRuntime.setTimer(code, 'botMoveTimer', setTimeout(() => {

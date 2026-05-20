@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
-    "test": "STORE_BACKEND=memory BOT_OFFER_DELAY_MS=1000 DISCONNECT_GRACE_MS=1500 SPECTATOR_DISCONNECT_GRACE_MS=500 PORT=18080 STATIC_ROOT=. node server.js & SERVER_PID=$!; trap \"kill $SERVER_PID 2>/dev/null\" EXIT; sleep 1; node __tests__/recovery.test.js",
+    "test": "STORE_BACKEND=memory BOT_OFFER_DELAY_MS=1000 DISCONNECT_GRACE_MS=1500 SPECTATOR_DISCONNECT_GRACE_MS=500 TURN_TIMEOUT_MS=5000 HEARTBEAT_INTERVAL_MS=2000 PORT=18080 STATIC_ROOT=. node server.js & SERVER_PID=$!; trap \"kill $SERVER_PID 2>/dev/null\" EXIT; sleep 1; node __tests__/recovery.test.js",
     "test:unit": "node --test __tests__/unit/*.test.js",
     "test:ci": "npm run test:unit && npm test",
     "test:valkey": "bash scripts/test-valkey.sh",
