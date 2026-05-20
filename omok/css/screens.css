@@ -582,8 +582,10 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
 /* ============================================================
    랭킹 / 최근 대국 — 로비 하단
    ============================================================ */
-.ranking-list .rank-item,
-.recent-games-list .recent-game-item {
+/* .ranking-me-extra > .rank-item 도 같은 box 스타일이 필요해서 셀렉터 범위 확장.
+   이전엔 .ranking-list .rank-item 으로 한정돼 me-row 만 padding 0 으로 깨졌음. */
+.rank-item,
+.recent-game-item {
   padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
