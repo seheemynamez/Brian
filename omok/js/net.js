@@ -7,6 +7,7 @@ import {
   showScreen, setLobbyError, showToast, updateConnStatus,
   setReconnectOverlay, updateOnlineCount, updatePlayerCards,
   updateTurnUI, updateSpectatorList, startTimerTick, stopTimerTick,
+  pauseTurnTimer, resumeTurnTimer,
   showGameOver, showGameOverNeutral, updateRoomsList, showEmote, showOnlineList,
   updateRanking, updateRecentGames,
 } from './ui.js';
@@ -433,7 +434,10 @@ const onOpponentDisconnected = (msg) => {
     state.playerStatus[msg.color] = 'offline';
     updatePlayerCards();
   }
-  showToast('상대 연결 끊김 — 30초 안에 돌아오지 않으면 게임 종료');
+  // 서버가 disconnect 동안 turn timer 를 동결하므로 UI 도 동결.
+  // grace deadline (서버에서 받음) 으로 "⏸ Ns" 카운트다운 표시 — 사용자에게 정확한 정보.
+  pauseTurnTimer(msg && msg.deadline);
+  showToast('상대 연결 끊김 — 잠시 기다리는 중...');
 };
 
 const onOpponentReconnected = (msg) => {
@@ -441,6 +445,8 @@ const onOpponentReconnected = (msg) => {
     state.playerStatus[msg.color] = 'online';
     updatePlayerCards();
   }
+  // grace countdown 종료. 다음 turn_started 가 정상 turn timer 재개.
+  resumeTurnTimer();
   showToast('상대 재연결됨');
 };
 
