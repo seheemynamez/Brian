@@ -174,6 +174,34 @@ describe('checkForbidden — 점삼 (point three, gap 2 형태)', () => {
   });
 });
 
+describe('checkForbidden — pre-existing 3 가 (r,c) 와 무관할 때 (false positive 회귀)', () => {
+  // 버그: dirHasOpenThree 가 virtual placement 후 line 어딘가에 .XXXX. 만 있으면 true 를 반환.
+  // 그 open four 가 (r,c) 와 무관하게 만들어진 거여도 카운트해버려서 false positive 발생.
+  // Fix: .XXXX. 가 (r,c) 와 virtual placement (= line center) 둘 다 포함하는 경우만 인정.
+
+  test('(5,8) 두는데 가로의 기존 BB_B 가 가로 open three 로 잘못 카운트되면 안 됨', () => {
+    // 사용자가 보고한 보드 — (5,8) 의 / 대각엔 진짜 open three 있지만 가로는 없음.
+    // 가로 (5,2)(5,3)(5,5) 의 BB_B 는 기존부터 있던 open three (5,8) 와 무관.
+    // (5,8) 의 진짜 three 는 / 대각 (5,8)(6,7)(7,6) 1 개뿐 → 쌍삼 아님 → 합법.
+    const b = emptyBoard();
+    place(b, 'black', [[5, 2], [5, 3], [5, 5]]); // 가로 BB_B (기존 open three, (5,8) 무관)
+    place(b, 'white', [[5, 7]]);                  // 가로 BB_B 의 우측 차단 — (5,8) 의 가로 라인 격리
+    place(b, 'black', [[6, 7], [7, 6]]);          // / 대각 BBB 의 일부 ((5,8) 와 함께 open three)
+    place(b, 'black', [[5, 8]]);                  // 테스트 대상
+    assert.equal(checkForbidden(b, 5, 8, 'black'), null,
+      '(5,8) 가 만드는 open three 는 / 대각 1 개뿐 — 쌍삼 false positive 회귀 방지');
+  });
+
+  test('대조: (5,8) 자신이 양쪽 open three 만들면 쌍삼', () => {
+    // 가로 (5,8)(5,9)(5,10) + 세로 (5,8)(6,8)(7,8) 둘 다 (5,8) 포함하는 open three.
+    const b = emptyBoard();
+    place(b, 'black', [[5, 9], [5, 10]]);
+    place(b, 'black', [[6, 8], [7, 8]]);
+    place(b, 'black', [[5, 8]]);
+    assert.deepEqual(checkForbidden(b, 5, 8, 'black'), { reason: 'double_three' });
+  });
+});
+
 describe('checkForbidden — 우선순위 (5목 > overline > 4-4 > 3-3)', () => {
   test('5목 형성 + overline 가능 패턴 → null (5목 승리 우선)', () => {
     // 가로 정확히 5: (7,3)(7,4)(7,5)(7,6)(7,7) — but no 6
