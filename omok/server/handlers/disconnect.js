@@ -16,7 +16,10 @@ const {
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
 const { removeSpectator } = require('./spectator');
-const { pauseTurnTimer } = require('./game');
+// PR #70 에서 disconnect 시 pauseTurnTimer 사용 (남은 시간 보존). 하지만 finalizeAbandon /
+// onLeaveRoom 등 "게임이 진짜 끝나는" 흐름은 clearTurnTimer 가 맞음 (timer 완전 취소 + remainMs=0).
+// 그 import 가 빠져서 prod 에서 ReferenceError 발생 → finalizeAbandon 실패 → 좀비 방 잔존 버그.
+const { pauseTurnTimer, clearTurnTimer } = require('./game');
 const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
