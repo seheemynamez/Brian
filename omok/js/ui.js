@@ -209,21 +209,28 @@ export { startTimerTick };
 // 상대 끊김 시 turn timer 정지 + grace deadline 카운트다운 표시.
 // 서버가 disconnect 동안 turn timer 를 동결 (clearTurnTimer) 하므로 UI 도 동결돼야
 // 사용자가 "타이머 다 됐는데 진행 안 됨" 으로 헷갈리지 않음.
+// 시각 강조: timer-bar 에 'disconnect-grace' 클래스 — 차별화된 색 + 점진적 fill 감소.
 export const pauseTurnTimer = (graceDeadline) => {
   stopTimerTick();
   state.disconnectDeadline = graceDeadline || null;
+  const fill = $('timer-fill');
+  const text = $('timer-text');
+  fill.classList.add('disconnect-grace');
   if (!state.disconnectDeadline) {
-    $('timer-text').textContent = '⏸';
-    $('timer-fill').style.width = '0%';
+    text.textContent = '⏸';
+    fill.style.width = '0%';
     return;
   }
   // grace deadline 까지 카운트다운 — 매초 갱신.
+  // 총 grace 길이는 deadline-now 한 번 기록해서 fill 비율 계산용으로 사용.
+  const total = Math.max(1, state.disconnectDeadline - Date.now());
+  const isSpectator = state.role === 'spectator';
   const tickPaused = () => {
     if (!state.disconnectDeadline) return;
     const remainMs = Math.max(0, state.disconnectDeadline - Date.now());
     const remainSec = Math.ceil(remainMs / 1000);
-    $('timer-text').textContent = `⏸ ${remainSec}s`;
-    $('timer-fill').style.width = '0%';
+    text.textContent = isSpectator ? `⏸ ${remainSec}s` : `🏆 ${remainSec}s 후 승리`;
+    fill.style.width = Math.max(0, Math.min(100, (remainMs / total) * 100)) + '%';
   };
   tickPaused();
   state.timerTickHandle = setInterval(tickPaused, 250);
@@ -233,6 +240,7 @@ export const pauseTurnTimer = (graceDeadline) => {
 export const resumeTurnTimer = () => {
   state.disconnectDeadline = null;
   stopTimerTick();
+  $('timer-fill').classList.remove('disconnect-grace');
 };
 
 // ---- 게임 종료 UI ----

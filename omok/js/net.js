@@ -435,9 +435,16 @@ const onOpponentDisconnected = (msg) => {
     updatePlayerCards();
   }
   // 서버가 disconnect 동안 turn timer 를 동결하므로 UI 도 동결.
-  // grace deadline (서버에서 받음) 으로 "⏸ Ns" 카운트다운 표시 — 사용자에게 정확한 정보.
+  // grace deadline 으로 카운트다운 표시 + "내 승리" 강조 (사용자에게 결과 명확화).
   pauseTurnTimer(msg && msg.deadline);
-  showToast('상대 연결 끊김 — 잠시 기다리는 중...');
+  const sec = msg && msg.deadline ? Math.ceil(Math.max(0, msg.deadline - Date.now()) / 1000) : 60;
+  // role 별 메시지 — player 는 자기 승리 강조, spectator 는 끊긴 쪽 패배.
+  if (state.role === 'spectator') {
+    const loser = msg && msg.color === 'black' ? '흑' : '백';
+    showToast(`${loser} 연결 끊김 — ${sec}초 안에 안 돌아오면 ${loser} 패배`);
+  } else {
+    showToast(`🏆 상대 끊김! ${sec}초 안에 안 돌아오면 내 승리`);
+  }
 };
 
 const onOpponentReconnected = (msg) => {

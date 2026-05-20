@@ -461,6 +461,11 @@
   background: linear-gradient(90deg, var(--warn), var(--bad));
   animation: pulse 0.6s infinite alternate;
 }
+/* 상대 끊김 grace 카운트다운 — 차별화된 색 (good 톤) + 부드러운 펄스 강조 */
+.timer-fill.disconnect-grace {
+  background: linear-gradient(90deg, var(--good), var(--accent-1));
+  animation: pulse 1.2s infinite alternate;
+}
 @keyframes pulse {
   from { box-shadow: 0 0 0 rgba(255, 77, 106, 0.5); }
   to   { box-shadow: 0 0 18px rgba(255, 77, 106, 0.7); }
