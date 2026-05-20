@@ -150,9 +150,17 @@ const renderAllBoards = () => {
 // 페이지 전환
 // ============================================================
 
+// 트랙을 currentPage 위치로 이동 (CSS transition 으로 부드럽게).
+const updateTrackTransform = () => {
+  const track = document.querySelector('.help-pages-track');
+  if (track) track.style.transform = `translateX(${-currentPage * 25}%)`;
+};
+
 const updatePageView = () => {
   document.querySelectorAll('.help-page').forEach((el) => {
-    el.classList.toggle('active', Number(el.dataset.page) === currentPage);
+    const isActive = Number(el.dataset.page) === currentPage;
+    el.classList.toggle('active', isActive);
+    el.setAttribute('aria-hidden', isActive ? 'false' : 'true');
   });
   document.querySelectorAll('.help-dots .dot').forEach((el) => {
     el.classList.toggle('active', Number(el.dataset.page) === currentPage);
@@ -160,6 +168,7 @@ const updatePageView = () => {
   $('btn-help-prev').disabled = (currentPage === 0);
   $('btn-help-next').disabled = (currentPage === TOTAL_PAGES - 1);
   $('help-page-label').textContent = `${currentPage + 1} / ${TOTAL_PAGES}`;
+  updateTrackTransform();
   // 페이지 변경 시 위로 스크롤
   window.scrollTo({ top: 0, behavior: 'instant' });
 };
@@ -174,7 +183,108 @@ export const showHelp = () => {
   currentPage = 0;
   showScreen('help');
   renderAllBoards();
+  // 트랙 초기 위치 (transition 없이 0% 로 reset)
+  const track = document.querySelector('.help-pages-track');
+  if (track) {
+    track.style.transition = 'none';
+    track.style.transform = 'translateX(0%)';
+    // 다음 frame 에 transition 복구
+    requestAnimationFrame(() => { track.style.transition = ''; });
+  }
   updatePageView();
+};
+
+// ============================================================
+// Touch swipe — 모바일 전용 (좌우 드래그로 페이지 전환)
+// ============================================================
+// - 25% 이상 swipe 시 다음/이전 페이지 commit, 미만이면 snap back
+// - 경계 (page 1 의 오른쪽, page 4 의 왼쪽): rubber-band (35% 만 따라옴)
+// - 세로 스크롤 우선: 처음 12px 안에 |dy| > |dx|*1.5 면 horizontal swipe 취소
+// ============================================================
+
+const RUBBER_BAND_FACTOR = 0.35;
+const COMMIT_RATIO = 0.25;         // viewport 너비의 25%
+const AXIS_DECIDE_THRESHOLD = 12;  // 축 결정 최소 거리 (px)
+
+let dragState = null;
+
+const onTouchStart = (e) => {
+  if (e.touches.length !== 1) return;
+  if (state.screenState !== 'help') return;
+  const t = e.touches[0];
+  const viewport = document.querySelector('.help-pages-viewport');
+  if (!viewport) return;
+  dragState = {
+    startX: t.clientX,
+    startY: t.clientY,
+    deltaX: 0,
+    viewportW: viewport.offsetWidth,
+    axis: null, // null | 'h' | 'v'
+  };
+};
+
+const onTouchMove = (e) => {
+  if (!dragState) return;
+  const t = e.touches[0];
+  const dx = t.clientX - dragState.startX;
+  const dy = t.clientY - dragState.startY;
+
+  // 축 결정 — 가로 우세하면 'h', 세로 우세하면 'v'
+  if (dragState.axis === null) {
+    if (Math.abs(dx) > AXIS_DECIDE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      dragState.axis = 'h';
+      const track = document.querySelector('.help-pages-track');
+      if (track) track.classList.add('dragging');
+    } else if (Math.abs(dy) > AXIS_DECIDE_THRESHOLD) {
+      dragState.axis = 'v';
+    }
+  }
+
+  if (dragState.axis !== 'h') return;
+
+  // 경계에서 rubber-band
+  let effectiveDx = dx;
+  const atLeftEdge = (currentPage === 0 && dx > 0);
+  const atRightEdge = (currentPage === TOTAL_PAGES - 1 && dx < 0);
+  if (atLeftEdge || atRightEdge) {
+    effectiveDx = dx * RUBBER_BAND_FACTOR;
+  }
+
+  dragState.deltaX = effectiveDx;
+  const basePct = -currentPage * 25;
+  const dxPct = (effectiveDx / dragState.viewportW) * 25;
+  const track = document.querySelector('.help-pages-track');
+  if (track) track.style.transform = `translateX(${basePct + dxPct}%)`;
+
+  // 가로 swipe 인 경우만 browser 의 가로 스크롤 차단 (passive: false 등록 시)
+  if (e.cancelable) e.preventDefault();
+};
+
+const onTouchEnd = () => {
+  if (!dragState) return;
+  const track = document.querySelector('.help-pages-track');
+  if (track) track.classList.remove('dragging');
+
+  if (dragState.axis === 'h') {
+    const threshold = dragState.viewportW * COMMIT_RATIO;
+    if (dragState.deltaX < -threshold && currentPage < TOTAL_PAGES - 1) {
+      goToPage(currentPage + 1);
+    } else if (dragState.deltaX > threshold && currentPage > 0) {
+      goToPage(currentPage - 1);
+    } else {
+      // 임계치 미만 — snap back
+      updateTrackTransform();
+    }
+  }
+  dragState = null;
+};
+
+const onTouchCancel = () => {
+  if (!dragState) return;
+  const track = document.querySelector('.help-pages-track');
+  if (track) track.classList.remove('dragging');
+  updateTrackTransform();
+  dragState = null;
 };
 
 export const closeHelp = () => {
@@ -196,4 +306,12 @@ export const wireHelpEvents = () => {
     else if (e.key === 'ArrowRight') goToPage(currentPage + 1);
     else if (e.key === 'Escape') closeHelp();
   });
+  // Touch swipe — 모바일 전용
+  const viewport = document.querySelector('.help-pages-viewport');
+  if (viewport) {
+    viewport.addEventListener('touchstart', onTouchStart, { passive: true });
+    viewport.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    viewport.addEventListener('touchend',   onTouchEnd,   { passive: true });
+    viewport.addEventListener('touchcancel', onTouchCancel, { passive: true });
+  }
 };

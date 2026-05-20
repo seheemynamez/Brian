@@ -284,8 +284,10 @@
         <button id="btn-help-close" class="icon-btn" aria-label="도움말 닫기" type="button">✕</button>
       </div>
 
+      <div class="help-pages-viewport">
+       <div class="help-pages-track">
       <!-- 페이지 1: 오목이란? -->
-      <div class="help-page active" data-page="0">
+      <div class="help-page active" data-page="0" aria-hidden="false">
         <h2>♟️ 오목이란?</h2>
         <p>15×15 격자에 흑돌과 백돌을 번갈아 한 점씩 놓는 보드 게임입니다. 가로·세로·대각선 어느 방향이든 자기 돌 <strong>5개를 한 줄로</strong> 만들면 승리합니다.</p>
         <ul>
@@ -299,7 +301,7 @@
       </div>
 
       <!-- 페이지 2: 승리 조건 -->
-      <div class="help-page" data-page="1">
+      <div class="help-page" data-page="1" aria-hidden="true">
         <h2>🏆 승리 조건</h2>
         <p>가로 · 세로 · 대각선 (↘ ↗) 어느 방향이든 자기 색 돌 <strong>5개를 한 줄로</strong> 놓으면 즉시 승리합니다.</p>
         <div class="help-board-slot" data-svg="five"></div>
@@ -312,7 +314,7 @@
       </div>
 
       <!-- 페이지 3: 렌주룰 (흑 금수) -->
-      <div class="help-page" data-page="2">
+      <div class="help-page" data-page="2" aria-hidden="true">
         <h2>📜 렌주룰 — 흑 금수</h2>
         <p>흑이 먼저 두는 이점 때문에 표준 한국 오목 (렌주룰) 은 균형을 맞추려 <strong>흑에게만</strong> 3가지 금수 (놓으면 안 되는 자리) 를 둡니다.</p>
         <ul>
@@ -330,7 +332,7 @@
       </div>
 
       <!-- 페이지 4: 금수 패턴 예시 -->
-      <div class="help-page" data-page="3">
+      <div class="help-page" data-page="3" aria-hidden="true">
         <h2>⛔ 금수 패턴 예시</h2>
         <p class="muted">아래 보드의 <span style="color:#ff3d3d">×</span> 자리에 흑이 두면 금수가 됩니다.</p>
         <div class="help-pattern-grid">
@@ -356,6 +358,9 @@
           </div>
         </div>
       </div>
+
+       </div><!-- /.help-pages-track -->
+      </div><!-- /.help-pages-viewport -->
 
       <div class="help-nav">
         <button id="btn-help-prev" class="btn ghost" type="button" disabled>‹ 이전</button>

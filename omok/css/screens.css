@@ -790,19 +790,33 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   letter-spacing: 0.5px;
 }
 
-.help-page {
-  display: none;
+/* 슬라이더 컨테이너 — 가로 swipe 지원
+   - viewport: overflow hidden, 너비 고정
+   - track: flex, 400% 너비, transform 으로 위치 결정
+   - touch-action: pan-y → 세로 스크롤은 브라우저, 가로는 JS 가 처리 */
+.help-pages-viewport {
   width: 100%;
   max-width: 600px;
+  overflow: hidden;
+  position: relative;
+  touch-action: pan-y;
 }
-.help-page.active {
-  display: block;
-  animation: helpFadeIn 0.18s ease;
+.help-pages-track {
+  display: flex;
+  width: 400%;       /* 4 페이지 */
+  transform: translateX(0);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.help-pages-track.dragging {
+  transition: none;  /* 드래그 중에는 즉시 따라옴 */
 }
 
-@keyframes helpFadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+.help-page {
+  flex: 0 0 25%;     /* 트랙의 1/4 = viewport 전체 */
+  box-sizing: border-box;
+  padding: 0 4px;
+  /* aria-hidden 으로 비활성 페이지 screen reader 차단 */
 }
 
 .help-page h2 {
