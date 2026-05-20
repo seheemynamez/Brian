@@ -156,6 +156,18 @@ const updateTrackTransform = () => {
   if (track) track.style.transform = `translateX(${-currentPage * 25}%)`;
 };
 
+// Viewport 높이를 활성 페이지의 실제 컨텐츠 높이에 맞춤.
+// — flex track 안의 페이지들은 자동으로 stretch 라 짧은 페이지도 긴 페이지 높이를
+//   따라가는 문제 회피. align-items: flex-start 와 함께 사용.
+// — getBoundingClientRect 가 scrollHeight 보다 신뢰성 있음 (특히 layout 직후).
+const updateViewportHeight = () => {
+  const activePage = document.querySelector(`.help-page[data-page="${currentPage}"]`);
+  const viewport = document.querySelector('.help-pages-viewport');
+  if (!activePage || !viewport) return;
+  const h = activePage.getBoundingClientRect().height;
+  if (h > 0) viewport.style.height = h + 'px';
+};
+
 const updatePageView = () => {
   document.querySelectorAll('.help-page').forEach((el) => {
     const isActive = Number(el.dataset.page) === currentPage;
@@ -169,6 +181,7 @@ const updatePageView = () => {
   $('btn-help-next').disabled = (currentPage === TOTAL_PAGES - 1);
   $('help-page-label').textContent = `${currentPage + 1} / ${TOTAL_PAGES}`;
   updateTrackTransform();
+  updateViewportHeight();
   // 페이지 변경 시 위로 스크롤
   window.scrollTo({ top: 0, behavior: 'instant' });
 };
@@ -179,19 +192,29 @@ const goToPage = (n) => {
 };
 
 export const showHelp = () => {
+  // 가드: 이미 help 화면이면 무시 — previousScreen 가 'help' 로 덮어쓰기 되어
+  // 닫기 시 lobby 가 아닌 help 로 돌아가는 버그 방지.
+  if (state.screenState === 'help') return;
   previousScreen = state.screenState || 'lobby';
   currentPage = 0;
   showScreen('help');
   renderAllBoards();
   // 트랙 초기 위치 (transition 없이 0% 로 reset)
   const track = document.querySelector('.help-pages-track');
+  const viewport = document.querySelector('.help-pages-viewport');
   if (track) {
     track.style.transition = 'none';
     track.style.transform = 'translateX(0%)';
-    // 다음 frame 에 transition 복구
     requestAnimationFrame(() => { track.style.transition = ''; });
   }
+  if (viewport) {
+    // 첫 열림은 height transition 없이 즉시 — 깜박임 방지
+    viewport.style.transition = 'none';
+    requestAnimationFrame(() => { viewport.style.transition = ''; });
+  }
   updatePageView();
+  // SVG 렌더링 + layout 완료 후 정확한 높이 재측정 (한 프레임 더)
+  requestAnimationFrame(updateViewportHeight);
 };
 
 // ============================================================
@@ -314,4 +337,8 @@ export const wireHelpEvents = () => {
     viewport.addEventListener('touchend',   onTouchEnd,   { passive: true });
     viewport.addEventListener('touchcancel', onTouchCancel, { passive: true });
   }
+  // 화면 회전/리사이즈 시 활성 페이지 높이 재계산
+  window.addEventListener('resize', () => {
+    if (state.screenState === 'help') updateViewportHeight();
+  });
 };

@@ -800,10 +800,13 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   overflow: hidden;
   position: relative;
   touch-action: pan-y;
+  /* JS 가 활성 페이지 높이로 설정. transition 으로 페이지 전환 시 부드럽게. */
+  transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .help-pages-track {
   display: flex;
   width: 400%;       /* 4 페이지 */
+  align-items: flex-start;  /* 페이지마다 자기 컨텐츠 height — stretch 금지 */
   transform: translateX(0);
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;

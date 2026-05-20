@@ -14,6 +14,8 @@ export const showScreen = (name) => {
   $('screen-waiting').classList.toggle('hidden', name !== 'waiting');
   $('screen-game').classList.toggle('hidden', name !== 'game');
   $('screen-help').classList.toggle('hidden', name !== 'help');
+  // help 화면에서는 ? 버튼 숨김 — 중복 클릭 시 previousScreen 덮어쓰기 방지 보조.
+  $('btn-help').classList.toggle('hidden', name === 'help');
   if (name !== 'game') {
     $('game-over').classList.add('hidden');
     // 게임 화면을 떠나면 이모트 피커도 닫고 FAB도 숨김
