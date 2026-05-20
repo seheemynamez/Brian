@@ -12,6 +12,7 @@ const roomRuntime = require('../domain/room-runtime');
 const {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
   newBotEmoteState, thinkTimeMs,
+  countStones, getSearchConfig,
 } = require('../game/bot');
 // generateMove 는 워커 풀의 async 래퍼 사용 — 메인 이벤트 루프 블로킹 회피.
 const { generateMoveAsync } = require('../game/bot-pool');
@@ -55,6 +56,9 @@ const scheduleBotMove = (room) => {
     // 보드 스냅샷을 워커로 보내 비동기로 계산. 메인 이벤트 루프는 그동안 자유.
     // 워커가 결과를 돌려줄 시점에 게임 상태가 변했을 수 있으니(사용자 leave / 타임아웃 등)
     // 한 번 더 검증 후 applyMove 호출.
+    // timeout 시 로깅에 쓸 메타 — search 시작 시점에 snapshot (워커 결과 늦게 와도 같은 정보).
+    const stonesAtStart = countStones(room.board);
+    const cfg = getSearchConfig(room.board, bot.difficulty);
     generateMoveAsync(room.board, botColor, bot.difficulty).then((move) => {
       if (!move) return;
       const current = getRoom(code);
@@ -66,10 +70,12 @@ const scheduleBotMove = (room) => {
       const { applyMove } = require('./game');
       applyMove(room, botColor, move[0], move[1], { actor: 'bot' });
     }).catch((err) => {
-      console.error('[bot] generateMoveAsync 실패:', err && err.message);
+      // timeout / worker crash — 추후 분석 위해 봇 종류 / 수 번호 / 알고리즘 강도 함께 로깅.
+      // stones = 보드 위 돌 개수 (= 직전 수 번호. 봇은 stones+1 번째 수 두려던 차례).
+      console.error(`[bot] generateMoveAsync 실패: ${err && err.message} | bot=${bot.difficulty} stones=${stonesAtStart} (=>${stonesAtStart+1}번째 수) cfg=d${cfg.depth}×t${cfg.topK} room=${code} color=${botColor}`);
       // Worker timeout / crash 등으로 봇이 응수 못한 경우 — game/bot.js 의 generateMove
       // 를 sync 로 직접 호출 (easy 난이도 fallback, sub-second). 차례 잃지 않게 즉시 둠.
-      // 약수가 될 수 있지만 무응답 → 사용자 무한 timeout 보다 낫다.
+      // 사용자가 명시: "22초 안에 생각 못하면 초보 수준으로 두게" — easy fallback 정확히 그 의도.
       const current = getRoom(code);
       if (!current || current !== room || room.status !== 'playing' || room.turn !== botColor) return;
       try {
@@ -78,10 +84,10 @@ const scheduleBotMove = (room) => {
         if (fallback && room.board[fallback[0]][fallback[1]] === 0) {
           const { applyMove } = require('./game');
           applyMove(room, botColor, fallback[0], fallback[1], { actor: 'bot' });
-          console.error('[bot] fallback (easy sync) move 적용:', fallback);
+          console.error(`[bot] fallback (easy sync) move 적용: [${fallback[0]},${fallback[1]}] bot=${bot.difficulty} stones=${stonesAtStart}`);
         }
       } catch (e2) {
-        console.error('[bot] fallback 도 실패:', e2 && e2.message);
+        console.error(`[bot] fallback 도 실패: ${e2 && e2.message} | bot=${bot.difficulty} room=${code}`);
       }
     });
   }, delay));
