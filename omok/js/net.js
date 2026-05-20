@@ -197,7 +197,7 @@ const dispatch = (msg) => {
     case 'opponent_disconnected': return onOpponentDisconnected(msg);
     case 'opponent_reconnected':  return onOpponentReconnected(msg);
     case 'opponent_left':         return onOpponentGone('상대가 방을 나갔어요');
-    case 'opponent_abandoned':    return onOpponentGone('상대가 돌아오지 않아 종료');
+    case 'opponent_abandoned':    return onOpponentAbandoned(msg);
     case 'spectator_list':     return updateSpectatorList(msg.spectators);
     case 'online_count':       return updateOnlineCount(msg.n);
     case 'online_list':        return showOnlineList(msg.nicknames);
@@ -272,6 +272,7 @@ const onGameStart = (msg) => {
   state.winLine = null;
   state.lastMove = null;
   state.gameOver = false;
+  state.lastRatingDeltas = null;  // 새 게임 — 이전 변동분 잔존 방지 (renderRatingChange 가 hide)
   state.role = 'player';
   if (msg.sessionId) {
     state.sessionId = msg.sessionId;
@@ -421,6 +422,13 @@ const onTurnSkipped = (msg) => {
 const onGameOver = (msg) => {
   state.gameOver = true;
   state.winLine = msg.line;
+  // 변동된 rating + delta — 종료 화면 (showGameOver) 에서 즉시 표시. game 화면 카드의 rating/티어도
+  // updatePlayerCards 로 즉시 갱신. PVP 양쪽 동시 끊김의 경우 서버가 ratings=null → 표시 skip.
+  if (msg.ratings) {
+    state.ratings = msg.ratings;
+    state.lastRatingDeltas = msg.deltas || null;
+    updatePlayerCards();
+  }
   stopTimerTick();
   drawBoard();
   showGameOver(msg.winner, msg.reason);
@@ -461,6 +469,22 @@ const onOpponentReconnected = (msg) => {
   // grace countdown 종료. 다음 turn_started 가 정상 turn timer 재개.
   resumeTurnTimer();
   showToast('상대 재연결됨');
+};
+
+// 상대 abandoned (grace 만료) — rating 변동 있음. game_over 처럼 처리하되 winner 가
+// 상대 (= 사용자 = oppColor) 임을 명시. showGameOver 가 reason='abandoned' 분기로 표시.
+const onOpponentAbandoned = (msg) => {
+  state.gameOver = true;
+  stopTimerTick();
+  drawBoard();
+  if (msg.ratings) {
+    state.ratings = msg.ratings;
+    state.lastRatingDeltas = msg.deltas || null;
+    updatePlayerCards();
+  }
+  // msg.color 는 abandoned 한 쪽 (= loser). winner 는 그 반대.
+  const winner = msg.color === 'black' ? 'white' : 'black';
+  showGameOver(winner, 'abandoned');
 };
 
 const onOpponentGone = (text) => {

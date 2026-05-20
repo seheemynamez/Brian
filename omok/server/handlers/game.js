@@ -200,9 +200,15 @@ const applyMove = (room, color, row, col, opts) => {
     room.loser = otherColor(color);
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color });
-    broadcastRoom(room, { type: 'game_over', winner: color, line: winLine, gameId: room.gameId, playerIds });
+    // recordGameResult 먼저 — 새 rating + delta 가 entry 에 포함. game_over payload 에 같이 보내
+    // 클라가 종료 화면에서 즉시 표시. 봇 게임도 동일 (entry.{black,white}.rating/delta 다 있음).
+    const entry = recordGameResult(room, { winnerColor: color, reason: 'five' });
+    broadcastRoom(room, {
+      type: 'game_over', winner: color, line: winLine, gameId: room.gameId, playerIds,
+      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
+      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+    });
     broadcastRoomsList();
-    recordGameResult(room, { winnerColor: color, reason: 'five' });
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: color, reason: 'five' });
@@ -212,9 +218,13 @@ const applyMove = (room, color, row, col, opts) => {
     room.loser = null;
     clearTurnTimer(room);
     broadcastRoom(room, { type: 'move', row, col, color });
-    broadcastRoom(room, { type: 'game_over', winner: 'draw', line: null, gameId: room.gameId, playerIds });
+    const entry = recordGameResult(room, { winnerColor: 'draw', reason: 'draw' });
+    broadcastRoom(room, {
+      type: 'game_over', winner: 'draw', line: null, gameId: room.gameId, playerIds,
+      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
+      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+    });
     broadcastRoomsList();
-    recordGameResult(room, { winnerColor: 'draw', reason: 'draw' });
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: 'draw', reason: 'draw' });
