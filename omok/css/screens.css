@@ -551,6 +551,21 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
 .result.draw { color: var(--ink-muted); }
 .result.neutral { color: var(--ink-muted); font-size: 18px; font-weight: 700; }
 
+/* 게임 종료 카드의 rating 변동 표시 — "나/상대: 1500 → 1510 (+10) 🥇 Gold ↑" */
+.rating-change { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.rating-line {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 8px; font-size: 14px; color: var(--ink-muted);
+}
+.rating-line .rating-label { font-weight: 700; color: var(--ink); }
+.rating-line .rating-value { font-variant-numeric: tabular-nums; }
+.rating-line .rating-delta.pos  { color: var(--good); font-weight: 700; }
+.rating-line .rating-delta.neg  { color: var(--bad);  font-weight: 700; }
+.rating-line .rating-delta.zero { color: var(--ink-muted); }
+.rating-line .rating-tier { display: inline-flex; align-items: center; gap: 2px; }
+.rating-line .tier-up   { color: var(--good); margin-left: 2px; font-weight: 900; }
+.rating-line .tier-down { color: var(--bad);  margin-left: 2px; font-weight: 900; }
+
 /* ============================================================
    모바일
    ============================================================ */
