@@ -44,11 +44,14 @@ const onRequestOnlineList = (ws) => {
       noClient.add(c.nickname);
     }
   }
+  // unique 단위는 clientId. 같은 nickname 의 다른 clientId 는 별개 사용자 — list 에 둘 다 노출.
+  // (이전엔 new Set(nicknames) 로 한 번 더 nickname dedup 했지만, 그건 닉네임 같다는 이유로
+  //  다른 사용자를 한 명으로 합쳐버려 잘못. count 와 list 의 unique 기준이 둘 다 clientId.)
+  // byClient 는 이미 clientId 단위 unique. noClient (clientId 없는 짧은 윈도우) 는 nickname Set
+  // 이라 자체적으로 nickname dedup 된 상태 — 그대로 합쳐서 list.
   const nicknames = [...byClient.values(), ...noClient];
-  // 위 두 그룹 간에도 닉네임 겹침 가능성 — 한번 더 dedup
-  const unique = Array.from(new Set(nicknames));
-  unique.sort((a, b) => a.localeCompare(b, 'ko'));
-  send(ws, { type: 'online_list', nicknames: unique });
+  nicknames.sort((a, b) => a.localeCompare(b, 'ko'));
+  send(ws, { type: 'online_list', nicknames });
 };
 
 const onCreateRoom = (ws, msg) => {
