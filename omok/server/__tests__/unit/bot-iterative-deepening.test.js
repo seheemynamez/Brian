@@ -5,10 +5,25 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { generateMove, searchBestMove } = require('../../game/bot');
+const { generateMove, searchBestMove, getDynamicConfig } = require('../../game/bot');
 
 const SIZE = 15;
 const empty = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+
+// stones N개 짜리 보드 — 임의 위치에 흑백 번갈아 채움 (셀프 5목 안 만들게 spread).
+// dynamic cfg 의 stones 기준 (<5 / <15 / 15+) 테스트 전용.
+const boardWithStones = (n) => {
+  const b = empty();
+  // 흩어진 위치에 번갈아 두기 — 15×15 에 분산. (row+col) % 2 패턴.
+  let placed = 0;
+  for (let r = 0; r < SIZE && placed < n; r += 2) {
+    for (let c = 0; c < SIZE && placed < n; c += 2) {
+      b[r][c] = (placed % 2 === 0) ? 1 : 2;
+      placed++;
+    }
+  }
+  return b;
+};
 
 describe('Bot ID — generateMove 반환 shape + 깊이 도달', () => {
   test('easy: d2 까지 도달, move 반환', () => {
@@ -23,24 +38,66 @@ describe('Bot ID — generateMove 반환 shape + 깊이 도달', () => {
     assert.equal(r.aborted, false);
   });
 
-  test('medium: maxDepth 4 — 충분한 시간 안에 d4 까지 도달', () => {
+  test('medium: 초반 (stones<5) maxDepth 3 — 동적 cfg', () => {
     const b = empty();
     b[7][7] = 2;
     const r = generateMove(b, 'black', 'medium');
     assert.ok(r.move);
-    assert.equal(r.cfgMaxDepth, 4);
+    assert.equal(r.cfgMaxDepth, 3);   // stones=1 → medium 초반 cfg
     assert.ok(r.reachedDepth >= 1, '최소 d1 까지는 도달');
-    assert.ok(r.reachedDepth <= 4, 'cfgMaxDepth 이내');
+    assert.ok(r.reachedDepth <= 3, 'cfgMaxDepth 이내');
   });
 
-  test('hard: maxDepth 6 — ID 가 시간 안에서 도달 가능한 max 까지', () => {
+  test('hard: 초반 (stones<5) maxDepth 4 — 동적 cfg', () => {
     const b = empty();
     b[7][7] = 2;
     const r = generateMove(b, 'black', 'hard');
     assert.ok(r.move);
-    assert.equal(r.cfgMaxDepth, 6);
+    assert.equal(r.cfgMaxDepth, 4);   // stones=1 → hard 초반 cfg (αβ 약해서 d4 까지만)
     assert.ok(r.reachedDepth >= 1);
-    assert.ok(r.reachedDepth <= 6);
+    assert.ok(r.reachedDepth <= 4);
+  });
+});
+
+describe('Bot ID — getDynamicConfig stones 별 매핑', () => {
+  test('easy: stones 무관 — d2×t3×1s 고정', () => {
+    assert.deepEqual(getDynamicConfig(empty(), 'easy'),
+      { maxDepth: 2, topK: 3, timeoutMs: 1000 });
+    assert.deepEqual(getDynamicConfig(boardWithStones(20), 'easy'),
+      { maxDepth: 2, topK: 3, timeoutMs: 1000 });
+  });
+
+  test('medium: 초반(<5) d3 / 중반(5-14) d4 / 후반(15+) d4', () => {
+    assert.equal(getDynamicConfig(boardWithStones(0), 'medium').maxDepth, 3);
+    assert.equal(getDynamicConfig(boardWithStones(4), 'medium').maxDepth, 3);
+    assert.equal(getDynamicConfig(boardWithStones(5), 'medium').maxDepth, 4);
+    assert.equal(getDynamicConfig(boardWithStones(14), 'medium').maxDepth, 4);
+    assert.equal(getDynamicConfig(boardWithStones(15), 'medium').maxDepth, 4);
+    assert.equal(getDynamicConfig(boardWithStones(20), 'medium').maxDepth, 4);
+    // timeoutMs 도 단계별로 다름
+    assert.equal(getDynamicConfig(boardWithStones(0), 'medium').timeoutMs, 1500);
+    assert.equal(getDynamicConfig(boardWithStones(10), 'medium').timeoutMs, 3000);
+    assert.equal(getDynamicConfig(boardWithStones(20), 'medium').timeoutMs, 1500);
+  });
+
+  test('hard: 초반(<5) d4 / 중반(5-14) d5 / 후반(15+) d6', () => {
+    assert.equal(getDynamicConfig(boardWithStones(0), 'hard').maxDepth, 4);
+    assert.equal(getDynamicConfig(boardWithStones(4), 'hard').maxDepth, 4);
+    assert.equal(getDynamicConfig(boardWithStones(5), 'hard').maxDepth, 5);
+    assert.equal(getDynamicConfig(boardWithStones(14), 'hard').maxDepth, 5);
+    assert.equal(getDynamicConfig(boardWithStones(15), 'hard').maxDepth, 6);
+    assert.equal(getDynamicConfig(boardWithStones(20), 'hard').maxDepth, 6);
+    // timeoutMs 도 단계별
+    assert.equal(getDynamicConfig(boardWithStones(0), 'hard').timeoutMs, 5000);
+    assert.equal(getDynamicConfig(boardWithStones(10), 'hard').timeoutMs, 8000);
+    assert.equal(getDynamicConfig(boardWithStones(20), 'hard').timeoutMs, 5000);
+  });
+
+  test('topK 는 모든 단계에서 10 (easy 제외)', () => {
+    for (const s of [0, 4, 5, 14, 15, 20]) {
+      assert.equal(getDynamicConfig(boardWithStones(s), 'medium').topK, 10);
+      assert.equal(getDynamicConfig(boardWithStones(s), 'hard').topK, 10);
+    }
   });
 });
 
@@ -54,10 +111,12 @@ describe('Bot ID — 5목 즉시 발견 (winning move) 시 ID 조기 종료', ()
     // 5목 만드는 자리 — (7,3) 또는 (7,8) 둘 중 하나.
     const isWinMove = (r.move[0] === 7 && (r.move[1] === 3 || r.move[1] === 8));
     assert.ok(isWinMove, `winning move 기대, got [${r.move}]`);
-    // reachedDepth 은 1 일 수 있고 더 깊이 갈 수도 있지만 hard maxDepth 6 까지 안 감
+    // reachedDepth 은 1 일 수 있고 더 깊이 갈 수도 있지만 cfgMaxDepth 까지 안 감
     // (win 발견 시 ID break). 단 d1 에서만 win 잡힌다고 보장 X — αβ 가지치기 / move ordering
-    // 따라 다름. 일단 reached <= 6 + move 가 win 자리이기만 하면 OK.
-    assert.ok(r.reachedDepth >= 1 && r.reachedDepth <= 6);
+    // 따라 다름. 일단 reached <= cfgMaxDepth + move 가 win 자리이기만 하면 OK.
+    // stones=4 → hard 초반 cfg = d4. (dynamic cfg, PR #81.)
+    assert.equal(r.cfgMaxDepth, 4);
+    assert.ok(r.reachedDepth >= 1 && r.reachedDepth <= r.cfgMaxDepth);
   });
 });
 

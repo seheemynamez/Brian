@@ -430,20 +430,55 @@ const searchBestMove = (board, color, depth, topK, opts = {}) => {
 //
 // timeoutMs: AbortController 가 N ms 후 signal.abort() 발동. search 가 즉시 partial 종료.
 //   worker timeout (bot-pool.js, 기본 22s) 보다 안전 margin 2s 작게 (20s).
-const DIFFICULTY_CONFIG = {
-  easy:   { maxDepth: 2, topK: 3,  timeoutMs: 1000 },
-  medium: { maxDepth: 4, topK: 10, timeoutMs: 5000 },
-  hard:   { maxDepth: 6, topK: 10, timeoutMs: 20000 },
-};
-
-// 보드 위 돌 개수 — handlers/bot.js 의 로깅 ("몇 번째 수") 용. ID 정책엔 영향 X.
+// 보드 위 돌 개수 — handlers/bot.js 의 로깅 ("몇 번째 수") + 동적 cfg 결정 용.
 const countStones = (board) => {
   let n = 0;
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c]) n++;
   return n;
 };
 
-const getSearchConfig = (difficulty) => DIFFICULTY_CONFIG[difficulty] || DIFFICULTY_CONFIG.medium;
+// stones 별 동적 cfg — Render free tier (×7-10 slowdown) 기준 사용자 대기 시간 일정.
+//
+// 배경:
+//   이전 정적 hard cfg (d6×t10, timeoutMs 20s) 는 prod 에서 거의 매 수마다 20s abort
+//   발동 + reached cfgMax(6) 도달율 0%. 사용자 매 수 20s+ 대기 = UX 매우 안 좋음.
+//   초반 (stones<5) 은 후보 많고 평가 점수 비슷해 αβ 거의 못 자름 → 깊이 더 봐도 의미 X.
+//   후반 (stones>=15) 은 αβ 잘 자르고 결정적 응수 많아 깊이 깊어도 빠름.
+//
+// 로컬 벤치 (5/20 Mac) 기반:
+//   hard d5: s1=3s, s5=2.6s, s10=0.9s, s15=0.2s — Render ×10 가정 시 30s/26s/9s/2s
+//   hard d6: s1=10s, s10=2.2s, s15=0.3s — 후반만 도달 가능
+//   medium d4: s1=0.5s, s10=0.3s, s15=0.1s — Render ×10 시 5s/3s/1s
+//
+// 매핑 의도 — 모든 stones 단계에서 사용자 대기 ≈ 1.5s-8s 일정.
+const getDynamicConfig = (board, difficulty) => {
+  if (difficulty === 'easy') {
+    return { maxDepth: 2, topK: 3, timeoutMs: 1000 };
+  }
+  const stones = countStones(board);
+  if (difficulty === 'medium') {
+    if (stones < 5)  return { maxDepth: 3, topK: 10, timeoutMs: 1500 };
+    if (stones < 15) return { maxDepth: 4, topK: 10, timeoutMs: 3000 };
+    return                  { maxDepth: 4, topK: 10, timeoutMs: 1500 };
+  }
+  if (difficulty === 'hard') {
+    if (stones < 5)  return { maxDepth: 4, topK: 10, timeoutMs: 5000 };   // 초반 αβ 약함 — d4 까지
+    if (stones < 15) return { maxDepth: 5, topK: 10, timeoutMs: 8000 };   // 중반 d5 도달 가능
+    return                  { maxDepth: 6, topK: 10, timeoutMs: 5000 };   // 후반 αβ 잘 잘려 d6
+  }
+  return { maxDepth: 4, topK: 10, timeoutMs: 3000 };
+};
+
+// 외부 호환 — 기존 호출자 (handlers/bot.js 의 catch 로깅, test 등) 가 difficulty 만으로
+// 호출하면 빈 보드 가정으로 cfg 반환. board 전달하면 동적 매핑.
+const getSearchConfig = (boardOrDifficulty, maybeDifficulty) => {
+  if (typeof boardOrDifficulty === 'string') {
+    // 옛 시그니처: getSearchConfig('hard') — 빈 보드로 동적 cfg 계산.
+    const emptyB = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+    return getDynamicConfig(emptyB, boardOrDifficulty);
+  }
+  return getDynamicConfig(boardOrDifficulty, maybeDifficulty);
+};
 
 // 외부 진입점 — generateMove(board, color, difficulty). 반환 shape:
 //   { move: [r,c]|null, reachedDepth: number, cfgMaxDepth: number, cfgTopK: number,
@@ -456,7 +491,7 @@ const getSearchConfig = (difficulty) => DIFFICULTY_CONFIG[difficulty] || DIFFICU
 // opts.timeoutMs 가 주어지면 cfg.timeoutMs 대신 사용 — 단위 테스트에서 짧은 deadline
 // 강제할 때 활용. prod 호출 (handlers/bot.js) 은 opts 없음 → cfg 기본 사용.
 const generateMove = (board, color, difficulty, opts = {}) => {
-  const cfg = getSearchConfig(difficulty);
+  const cfg = getDynamicConfig(board, difficulty);
   const t0 = Date.now();
   const timeoutMs = (typeof opts.timeoutMs === 'number') ? opts.timeoutMs : cfg.timeoutMs;
   const deadline = t0 + timeoutMs;
@@ -610,7 +645,7 @@ module.exports = {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
   generateMove,
   searchBestMove,                       // 단위 테스트 (deadline 발동 검증) 용
-  countStones, getSearchConfig,         // 로깅 / 디버그용
+  countStones, getSearchConfig, getDynamicConfig,  // 로깅 / 디버그용 + 단위 테스트
   decideBotEmote, recordBotEmote, newBotEmoteState,
   thinkTimeMs,
 };
