@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+# 동시 실행 중복 막기 (같은 PR 에 push 연달아 들어오면 이전 실행 취소).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit tests (renju / rating / game-logic / parity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: omok/server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: omok/server/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Run unit tests
+        run: npm run test:unit
+
+  e2e-recovery:
+    name: E2E (WebSocket recovery / rating / spectator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 로컬 (macOS) 에선 timing leak 으로 flaky 하지만 GitHub Actions ubuntu runner
+    # 에선 61/61 안정 통과. CI gating 으로 승격.
+    defaults:
+      run:
+        working-directory: omok/server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: omok/server/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Run E2E (memory backend)
+        run: npm test
