@@ -39,6 +39,13 @@ const clearTurnTimer = (room) => {
 
 const onTurnTimeout = (room) => {
   if (room.status !== 'playing') return;
+  // 봇 게임 + 사람 ws offline (좀비) 이면 turn 토글 + 봇 schedule 안 함.
+  // grace timer 가 별도 만료 처리 (90s 후 abandon). 봇이 혼자 두면서 게임이
+  // 부재중 끝나는 시나리오 차단.
+  if (room.hasBot) {
+    const { bothPlayersOnline } = require('./send');
+    if (!bothPlayersOnline(room)) return;
+  }
   const skipped = room.turn;
   room.turn = otherColor(room.turn);
   broadcastRoom(room, { type: 'turn_skipped', skipped, turn: room.turn });
