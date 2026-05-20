@@ -313,12 +313,19 @@ const findWinningMove = (board, color) => {
 // ============================================================
 // 미니맥스 + 알파베타 (정렬된 상위 K 후보만 탐색)
 // ============================================================
-// AbortSignal 발동 시 minimax / searchBestMove 가 이 sentinel 반환. caller 가 incomplete
+// 시간 초과 시 minimax / searchBestMove 가 이 sentinel 반환. caller 가 incomplete
 // 로 처리. throw 안 쓰는 이유 — try/catch 오버헤드 + V8 try block 안의 optimizer 제약.
+//
+// 왜 AbortSignal 안 쓰고 deadline (Date.now() > N) 직접 비교?
+//   AbortController + setTimeout 은 worker 의 이벤트 루프에 의존. generateMove (동기
+//   함수) 가 worker 의 이벤트 루프 점령하면 setTimeout 콜백 (ctl.abort) 발동 안 됨 →
+//   signal.aborted 영원히 false → search 끝까지 진행 → worker_timeout 22s 초과 →
+//   terminate. prod 에서 hard 초반 (stones=1,2,3) 에 연속 worker_timeout 발생 (PR #76
+//   직후 5/20 19:50-19:51). deadline 직접 비교는 동기 흐름 안에서 즉시 평가됨 — 안전.
 const ABORTED = Symbol('search_aborted');
 
-const minimax = (board, depth, color, myColor, alpha, beta, topK, signal) => {
-  if (signal && signal.aborted) return ABORTED;
+const minimax = (board, depth, color, myColor, alpha, beta, topK, deadline) => {
+  if (deadline && Date.now() > deadline) return ABORTED;
   if (depth === 0) return evaluatePosition(board, myColor);
 
   // 단축회로: 이 차례에 즉시 5목 만들 수 있으면 더 깊이 갈 필요 없음.
@@ -337,7 +344,7 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK, signal) => {
   let best = isMaximizing ? -Infinity : Infinity;
 
   for (const [r, c] of cands) {
-    if (signal && signal.aborted) return ABORTED;
+    if (deadline && Date.now() > deadline) return ABORTED;
     board[r][c] = me;
     const winLine = checkWinRenju(board, r, c, color);
     let score;
@@ -345,7 +352,7 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK, signal) => {
       // depth 보정 — 같은 승리라도 빨리 이기는/지는 게 더 좋은/나쁜 결과
       score = isMaximizing ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
     } else {
-      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta, topK, signal);
+      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta, topK, deadline);
     }
     board[r][c] = 0;
     if (score === ABORTED) return ABORTED;
@@ -361,12 +368,12 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK, signal) => {
   return best;
 };
 
-// searchBestMove 의 새 시그니처 — opts.signal 받음. 반환 shape:
+// searchBestMove — opts.deadline (Date.now() + N) 시각 받음. 반환 shape:
 //   { move: [r,c]|null, complete: bool, win: bool, score: number }
-// complete=false 면 abort 로 중도 종료 — 그 depth 의 best 는 partial 이라 신뢰 X.
+// complete=false 면 deadline 초과 중도 종료 — 그 depth 의 best 는 partial 이라 신뢰 X.
 // win=true 면 발견된 best 가 5목 / forced win (이론적 최선) — caller 는 ID 종료 가능.
 const searchBestMove = (board, color, depth, topK, opts = {}) => {
-  const signal = opts.signal;
+  const deadline = opts.deadline;
   const cands = orderCandidatesAtRoot(board, color, color, topK);
   if (!cands.length) {
     const fb = getCandidatesWithFallback(board, color);
@@ -382,7 +389,7 @@ const searchBestMove = (board, color, depth, topK, opts = {}) => {
   let alpha = -Infinity, beta = Infinity;
 
   for (const [r, c] of cands) {
-    if (signal && signal.aborted) {
+    if (deadline && Date.now() > deadline) {
       return { move: bestMove, complete: false, win: false, score: bestScore };
     }
     board[r][c] = me;
@@ -391,7 +398,7 @@ const searchBestMove = (board, color, depth, topK, opts = {}) => {
     if (winLine) {
       score = 100000;
     } else {
-      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta, topK, signal);
+      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta, topK, deadline);
     }
     board[r][c] = 0;
     if (score === ABORTED) {
@@ -441,32 +448,35 @@ const getSearchConfig = (difficulty) => DIFFICULTY_CONFIG[difficulty] || DIFFICU
 // 외부 진입점 — generateMove(board, color, difficulty). 반환 shape:
 //   { move: [r,c]|null, reachedDepth: number, cfgMaxDepth: number, cfgTopK: number,
 //     elapsedMs: number, aborted: bool }
-// - move 가 null 인 경우 = d=1 도 abort 됐거나 후보 없음. caller 가 fallback 처리 (사실상
-//   안 일어남 — d=1 의 한 후보 평가도 매우 빠르고, AbortSignal 은 그 사이엔 발동 안 함).
-const generateMove = (board, color, difficulty) => {
+//
+// deadline = Date.now() + cfg.timeoutMs. search 가 매 후보 평가 후 Date.now() > deadline
+// 비교해 자체 abort. 동기 흐름이라 worker 의 이벤트 루프와 무관 — 즉시 작동.
+// (이전 AbortController + setTimeout 방식은 worker 이벤트 루프 점령으로 setTimeout 콜백
+//  영원히 발동 안 해서 search 끝까지 진행 → worker_timeout 22s 초과로 terminate 됨.)
+// opts.timeoutMs 가 주어지면 cfg.timeoutMs 대신 사용 — 단위 테스트에서 짧은 deadline
+// 강제할 때 활용. prod 호출 (handlers/bot.js) 은 opts 없음 → cfg 기본 사용.
+const generateMove = (board, color, difficulty, opts = {}) => {
   const cfg = getSearchConfig(difficulty);
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), cfg.timeoutMs);
   const t0 = Date.now();
+  const timeoutMs = (typeof opts.timeoutMs === 'number') ? opts.timeoutMs : cfg.timeoutMs;
+  const deadline = t0 + timeoutMs;
   let bestMove = null;
   let reachedDepth = 0;
-  try {
-    for (let d = 1; d <= cfg.maxDepth; d++) {
-      if (ctl.signal.aborted) break;
-      const r = searchBestMove(board, color, d, cfg.topK, { signal: ctl.signal });
-      if (!r) break;
-      if (r.complete) {
-        if (r.move) bestMove = r.move;
-        reachedDepth = d;
-        if (r.win) break;  // 5목 / forced win 발견 — 더 깊이 갈 필요 X
-      } else {
-        // abort 로 중도 종료 — 이 depth 의 best 는 partial 이라 사용 X.
-        // 이전 depth (=reachedDepth) 의 best 가 그대로 살아있어 그것 반환.
-        break;
-      }
+  let aborted = false;
+  for (let d = 1; d <= cfg.maxDepth; d++) {
+    if (Date.now() > deadline) { aborted = true; break; }
+    const r = searchBestMove(board, color, d, cfg.topK, { deadline });
+    if (!r) break;
+    if (r.complete) {
+      if (r.move) bestMove = r.move;
+      reachedDepth = d;
+      if (r.win) break;  // 5목 / forced win 발견 — 더 깊이 갈 필요 X
+    } else {
+      // deadline 초과 중도 종료 — 이 depth 의 best 는 partial 이라 사용 X.
+      // 이전 depth (=reachedDepth) 의 best 가 그대로 살아있어 그것 반환.
+      aborted = true;
+      break;
     }
-  } finally {
-    clearTimeout(timer);
   }
   return {
     move: bestMove,
@@ -474,7 +484,7 @@ const generateMove = (board, color, difficulty) => {
     cfgMaxDepth: cfg.maxDepth,
     cfgTopK: cfg.topK,
     elapsedMs: Date.now() - t0,
-    aborted: ctl.signal.aborted,
+    aborted,
   };
 };
 
@@ -599,6 +609,7 @@ const thinkTimeMs = (difficulty) => {
 module.exports = {
   BOT_IDS, BOT_NICKNAMES, VALID_DIFFICULTIES,
   generateMove,
+  searchBestMove,                       // 단위 테스트 (deadline 발동 검증) 용
   countStones, getSearchConfig,         // 로깅 / 디버그용
   decideBotEmote, recordBotEmote, newBotEmoteState,
   thinkTimeMs,

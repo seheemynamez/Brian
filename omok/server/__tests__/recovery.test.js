@@ -670,6 +670,25 @@ test('F1: online_list 는 clientId 단위 dedup (같은 브라우저 멀티탭 =
   tabA.close(); tabB.close(); obs.close();
 });
 
+test('F3: online_list 는 같은 nickname 다른 clientId 둘 다 노출 (nickname dedup 금지)', async () => {
+  // unique 단위 = clientId. 같은 nickname 의 두 사용자는 별개 — list 에 둘 다 보여야 함.
+  // 이전 (lobby.js 의 new Set(nicknames)) 은 nickname dedup 까지 해서 1 명으로 보였음.
+  // PR #74 의 nickname dedup 제거 회귀 방지.
+  const tabA = await open();
+  sendJson(tabA, { type: 'set_nickname', nickname: '동일닉F3', clientId: 'cid-F3a' });
+  await sleep(150);
+  const tabB = await open();
+  sendJson(tabB, { type: 'set_nickname', nickname: '동일닉F3', clientId: 'cid-F3b' });  // 다른 clientId, 같은 nick
+  await sleep(300);
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'F3obs', clientId: 'cid-F3obs' });
+  sendJson(obs, { type: 'request_online_list' });
+  const list = await waitForType(obs, 'online_list', 1500);
+  const dups = list.nicknames.filter((n) => n === '동일닉F3').length;
+  assert(dups === 2, `같은 nickname 다른 clientId 둘 다 노출 기대 (clientId-only dedup), got ${dups}: ${JSON.stringify(list.nicknames)}`);
+  tabA.close(); tabB.close(); obs.close();
+});
+
 test('F2: 옛 큐 entry 가 close 로 사라진 후 새 ws 재진입 → bot_offer 재발송 안 함 (clientId history)', async () => {
   // race 시나리오: 옛 ws 의 close 가 새 ws 의 queue_join 보다 _먼저_ fire.
   // 옛 entry 는 정리됐지만 botOfferSentByClientId 에 시각이 남아있어야 → 새 entry timer 안 켬.
@@ -1088,6 +1107,60 @@ test('RK3: PVP leave_room → 떠난 쪽 패배 + ratings 변동', async () => {
   assert(h.rating + g.rating === 2400, `zero-sum 깨짐: host=${h.rating} guest=${g.rating}`);
   assert(h.rating < 1200 && g.rating > 1200, 'host should lose, guest should win');
   assert(h.losses === 1 && g.wins === 1, `wins/losses 카운트 오류`);
+});
+
+test('GO1: PVP leave_room → 상대 game_over payload 에 ratings/deltas 포함', async () => {
+  // PR #74 의 game_over payload 강화 회귀 방지. 종료 화면에서 rating 즉시 반영 의존.
+  const { host, guest } = await bootstrapRoom({
+    hostNick: 'GO1Host', hostClientId: 'cid-go1-host',
+    guestNick: 'GO1Guest', guestClientId: 'cid-go1-guest',
+  });
+  sendJson(host, { type: 'leave_room' });
+  const gameOver = await waitForType(guest, 'game_over', 2000);
+
+  // 기본 필드 — winner 는 white (host=black 이 leave 했으니 guest=white 승리)
+  assert(gameOver.winner === 'white', `winner=white 기대, got ${gameOver.winner}`);
+  assert(gameOver.reason === 'opponent_left', `reason=opponent_left 기대, got ${gameOver.reason}`);
+
+  // ratings / deltas 누락 안 됨
+  assert(gameOver.ratings, 'game_over.ratings 누락');
+  assert(gameOver.deltas,  'game_over.deltas 누락');
+  assert(typeof gameOver.ratings.black === 'number' && typeof gameOver.ratings.white === 'number',
+    `ratings shape 오류: ${JSON.stringify(gameOver.ratings)}`);
+  assert(typeof gameOver.deltas.black  === 'number' && typeof gameOver.deltas.white  === 'number',
+    `deltas shape 오류: ${JSON.stringify(gameOver.deltas)}`);
+
+  // winner (white) delta > 0, loser (black) delta < 0. zero-sum.
+  assert(gameOver.deltas.white > 0, `winner delta > 0 기대, got ${gameOver.deltas.white}`);
+  assert(gameOver.deltas.black < 0, `loser delta < 0 기대, got ${gameOver.deltas.black}`);
+  assert(gameOver.deltas.white + gameOver.deltas.black === 0,
+    `zero-sum: white(${gameOver.deltas.white}) + black(${gameOver.deltas.black}) = ${gameOver.deltas.white + gameOver.deltas.black}`);
+});
+
+test('GO2: 봇 게임 grace 만료 후 opponent_abandoned payload 에 ratings/deltas 포함', async () => {
+  // 봇 게임 abandoned 흐름의 ratings/deltas 회귀 방지. 봇 ws 가 없어 abandoned msg
+  // 자체는 검증 어려움 — 대신 ranking 으로 봇 user 의 rating 변동 검증.
+  // (이미 RK1 이 leave_room 흐름 검증, 여기는 abandoned 별도 흐름.)
+  const ws = await open();
+  sendJson(ws, { type: 'set_nickname', nickname: 'GO2', clientId: 'cid-go2' });
+  sendJson(ws, { type: 'create_bot_game', nickname: 'GO2', difficulty: 'easy', first: 'me' });
+  await waitForType(ws, 'game_start');
+  // ws close → grace 시작
+  ws.close();
+  // grace + 약간 여유 — finalizeAbandon 실행 + rating update + room cleanup 까지.
+  await sleep(GRACE + 700);
+
+  // 새 ws 로 ranking 조회
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'GO2obs', clientId: 'cid-go2-obs' });
+  clearRankingMessages(obs);
+  sendJson(obs, { type: 'request_ranking', limit: 50 });
+  const list = await waitForType(obs, 'ranking_list', 2000);
+  const me = list.entries.find((e) => e.clientId === 'cid-go2');
+  assert(me, 'GO2 user not in ranking after abandoned');
+  assert(me.rating < 1200, `abandoned = 사람 패배 → rating < 1200, got ${me.rating}`);
+  assert(me.losses === 1, `losses=1, got ${me.losses}`);
+  obs.close();
 });
 
 // ============================================================
