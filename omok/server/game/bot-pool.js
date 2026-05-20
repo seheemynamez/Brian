@@ -17,6 +17,9 @@ const path = require('path');
 
 const POOL_SIZE = Math.max(1, Number(process.env.BOT_WORKER_POOL_SIZE) || 2);
 const WORKER_PATH = path.resolve(__dirname, 'bot-worker.js');
+// Worker 가 hang 또는 너무 느린 경우 응답 cap — 이 시간 후 reject + worker 재시작.
+// turn timeout (30s) 보다 여유있게 작게 설정해서 fallback 처리 시간 확보.
+const WORKER_TIMEOUT_MS = Number(process.env.BOT_WORKER_TIMEOUT_MS) || 20000;
 
 let nextId = 1;
 // id → { resolve, reject, workerIndex }
@@ -63,10 +66,25 @@ const generateMoveAsync = (board, color, difficulty) => {
     const id = nextId++;
     const workerIndex = nextWorker;
     nextWorker = (nextWorker + 1) % workers.length;
-    pending.set(id, { resolve, reject, workerIndex });
+    // Worker hang 또는 과도한 지연 방어 — timeout 시 reject + 해당 worker 강제 재시작.
+    const to = setTimeout(() => {
+      if (!pending.has(id)) return;
+      pending.delete(id);
+      console.error(`[bot-pool] worker[${workerIndex}] timeout (${WORKER_TIMEOUT_MS}ms) — terminating`);
+      const w = workers[workerIndex];
+      try { w && w.terminate(); } catch {}
+      workers[workerIndex] = setupWorker(workerIndex);
+      reject(new Error('worker_timeout'));
+    }, WORKER_TIMEOUT_MS);
+    pending.set(id, {
+      resolve: (v) => { clearTimeout(to); resolve(v); },
+      reject:  (e) => { clearTimeout(to); reject(e); },
+      workerIndex,
+    });
     try {
       workers[workerIndex].postMessage({ id, board, color, difficulty });
     } catch (e) {
+      clearTimeout(to);
       pending.delete(id);
       reject(e);
     }
