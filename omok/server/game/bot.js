@@ -402,7 +402,8 @@ const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 10)
 //     local one_stone worst 945ms, early 306ms. Render free-tier 가 로컬 대비 5-10배
 //     느릴 수 있어 worst case ≈ 5-10s — turn timeout 30s 안에 안전.
 //     이전 (7, 6) 은 local 4.2s 였는데 Render 에선 20-30s 초과해 timeout 발생 → revert.
-const generateMoveHard = (board, color) => searchBestMove(board, color, 6, 6);
+// (6, 6) 도 에러나서 (5, 12) 로 hotfix
+const generateMoveHard = (board, color) => searchBestMove(board, color, 5, 12);
 
 const GENERATORS = {
   easy:   generateMoveEasy,
