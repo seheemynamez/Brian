@@ -137,15 +137,26 @@ const recordGameResult = (room, { winnerColor, reason, bothDisconnected = false 
   return entry;
 };
 
-// 메모리 cache 의 users 를 rating desc 로 sort → top N 반환.
-// tie-break: wins desc → losses asc.
+// 랭킹 정렬 기준 — getTopRanking / getMyRankEntry 가 같은 순서를 보이도록 공유.
+// 1차: rating desc
+// 2차: wins desc (같은 rating 일 때 승 많은 쪽 위)
+// 3차: losses asc (그래도 같으면 패 적은 쪽 위)
+// 4차: draws desc (그래도 같으면 게임 수 많은 쪽 위)
+// 5차: createdAt asc (승패무 모두 동률이면 먼저 가입한 사람이 위)
+//
+// createdAt 미존재 (호환성) 시 Infinity → 신규 user 처럼 가장 뒤로 밀림.
+const compareForRanking = (a, b) => {
+  if (b.rating !== a.rating) return b.rating - a.rating;
+  if (b.wins   !== a.wins)   return b.wins   - a.wins;
+  if (a.losses !== b.losses) return a.losses - b.losses;
+  if (b.draws  !== a.draws)  return b.draws  - a.draws;
+  return (a.createdAt || Infinity) - (b.createdAt || Infinity);
+};
+
+// 메모리 cache 의 users 를 정렬 → top N 반환.
 const getTopRanking = (limit = 10) => {
   const arr = Array.from(users.values());
-  arr.sort((a, b) => {
-    if (b.rating !== a.rating) return b.rating - a.rating;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    return a.losses - b.losses;
-  });
+  arr.sort(compareForRanking);
   return arr.slice(0, limit).map((u) => ({
     clientId: u.clientId,
     nickname: u.nickname,
@@ -161,17 +172,12 @@ const getTopRanking = (limit = 10) => {
 const getRecentGames = (limit = 10) => recentGames.slice(0, limit);
 
 // 특정 clientId 의 ranking entry + 전체 순위. user 미등록이면 null.
-// getTopRanking 과 동일한 정렬 기준 (rating desc, wins desc, losses asc).
 const getMyRankEntry = (clientId) => {
   if (!clientId) return null;
   const u = users.get(clientId);
   if (!u) return null;
   const arr = Array.from(users.values());
-  arr.sort((a, b) => {
-    if (b.rating !== a.rating) return b.rating - a.rating;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    return a.losses - b.losses;
-  });
+  arr.sort(compareForRanking);
   const idx = arr.findIndex((x) => x.clientId === clientId);
   if (idx < 0) return null;
   return {
@@ -191,4 +197,5 @@ module.exports = {
   getUser, getOrCreateUser, recordGameResult,
   getTopRanking, getRecentGames, getMyRankEntry,
   getRatingPreview, buildPlayerRatings,
+  compareForRanking,  // unit test 용 — 정렬 로직 자체 검증
 };
