@@ -115,8 +115,11 @@ const onPlayerDisconnect = (ws) => {
   const deadline = Date.now() + DISCONNECT_GRACE_MS;
   // slot 자체는 nullify 하지 않는다 (resume 시 메타 그대로 사용). ws 만 끊겼으니
   // sendToSession 은 자연히 no-op.
-  sendToPlayer(room, otherColor(myColor), { type: 'opponent_disconnected', color: myColor, deadline });
-  forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_disconnected', color: myColor, deadline }));
+  // graceMs 도 같이 보냄 — 클라이언트가 deadline 을 자기 시계로 normalize 할 때 cap.
+  // (시계 skew 로 deadline-clientNow > graceMs 되어 "61초" 같은 표시 방지)
+  const payload = { type: 'opponent_disconnected', color: myColor, deadline, graceMs: DISCONNECT_GRACE_MS };
+  sendToPlayer(room, otherColor(myColor), payload);
+  forEachSpectatorWs(room, (s) => send(s, payload));
   roomRuntime.setDisconnectTimer(room.code, myColor, setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS));
 };
 

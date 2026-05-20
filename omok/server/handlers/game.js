@@ -29,7 +29,8 @@ const startTurnTimer = (room) => {
   clearTurnTimer(room);
   room.turnDeadline = Date.now() + TURN_TIMEOUT_MS;
   roomRuntime.setTimer(room.code, 'turnTimer', setTimeout(() => onTurnTimeout(room), TURN_TIMEOUT_MS));
-  broadcastRoom(room, { type: 'turn_started', turn: room.turn, deadline: room.turnDeadline });
+  // timeoutMs 도 같이 보냄 — 클라이언트가 시계 skew 로 31초 표시되는 케이스 방지 (cap 용).
+  broadcastRoom(room, { type: 'turn_started', turn: room.turn, deadline: room.turnDeadline, timeoutMs: TURN_TIMEOUT_MS });
 };
 
 const clearTurnTimer = (room) => {

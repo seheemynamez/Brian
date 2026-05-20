@@ -62,10 +62,16 @@ export const state = {
   // 타이머
   turnDeadline: null,
   timerTickHandle: null,
+  // 서버가 turn_started 에 보내주는 timeout 총 길이 (ms).
+  // 클라이언트 시계가 서버보다 빠를 때 deadline-clientNow > timeout 이라 "31초"
+  // 표시되는 케이스 방지용 — 매 tick 시 remainMs 를 이 값으로 cap.
+  turnTimeoutMs: 30_000,
   // 상대가 끊긴 상태에서 grace 안에 복귀해야 하는 deadline.
   // opponent_disconnected.deadline 으로 set, opponent_reconnected 시 null.
   // 값이 있으면 turn timer 는 일시정지 + 이 deadline 으로 카운트다운 표시.
   disconnectDeadline: null,
+  // 서버 grace 총 길이 (ms) — 시계 skew 로 "61초" 표시 방지 cap 용. 기본 60s.
+  disconnectGraceMs: 60_000,
 
   // 오디오
   muted: localStorage.getItem('omok_muted') === '1',

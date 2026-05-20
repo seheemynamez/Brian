@@ -184,9 +184,11 @@ export const stopTimerTick = () => {
 let lastTickSec = null;
 function tickTimer() {
   if (!state.turnDeadline) return;
-  const remainMs = Math.max(0, state.turnDeadline - Date.now());
+  // 시계 skew 로 deadline-now 가 turnTimeoutMs 보다 살짝 커서 "31초" 표시되는 케이스 방지 cap.
+  const maxMs = state.turnTimeoutMs || 30_000;
+  const remainMs = Math.max(0, Math.min(state.turnDeadline - Date.now(), maxMs));
   const remainSec = Math.ceil(remainMs / 1000);
-  const pct = Math.max(0, Math.min(100, (remainMs / 30000) * 100));
+  const pct = Math.max(0, Math.min(100, (remainMs / maxMs) * 100));
   const fill = $('timer-fill');
   fill.style.width = pct + '%';
   fill.classList.toggle('low', remainSec <= 5);
@@ -222,12 +224,12 @@ export const pauseTurnTimer = (graceDeadline) => {
     return;
   }
   // grace deadline 까지 카운트다운 — 매초 갱신.
-  // 총 grace 길이는 deadline-now 한 번 기록해서 fill 비율 계산용으로 사용.
-  const total = Math.max(1, state.disconnectDeadline - Date.now());
+  // 시계 skew 로 remainMs > graceMs 케이스 ("61초") 방지: state.disconnectGraceMs 로 cap.
+  const total = state.disconnectGraceMs || 60_000;
   const isSpectator = state.role === 'spectator';
   const tickPaused = () => {
     if (!state.disconnectDeadline) return;
-    const remainMs = Math.max(0, state.disconnectDeadline - Date.now());
+    const remainMs = Math.max(0, Math.min(state.disconnectDeadline - Date.now(), total));
     const remainSec = Math.ceil(remainMs / 1000);
     text.textContent = isSpectator ? `⏸ ${remainSec}s` : `🏆 ${remainSec}s 후 승리`;
     fill.style.width = Math.max(0, Math.min(100, (remainMs / total) * 100)) + '%';
