@@ -38,9 +38,8 @@ jobs:
     name: E2E (WebSocket recovery / rating / spectator)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # 일부 시나리오 (B1-B3, RK1, RK3) 가 누적 상태 leak 으로 flaky.
-    # 이슈 #34 의 후속 작업으로 안정화 예정 — 지금은 비-blocking 으로 결과만 노출.
-    continue-on-error: true
+    # 로컬 (macOS) 에선 timing leak 으로 flaky 하지만 GitHub Actions ubuntu runner
+    # 에선 61/61 안정 통과. CI gating 으로 승격.
     defaults:
       run:
         working-directory: omok/server
