@@ -10,6 +10,7 @@ import {
 import { initAudio } from './sound.js';
 import { connect, sendMessage, getSession, setSession, setRoomInUrl, getRoomFromUrl, buildShareUrl } from './net.js';
 import { drawBoard, getBoardCoord } from './board.js';
+import { wireHelpEvents } from './help.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -420,6 +421,7 @@ setupBotGame();
 setupDirectJoinModal();
 setupMute();
 setupEmote();
+wireHelpEvents();
 updateMuteButton();
 updateOnlineCount(0);
 showScreen('lobby');

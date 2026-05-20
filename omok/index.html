@@ -107,6 +107,7 @@
     <div class="top-right">
       <button id="online-count" class="chip chip-clickable" type="button" aria-label="접속자 목록 보기">🟢 0명 온라인</button>
       <div id="conn-status" class="chip">연결 중...</div>
+      <button id="btn-help" class="icon-btn" aria-label="도움말 / 룰 설명" type="button">?</button>
       <button id="btn-mute" class="icon-btn" aria-label="음소거 토글">🔊</button>
     </div>
   </header>
@@ -273,6 +274,103 @@
       <button id="btn-emote" class="fab hidden" aria-label="이모지 보내기" type="button">💬</button>
       <div id="emote-picker" class="emote-picker hidden" role="menu">
         <div id="emote-grid" class="emote-grid"></div>
+      </div>
+    </section>
+
+    <!-- 도움말 / 룰 설명 (4 페이지) -->
+    <section id="screen-help" class="screen hidden">
+      <div class="help-bar">
+        <span id="help-page-label" class="help-page-label">1 / 4</span>
+        <button id="btn-help-close" class="icon-btn" aria-label="도움말 닫기" type="button">✕</button>
+      </div>
+
+      <div class="help-pages-viewport">
+       <div class="help-pages-track">
+      <!-- 페이지 1: 오목이란? -->
+      <div class="help-page active" data-page="0" aria-hidden="false">
+        <h2>♟️ 오목이란?</h2>
+        <p>15×15 격자에 흑돌과 백돌을 번갈아 한 점씩 놓는 보드 게임입니다. 가로·세로·대각선 어느 방향이든 자기 돌 <strong>5개를 한 줄로</strong> 만들면 승리합니다.</p>
+        <ul>
+          <li><strong>흑이 먼저</strong> 두고, 한 번 둔 돌은 못 옮깁니다</li>
+          <li><strong>이미 돌이 있는 자리</strong>에는 못 놓습니다</li>
+          <li>차례는 30초 — 시간 초과 시 패배</li>
+        </ul>
+        <div class="help-tip">
+          💡 보통 중앙 부근 (8, 8) 근처에서 첫 수를 시작합니다. 모서리는 활용도가 낮아요.
+        </div>
+      </div>
+
+      <!-- 페이지 2: 승리 조건 -->
+      <div class="help-page" data-page="1" aria-hidden="true">
+        <h2>🏆 승리 조건</h2>
+        <p>가로 · 세로 · 대각선 (↘ ↗) 어느 방향이든 자기 색 돌 <strong>5개를 한 줄로</strong> 놓으면 즉시 승리합니다.</p>
+        <div class="help-board-slot" data-svg="five"></div>
+        <p class="help-caption">가로 5목 — 흑 승리</p>
+        <div class="help-note">
+          <strong>흑 / 백의 미묘한 차이</strong>: 흑은 <strong>정확히 5개</strong> 여야 승리. 6개 이상 (장목) 이 되면 오히려 패배입니다. 백은 5개 이상 모두 승리.
+          <br><br>
+          다음 페이지 — 흑에게만 적용되는 <strong>렌주룰 (금수)</strong> 설명.
+        </div>
+      </div>
+
+      <!-- 페이지 3: 렌주룰 (흑 금수) -->
+      <div class="help-page" data-page="2" aria-hidden="true">
+        <h2>📜 렌주룰 — 흑 금수</h2>
+        <p>흑이 먼저 두는 이점 때문에 표준 한국 오목 (렌주룰) 은 균형을 맞추려 <strong>흑에게만</strong> 3가지 금수 (놓으면 안 되는 자리) 를 둡니다.</p>
+        <ul>
+          <li><strong>장목</strong> — 흑이 6개 이상 연속을 만들면 패배</li>
+          <li><strong>쌍사 (4-4)</strong> — 한 수로 두 방향 4 동시 형성</li>
+          <li><strong>쌍삼 (3-3)</strong> — 한 수로 두 방향 열린 3 동시 형성</li>
+        </ul>
+        <p class="muted">백은 위 패턴 모두 합법 — 흑만 제약을 받습니다.</p>
+        <div class="help-tip">
+          💡 5목 완성과 금수가 같은 수에 동시 발생하면 <strong>5목 승리가 우선</strong>합니다.
+        </div>
+        <div class="help-note">
+          이 게임은 흑 차례에 금수 자리를 보드에 <strong>×</strong> 로 미리 표시해줍니다. 그 자리에는 클릭해도 둘 수 없어요.
+        </div>
+      </div>
+
+      <!-- 페이지 4: 금수 패턴 예시 -->
+      <div class="help-page" data-page="3" aria-hidden="true">
+        <h2>⛔ 금수 패턴 예시</h2>
+        <p class="muted">아래 보드의 <span style="color:#ff3d3d">×</span> 자리에 흑이 두면 금수가 됩니다.</p>
+        <div class="help-pattern-grid">
+          <div class="help-pattern">
+            <div class="help-board-slot" data-svg="overline"></div>
+            <h3>장목</h3>
+            <p>두면 6개 연속</p>
+          </div>
+          <div class="help-pattern">
+            <div class="help-board-slot" data-svg="double_four"></div>
+            <h3>쌍사 (4-4)</h3>
+            <p>가로 4 + 세로 4 동시</p>
+          </div>
+          <div class="help-pattern">
+            <div class="help-board-slot" data-svg="double_three"></div>
+            <h3>쌍삼 (3-3)</h3>
+            <p>가로 열린 3 + 세로 열린 3</p>
+          </div>
+          <div class="help-pattern">
+            <div class="help-board-slot" data-svg="point_three"></div>
+            <h3>점삼은 합법</h3>
+            <p>○·○·○ 처럼 칸 떨어진 3 은 "3" 으로 안 침</p>
+          </div>
+        </div>
+      </div>
+
+       </div><!-- /.help-pages-track -->
+      </div><!-- /.help-pages-viewport -->
+
+      <div class="help-nav">
+        <button id="btn-help-prev" class="btn ghost" type="button" disabled>‹ 이전</button>
+        <div class="help-dots">
+          <span class="dot active" data-page="0"></span>
+          <span class="dot" data-page="1"></span>
+          <span class="dot" data-page="2"></span>
+          <span class="dot" data-page="3"></span>
+        </div>
+        <button id="btn-help-next" class="btn primary" type="button">다음 ›</button>
       </div>
     </section>
 
