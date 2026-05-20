@@ -21,8 +21,11 @@ const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
 
-// Render free-tier deploy 가 보통 60s 안쪽 → 사용자 reconnect 여유까지 합쳐 90s.
-const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 90000;
+// 사용자 끊김 → heartbeat 가 0-60s 안에 감지 (HEARTBEAT_INTERVAL_MS=30s × 2 사이클).
+// 그 후 grace 동안 reconnect 안 하면 finalizeAbandon. heartbeat 단계에서 이미 60s
+// 동안 응답이 없었으니 grace 는 60s 면 충분 (총 최대 60+60=120s).
+// Render free-tier deploy 의 graceful period 30s 도 안에 들어옴.
+const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 60000;
 
 const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 
