@@ -35,6 +35,13 @@ const getBotColor = (room) => {
 
 // 봇 차례 → 워커 풀에 generateMove 요청 → 결과를 applyMove 로 적용.
 // onMove 는 사람 ws 입력 전용 (rate-limit/validators 가 들어옴). 봇은 그 경로를 우회.
+//
+// 로깅 정책:
+//   - 정상 분기 (status/turn 등 평범한 게이트) 는 noise 라 로그 X.
+//   - SKIP (bothPlayersOnline=false): 봇 차례인데 못 두는 의미있는 케이스 → 항상 로그.
+//     (사용자가 보고한 "중봇 30s+ 멈춤 → 새로고침하면 풀림" 정황 추적용.)
+//   - 봇 수가 적용된 직후: 매 수마다 elapsed/cfg/move 로깅 (성능 / 판단 / 시간 검토용).
+//   - worker_timeout 또는 fallback 도 동일하게 elapsed 포함.
 const scheduleBotMove = (room) => {
   if (!room || !room.hasBot) return;
   if (room.status !== 'playing') return;
@@ -45,8 +52,13 @@ const scheduleBotMove = (room) => {
   // 사람 player 가 offline (좀비 ws — close 가 fire 안 된 채 응답 없는 상태) 이면
   // 봇이 두지 않음. 좀비 + turn timeout 으로 봇이 혼자 게임을 끝까지 진행해 사람이
   // 부재중 패배 처리되던 버그 방지.
+  // 이 분기로 들어왔다는 건 사람이 끊긴 상태 → 새로고침으로 ws 재연결 시 풀림.
+  // 사용자가 "30s 넘게 멈춤 → 새로고침하면 풀림" 보고한 정황과 일치.
   const { bothPlayersOnline } = require('./send');
-  if (!bothPlayersOnline(room)) return;
+  if (!bothPlayersOnline(room)) {
+    console.error(`[bot] schedule SKIP (사람 offline/zombie): bot=${bot.difficulty} stones=${countStones(room.board)} room=${room.code} color=${botColor}`);
+    return;
+  }
   const delay = thinkTimeMs(bot.difficulty);
   const code = room.code;
   roomRuntime.setTimer(code, 'botMoveTimer', setTimeout(() => {
@@ -56,11 +68,16 @@ const scheduleBotMove = (room) => {
     // 보드 스냅샷을 워커로 보내 비동기로 계산. 메인 이벤트 루프는 그동안 자유.
     // 워커가 결과를 돌려줄 시점에 게임 상태가 변했을 수 있으니(사용자 leave / 타임아웃 등)
     // 한 번 더 검증 후 applyMove 호출.
-    // timeout 시 로깅에 쓸 메타 — search 시작 시점에 snapshot (워커 결과 늦게 와도 같은 정보).
+    // search 시작 시점에 메타 snapshot (워커 결과 늦게 와도 같은 정보 + elapsed 측정).
     const stonesAtStart = countStones(room.board);
     const cfg = getSearchConfig(room.board, bot.difficulty);
+    const tSearchStart = Date.now();
     generateMoveAsync(room.board, botColor, bot.difficulty).then((move) => {
-      if (!move) return;
+      const elapsedMs = Date.now() - tSearchStart;
+      if (!move) {
+        console.error(`[bot] search returned null: bot=${bot.difficulty} stones=${stonesAtStart} cfg=d${cfg.depth}×t${cfg.topK} elapsed=${elapsedMs}ms room=${code}`);
+        return;
+      }
       const current = getRoom(code);
       if (!current || current !== room) return;          // 방이 사라졌거나 교체됨
       if (room.status !== 'playing') return;             // 게임 종료 / 사용자 이탈
@@ -69,25 +86,31 @@ const scheduleBotMove = (room) => {
       // Lazy require — game.js 가 bot.js 를 require 하므로 순환 방지.
       const { applyMove } = require('./game');
       applyMove(room, botColor, move[0], move[1], { actor: 'bot' });
+      // 매 봇 수마다 — 성능 / 판단 / 시간 적절성 검토용. delay (thinkTimeMs) 는 인공
+      // 지연이라 제외, 순수 search 시간만. 항상 켜져있음 (env 토글 X).
+      console.error(`[bot] move applied: bot=${bot.difficulty} stones=${stonesAtStart} (${stonesAtStart+1}번째 수) cfg=d${cfg.depth}×t${cfg.topK} elapsed=${elapsedMs}ms move=[${move[0]},${move[1]}] room=${code}`);
     }).catch((err) => {
-      // timeout / worker crash — 추후 분석 위해 봇 종류 / 수 번호 / 알고리즘 강도 함께 로깅.
-      // stones = 보드 위 돌 개수 (= 직전 수 번호. 봇은 stones+1 번째 수 두려던 차례).
-      console.error(`[bot] generateMoveAsync 실패: ${err && err.message} | bot=${bot.difficulty} stones=${stonesAtStart} (=>${stonesAtStart+1}번째 수) cfg=d${cfg.depth}×t${cfg.topK} room=${code} color=${botColor}`);
+      const elapsedMs = Date.now() - tSearchStart;
+      // timeout / worker crash — 봇 종류 / 수 번호 / 알고리즘 강도 / 실제 elapsed 함께.
+      // worker_timeout 의 경우 BOT_WORKER_TIMEOUT_MS 와 동일한 elapsed 가 찍힘.
+      console.error(`[bot] search FAIL: ${err && err.message} | bot=${bot.difficulty} stones=${stonesAtStart} (${stonesAtStart+1}번째 수) cfg=d${cfg.depth}×t${cfg.topK} elapsed=${elapsedMs}ms room=${code} color=${botColor}`);
       // Worker timeout / crash 등으로 봇이 응수 못한 경우 — game/bot.js 의 generateMove
       // 를 sync 로 직접 호출 (easy 난이도 fallback, sub-second). 차례 잃지 않게 즉시 둠.
       // 사용자가 명시: "22초 안에 생각 못하면 초보 수준으로 두게" — easy fallback 정확히 그 의도.
       const current = getRoom(code);
       if (!current || current !== room || room.status !== 'playing' || room.turn !== botColor) return;
       try {
+        const tFallbackStart = Date.now();
         const { generateMove } = require('../game/bot');
         const fallback = generateMove(room.board, botColor, 'easy');
+        const fbElapsedMs = Date.now() - tFallbackStart;
         if (fallback && room.board[fallback[0]][fallback[1]] === 0) {
           const { applyMove } = require('./game');
           applyMove(room, botColor, fallback[0], fallback[1], { actor: 'bot' });
-          console.error(`[bot] fallback (easy sync) move 적용: [${fallback[0]},${fallback[1]}] bot=${bot.difficulty} stones=${stonesAtStart}`);
+          console.error(`[bot] fallback move applied (easy sync): bot=${bot.difficulty} stones=${stonesAtStart} (${stonesAtStart+1}번째 수) elapsed=${fbElapsedMs}ms move=[${fallback[0]},${fallback[1]}] room=${code}`);
         }
       } catch (e2) {
-        console.error(`[bot] fallback 도 실패: ${e2 && e2.message} | bot=${bot.difficulty} room=${code}`);
+        console.error(`[bot] fallback FAIL: ${e2 && e2.message} | bot=${bot.difficulty} room=${code}`);
       }
     });
   }, delay));

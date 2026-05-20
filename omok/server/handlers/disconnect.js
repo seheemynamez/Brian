@@ -16,7 +16,7 @@ const {
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
 const { removeSpectator } = require('./spectator');
-const { clearTurnTimer } = require('./game');
+const { pauseTurnTimer } = require('./game');
 const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
@@ -107,9 +107,9 @@ const onPlayerDisconnect = (ws) => {
   //   상태가 엉키는 사고 방지. resume_session / reclaim 시 양쪽 다 online 일 때 재개.
   // grace timer 는 그대로 작동 (DISCONNECT_GRACE_MS 만료 시 abandon).
   if (room.status === 'playing') {
-    clearTurnTimer(room);
+    pauseTurnTimer(room);  // turnDeadline=0, turnRemainMs=남은 시간 저장 (resume 시 보존)
     if (room.hasBot) cancelBotTimers(room);
-    markRoomDirty(room);  // turnDeadline=0 도 valkey 에 sync (deploy hydrate 후 일관)
+    markRoomDirty(room);   // turnDeadline + turnRemainMs 둘 다 valkey 에 sync
   }
   const myColor = ws.color;
   const deadline = Date.now() + DISCONNECT_GRACE_MS;

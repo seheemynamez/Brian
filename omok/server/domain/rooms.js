@@ -167,6 +167,10 @@ const createRoom = (code, visibility = 'public') => ({
   board: emptyBoard(),
   turn: 'black',
   turnDeadline: 0,
+  // 사용자 disconnect 시 pauseTurnTimer 가 turnDeadline 의 남은 시간 (deadline - now) 저장.
+  // resumeTurnTimer 가 양쪽 online 시 그 값으로 timer 재개 → 새로고침해도 카운트다운 보존.
+  // 0 = 일시정지 안 됨 (정상 진행 중이거나 게임 시작 전 / 종료 후).
+  turnRemainMs: 0,
   status: 'waiting',              // waiting | playing | over
   // 'public' (default) — 'waiting' 상태에서도 로비 목록 노출, 랜덤 매칭 대상.
   // 'private' — 'waiting' 상태에선 로비에 안 보임. 코드/초대링크로만 진입.

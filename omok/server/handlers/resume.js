@@ -81,14 +81,16 @@ const onResumeSession = (ws, msg) => {
   const oppColor = otherColor(sess.color);
   sendToPlayer(room, oppColor, { type: 'opponent_reconnected', color: sess.color });
   forEachSpectatorWs(room, (sWs) => send(sWs, { type: 'opponent_reconnected', color: sess.color }));
-  // 봇 게임 / PVP 모두 disconnect 시 turn timer 동결됨 (disconnect.js).
+  // 봇 게임 / PVP 모두 disconnect 시 turn timer 동결됨 (disconnect.js → pauseTurnTimer).
   // resume 시 양쪽 다 online 일 때만 turn timer 재개 — PVP 는 한 쪽만 reconnect 한 상태면
   // 다른 쪽 reconnect 까지 timer 안 시작. 봇 게임은 봇이 항상 online 이라 사람 reconnect 즉시 재개.
+  // resumeTurnTimer 는 pauseTurnTimer 가 저장한 turnRemainMs (남은 시간) 으로 재개 →
+  // 새로고침 시 카운트다운 초기화 X.
   if (room.status === 'playing') {
     const { bothPlayersOnline } = require('./send');
     if (bothPlayersOnline(room)) {
-      const { startTurnTimer } = require('./game');
-      startTurnTimer(room);
+      const { resumeTurnTimer } = require('./game');
+      resumeTurnTimer(room);
       if (room.hasBot) {
         const { getBotColor, scheduleBotMove } = require('./bot');
         const botColor = getBotColor(room);
