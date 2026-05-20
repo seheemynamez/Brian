@@ -5,9 +5,11 @@
 // { id, move, reachedDepth, cfgMaxDepth, cfgTopK, elapsedMs, aborted } 또는
 // { id, error } 로 응답.
 //
-// generateMove 자체가 Iterative Deepening + AbortController(timeoutMs) 처리 →
-// worker 는 단순 wrapper. worker 의 메시지 timeout (bot-pool.js, ~22s) 은 안전망 —
-// generateMove 의 soft limit (default 20s for hard) 이 그 전에 self-abort.
+// generateMove 자체가 Iterative Deepening + deadline 직접 비교 (Date.now() > deadline)
+// 처리 → worker 는 단순 wrapper. worker 의 메시지 timeout (bot-pool.js, ~22s) 은 안전망 —
+// generateMove 의 soft limit (cfg.timeoutMs, 동적: 1s ~ 15s) 이 그 전에 self-abort.
+// 매핑은 bot.js 의 getDynamicConfig 참고 — 자기 돌 수 (countMyStones) 기준 분기.
+// (PR #81: 정적 hard 20s → 자기 돌 수 기반 동적 cfg.)
 //
 // 워커는 main 과 메모리를 공유하지 않음 — postMessage 가 structured clone 으로
 // board (2D 배열) 를 워커로 깊은 복사. 워커는 자체 board copy 위에서 계산하므로
