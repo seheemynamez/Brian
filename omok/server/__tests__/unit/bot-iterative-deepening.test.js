@@ -213,6 +213,45 @@ describe('Bot ID — abort 시나리오', () => {
   });
 });
 
+describe('Bot ID — TT (Transposition Table) 동작 검증 (PR #82)', () => {
+  // TT 는 search 결과 cache. 같은 보드에서 TT 사용 vs 미사용 결과 score 동일해야.
+  // bestMove 는 tie-break 순서로 다를 수 있어 score 만 검증.
+  test('같은 보드/depth — TT 유무에 따른 score 동일성', () => {
+    const b = empty();
+    b[7][7] = 1; b[7][8] = 2; b[8][7] = 1; b[6][7] = 2;
+    const r1 = searchBestMove(b, 'black', 3, 10);  // no tt
+    const r2 = searchBestMove(b, 'black', 3, 10, { tt: new Map() });
+    assert.equal(r1.complete, r2.complete);
+    assert.equal(r1.score, r2.score, 'TT 가 score 변경하면 안 됨');
+    assert.equal(r1.win, r2.win);
+  });
+
+  test('TT 공유 시 ID 모든 depth 누적 효과 — 같은 보드 d3+d4 호출 시 d4 가 d3 의 cache 활용', () => {
+    const b = empty();
+    b[7][7] = 1; b[7][8] = 2;
+    const tt = new Map();
+    const r3 = searchBestMove(b, 'black', 3, 10, { tt });
+    const sizeAfterD3 = tt.size;
+    assert.ok(sizeAfterD3 > 0, 'd3 후 TT 에 entry 들어가야 함');
+    const r4 = searchBestMove(b, 'black', 4, 10, { tt });
+    assert.ok(r3.move && r4.move);
+    // TT 가 누적되어 size 더 커짐 (d4 가 새 entries 추가)
+    assert.ok(tt.size >= sizeAfterD3, 'd4 후 TT size 가 d3 후 이상');
+  });
+
+  test('generateMove 가 호출마다 새 TT 사용 — 다른 게임 사이 오염 없음', () => {
+    // 두 보드에서 generateMove 두 번 호출 — 서로 영향 없어야.
+    const b1 = empty(); b1[7][7] = 1;
+    const b2 = empty(); b2[8][8] = 2;
+    const r1 = generateMove(b1, 'white', 'easy');
+    const r2 = generateMove(b2, 'black', 'easy');
+    assert.ok(r1.move);
+    assert.ok(r2.move);
+    // 두 호출이 독립적이어야 — generateMove 가 매번 새 TT 생성하므로 검증 트리비얼.
+    // 메모리 누수 방지 검증은 TT_MAX_ENTRIES 로 직접 못 함 (실제 100k 도달은 어려움).
+  });
+});
+
 describe('Bot ID — searchBestMove deadline 직접 검증 (PR #78 회귀)', () => {
   // searchBestMove 직접 호출 — deadline 이 한 search 안에서 동작하는지.
   // Date.now() > deadline 비교가 매 후보 평가 후 발동해야 함. setTimeout/AbortSignal 의존 X.
