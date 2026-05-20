@@ -680,8 +680,9 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
 .list-toggle.hidden { display: none; }
 
 /* 기본 — 4번째 이후는 숨김. .expanded 이면 전체 노출.
-   rank-item / recent-game-item 둘 다 적용. */
-.ranking-list:not(.expanded) > .rank-item:nth-child(n+4),
+   rank-item / recent-game-item 둘 다 적용.
+   단 .is-me 인 본인 row 는 접힘 상태에서도 항상 노출 (4-10위라도 본인은 보여야 함). */
+.ranking-list:not(.expanded) > .rank-item:nth-child(n+4):not(.is-me),
 .recent-games-list:not(.expanded) > .recent-game-item:nth-child(n+4) {
   display: none;
 }
