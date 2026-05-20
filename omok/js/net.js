@@ -402,6 +402,8 @@ const onMove = (msg) => {
 const onTurnStarted = (msg) => {
   state.currentTurn = msg.turn;
   state.turnDeadline = msg.deadline;
+  // 서버가 보낸 timeout 총 길이를 state 에 저장 — tickTimer 가 cap 으로 사용 (시계 skew 31초 표시 방지).
+  if (typeof msg.timeoutMs === 'number') state.turnTimeoutMs = msg.timeoutMs;
   startTimerTick();
   updateTurnUI();
 };
@@ -436,8 +438,12 @@ const onOpponentDisconnected = (msg) => {
   }
   // 서버가 disconnect 동안 turn timer 를 동결하므로 UI 도 동결.
   // grace deadline 으로 카운트다운 표시 + "내 승리" 강조 (사용자에게 결과 명확화).
+  if (typeof msg.graceMs === 'number') state.disconnectGraceMs = msg.graceMs;
   pauseTurnTimer(msg && msg.deadline);
-  const sec = msg && msg.deadline ? Math.ceil(Math.max(0, msg.deadline - Date.now()) / 1000) : 60;
+  // 시계 skew 로 remainMs 가 graceMs 보다 살짝 커서 "61초" 표시되는 케이스 방지 cap.
+  const rawRemainMs = msg && msg.deadline ? msg.deadline - Date.now() : state.disconnectGraceMs;
+  const remainMs = Math.max(0, Math.min(rawRemainMs, state.disconnectGraceMs));
+  const sec = Math.ceil(remainMs / 1000);
   // role 별 메시지 — player 는 자기 승리 강조, spectator 는 끊긴 쪽 패배.
   if (state.role === 'spectator') {
     const loser = msg && msg.color === 'black' ? '흑' : '백';
