@@ -31,12 +31,17 @@ let nextWorker = 0;
 const setupWorker = (index) => {
   const w = new Worker(WORKER_PATH);
   w.on('message', (msg) => {
-    const { id, move, error } = msg || {};
+    const { id, error } = msg || {};
     const p = pending.get(id);
     if (!p) return;
     pending.delete(id);
-    if (error) p.reject(new Error(error));
-    else p.resolve(move || null);
+    if (error) {
+      p.reject(new Error(error));
+      return;
+    }
+    // worker 의 generateMove 결과 객체 전체 전달 — { move, reachedDepth, cfgMaxDepth,
+    // cfgTopK, elapsedMs, aborted }. caller 가 .move 추출 + 로깅에 메타 활용.
+    p.resolve(msg);
   });
   w.on('error', (err) => {
     console.error(`[bot-pool] worker[${index}] error:`, err && err.message);

@@ -313,7 +313,12 @@ const findWinningMove = (board, color) => {
 // ============================================================
 // 미니맥스 + 알파베타 (정렬된 상위 K 후보만 탐색)
 // ============================================================
-const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
+// AbortSignal 발동 시 minimax / searchBestMove 가 이 sentinel 반환. caller 가 incomplete
+// 로 처리. throw 안 쓰는 이유 — try/catch 오버헤드 + V8 try block 안의 optimizer 제약.
+const ABORTED = Symbol('search_aborted');
+
+const minimax = (board, depth, color, myColor, alpha, beta, topK, signal) => {
+  if (signal && signal.aborted) return ABORTED;
   if (depth === 0) return evaluatePosition(board, myColor);
 
   // 단축회로: 이 차례에 즉시 5목 만들 수 있으면 더 깊이 갈 필요 없음.
@@ -332,6 +337,7 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
   let best = isMaximizing ? -Infinity : Infinity;
 
   for (const [r, c] of cands) {
+    if (signal && signal.aborted) return ABORTED;
     board[r][c] = me;
     const winLine = checkWinRenju(board, r, c, color);
     let score;
@@ -339,9 +345,10 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
       // depth 보정 — 같은 승리라도 빨리 이기는/지는 게 더 좋은/나쁜 결과
       score = isMaximizing ? (100000 - (5 - depth)) : (-100000 + (5 - depth));
     } else {
-      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta, topK);
+      score = minimax(board, depth - 1, otherColor(color), myColor, alpha, beta, topK, signal);
     }
     board[r][c] = 0;
+    if (score === ABORTED) return ABORTED;
     if (isMaximizing) {
       if (score > best) best = score;
       if (best > alpha) alpha = best;
@@ -354,13 +361,20 @@ const minimax = (board, depth, color, myColor, alpha, beta, topK) => {
   return best;
 };
 
-const searchBestMove = (board, color, depth, topK) => {
+// searchBestMove 의 새 시그니처 — opts.signal 받음. 반환 shape:
+//   { move: [r,c]|null, complete: bool, win: bool, score: number }
+// complete=false 면 abort 로 중도 종료 — 그 depth 의 best 는 partial 이라 신뢰 X.
+// win=true 면 발견된 best 가 5목 / forced win (이론적 최선) — caller 는 ID 종료 가능.
+const searchBestMove = (board, color, depth, topK, opts = {}) => {
+  const signal = opts.signal;
   const cands = orderCandidatesAtRoot(board, color, color, topK);
   if (!cands.length) {
     const fb = getCandidatesWithFallback(board, color);
-    return fb[0] || null;
+    return { move: fb[0] || null, complete: true, win: false, score: 0 };
   }
-  if (cands.length === 1) return cands[0];
+  if (cands.length === 1) {
+    return { move: cands[0], complete: true, win: false, score: 0 };
+  }
 
   const me = colorNumOf(color);
   let bestMove = cands[0];
@@ -368,83 +382,100 @@ const searchBestMove = (board, color, depth, topK) => {
   let alpha = -Infinity, beta = Infinity;
 
   for (const [r, c] of cands) {
+    if (signal && signal.aborted) {
+      return { move: bestMove, complete: false, win: false, score: bestScore };
+    }
     board[r][c] = me;
     const winLine = checkWinRenju(board, r, c, color);
     let score;
     if (winLine) {
       score = 100000;
     } else {
-      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta, topK);
+      score = minimax(board, depth - 1, otherColor(color), color, alpha, beta, topK, signal);
     }
     board[r][c] = 0;
+    if (score === ABORTED) {
+      return { move: bestMove, complete: false, win: false, score: bestScore };
+    }
     if (score > bestScore) {
       bestScore = score;
       bestMove = [r, c];
     }
     if (score > alpha) alpha = score;
   }
-  return bestMove;
+  return { move: bestMove, complete: true, win: bestScore >= 90000, score: bestScore };
 };
 
 // ============================================================
-// 난이도별 generator
+// 난이도별 config + Iterative Deepening (ID) 진입점
 // ============================================================
-// 하: 2-ply × top 3 — 상대 1수 응수는 보지만 후보 폭을 매우 좁혀
-//     루트 정렬에 의존. 좋은 수 자주 놓침. 입문자도 더 자주 이기게 약화.
-//     즉시 승리수 (5목) 는 root 에서 무조건 잡힘. early ~9ms.
-const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 3);
-
-// 중: 3-ply × top 10 — depth 는 3 유지하되 폭 좁혀 콤보·강제 응수 차단력 약간 ↓.
-//     이전 (3,15) 보다 후보 5개 적음. early ~66ms.
-const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 10);
-
-// 상: 단계별 (stones 수) 로 depth/topK 조절. Render free tier (0.1 vCPU burst) 슬로우다운
-// (worst ×25 추정) 안에 worker_timeout 22s 내 응수 보장.
+// Iterative Deepening: depth 1 → 2 → ... → maxDepth 순차. 각 depth 완료 후 best 갱신.
+// timeout 시 마지막 완성된 depth 의 best 반환 — 항상 그 depth 의 optimal 보장.
+//   - timeout 직진탐색 부분 best 는 후보 평가 순서 따라 흔들림 → 보장 X. ID 가 표준 해법.
+//   - 5목 / forced win 발견 시 즉시 종료 (그 이상 깊이 의미 X).
+//   - prev-depth best 가 다음 depth root ordering hint 로 작용해 αβ pruning ↑ (bonus).
 //
-//   stones 0-4  → d4×t8   (worst ~150ms local / ~4s Render)
-//   stones 5-9  → d4×t10  (worst ~310ms / ~8s Render)
-//   stones 10+  → d5×t10  (worst ~630ms / ~16s Render)
+// 난이도별 한계 (사용자 결정):
+//   하: maxDepth=2, topK=3 — 입문자용. early 수 ms.
+//   중: maxDepth=4, topK=10 — 표준. ID 가 보통 d3-4 까지 도달.
+//   상: maxDepth=6, topK=10 — 가장 강함. ID 가 시간 안에 d5-6 까지 도달 (Render 환경 따라).
+//       이전 stones 분기 폐기 — ID + AbortSignal 이 시간 안에 도달할 깊이 자동 선택.
 //
-//   왜 단계별?
-//     빈 보드 근처는 후보들이 다 비슷한 점수로 평가됨 → α-β 가지치기 거의 못 함.
-//     local 측정: one_stone d5×t12 = 3.3s, d5×t16 = 10.8s — Render 25× 슬로우다운 가정시
-//     50-270s. 5/20 prod 에서 d7×t6 / d6×t6 모두 worker_timeout 발생 확인됨.
-//     보드가 채워지면 αβ 가지치기 잘 작동 → 깊이/폭 늘려도 안전.
+// timeoutMs: AbortController 가 N ms 후 signal.abort() 발동. search 가 즉시 partial 종료.
+//   worker timeout (bot-pool.js, 기본 22s) 보다 안전 margin 2s 작게 (20s).
+const DIFFICULTY_CONFIG = {
+  easy:   { maxDepth: 2, topK: 3,  timeoutMs: 1000 },
+  medium: { maxDepth: 4, topK: 10, timeoutMs: 5000 },
+  hard:   { maxDepth: 6, topK: 10, timeoutMs: 20000 },
+};
+
+// 보드 위 돌 개수 — handlers/bot.js 의 로깅 ("몇 번째 수") 용. ID 정책엔 영향 X.
 const countStones = (board) => {
   let n = 0;
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c]) n++;
   return n;
 };
 
-// 난이도 + 현재 보드 상태에 맞는 search config 반환.
-// 로깅에서 "어느 강도에서 timeout 났는지" 식별용으로도 사용 — handlers/bot.js 의 catch.
-const getSearchConfig = (board, difficulty) => {
-  if (difficulty === 'easy')   return { depth: 2, topK: 3 };
-  if (difficulty === 'medium') return { depth: 3, topK: 10 };
-  if (difficulty === 'hard') {
-    const stones = countStones(board);
-    if (stones < 5)  return { depth: 4, topK: 8 };
-    if (stones < 10) return { depth: 4, topK: 10 };
-    return { depth: 5, topK: 10 };
-  }
-  return { depth: 3, topK: 10 }; // fallback (= medium)
-};
+const getSearchConfig = (difficulty) => DIFFICULTY_CONFIG[difficulty] || DIFFICULTY_CONFIG.medium;
 
-const generateMoveHard = (board, color) => {
-  const { depth, topK } = getSearchConfig(board, 'hard');
-  return searchBestMove(board, color, depth, topK);
-};
-
-const GENERATORS = {
-  easy:   generateMoveEasy,
-  medium: generateMoveMedium,
-  hard:   generateMoveHard,
-};
-
-// 외부 진입점
+// 외부 진입점 — generateMove(board, color, difficulty). 반환 shape:
+//   { move: [r,c]|null, reachedDepth: number, cfgMaxDepth: number, cfgTopK: number,
+//     elapsedMs: number, aborted: bool }
+// - move 가 null 인 경우 = d=1 도 abort 됐거나 후보 없음. caller 가 fallback 처리 (사실상
+//   안 일어남 — d=1 의 한 후보 평가도 매우 빠르고, AbortSignal 은 그 사이엔 발동 안 함).
 const generateMove = (board, color, difficulty) => {
-  const fn = GENERATORS[difficulty] || GENERATORS.medium;
-  return fn(board, color);
+  const cfg = getSearchConfig(difficulty);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), cfg.timeoutMs);
+  const t0 = Date.now();
+  let bestMove = null;
+  let reachedDepth = 0;
+  try {
+    for (let d = 1; d <= cfg.maxDepth; d++) {
+      if (ctl.signal.aborted) break;
+      const r = searchBestMove(board, color, d, cfg.topK, { signal: ctl.signal });
+      if (!r) break;
+      if (r.complete) {
+        if (r.move) bestMove = r.move;
+        reachedDepth = d;
+        if (r.win) break;  // 5목 / forced win 발견 — 더 깊이 갈 필요 X
+      } else {
+        // abort 로 중도 종료 — 이 depth 의 best 는 partial 이라 사용 X.
+        // 이전 depth (=reachedDepth) 의 best 가 그대로 살아있어 그것 반환.
+        break;
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  return {
+    move: bestMove,
+    reachedDepth,
+    cfgMaxDepth: cfg.maxDepth,
+    cfgTopK: cfg.topK,
+    elapsedMs: Date.now() - t0,
+    aborted: ctl.signal.aborted,
+  };
 };
 
 // ============================================================
