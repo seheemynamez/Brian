@@ -251,16 +251,16 @@ export const showGameOver = (winner, reason) => {
   const text = $('result-text');
   $('rematch-pending').classList.add('hidden');
   $('btn-rematch').classList.remove('hidden');
-  // 상대가 도중에 나간 경우(opponent_left)는 재대국 불가 — 방이 사라졌음
-  const opponentLeft = reason === 'opponent_left';
-  if (opponentLeft) $('btn-rematch').classList.add('hidden');
+  // 상대가 도중에 나간 경우(opponent_left/abandoned)는 재대국 불가 — 방이 사라졌음
+  const opponentGone = reason === 'opponent_left' || reason === 'abandoned';
+  if (opponentGone) $('btn-rematch').classList.add('hidden');
   if (state.role === 'spectator') {
     // 관전자: 누가 이겼는지만 표시, 재대국 버튼 숨김
     $('btn-rematch').classList.add('hidden');
     if (winner === 'draw') {
       text.textContent = '무승부';
       text.className = 'result draw';
-    } else if (opponentLeft) {
+    } else if (opponentGone) {
       text.textContent = (winner === 'black' ? '흑' : '백') + ' 승 (상대 포기)';
       text.className = 'result neutral';
     } else {
@@ -272,7 +272,7 @@ export const showGameOver = (winner, reason) => {
     text.className = 'result draw';
     playSound('draw');
   } else if (winner === state.myColor) {
-    text.textContent = opponentLeft ? '🏆 상대 포기 → 승리' : '🏆 승리';
+    text.textContent = opponentGone ? '🏆 상대 포기 → 승리' : '🏆 승리';
     text.className = 'result win';
     playSound('win');
   } else {
@@ -280,8 +280,51 @@ export const showGameOver = (winner, reason) => {
     text.className = 'result lose';
     playSound('lose');
   }
+  renderRatingChange();
   card.classList.remove('hidden');
   updateTurnUI();
+};
+
+// 게임 종료 화면 — 변동된 rating + tier 한 줄로. state.lastRatingDeltas 있고 player 일 때만.
+// "나: 1500 → 1490 (-10) 🥇 Gold" + "상대: 1500 → 1510 (+10) 🥈 Silver" 두 줄.
+// tier 변동 시 ↑↓ 화살표. 관전자는 본인 rating 없음 → 표시 skip.
+const renderRatingChange = () => {
+  const el = $('rating-change');
+  if (!el) return;
+  if (!state.lastRatingDeltas || !state.ratings || state.role !== 'player' || !state.myColor) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  const TIERS_ASC = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master'];
+  const myColor = state.myColor;
+  const oppColor = myColor === 'black' ? 'white' : 'black';
+  const buildLine = (label, color) => {
+    const after = state.ratings?.[color];
+    const delta = state.lastRatingDeltas?.[color];
+    if (after == null || delta == null) return '';
+    const before = after - delta;
+    const sign = delta > 0 ? '+' : '';
+    const deltaCls = delta > 0 ? 'pos' : (delta < 0 ? 'neg' : 'zero');
+    const tierBefore = tierOf(before);
+    const tierAfter  = tierOf(after);
+    const emoji = TIER_EMOJI[tierAfter] || '⚙️';
+    let tierArrow = '';
+    if (tierBefore !== tierAfter) {
+      const up = TIERS_ASC.indexOf(tierAfter) > TIERS_ASC.indexOf(tierBefore);
+      tierArrow = up ? '<span class="tier-up">↑</span>' : '<span class="tier-down">↓</span>';
+    }
+    return `<div class="rating-line">
+      <span class="rating-label">${escapeText(label)}</span>
+      <span class="rating-value">${before} → ${after}</span>
+      <span class="rating-delta ${deltaCls}">(${sign}${delta})</span>
+      <span class="rating-tier" title="${tierAfter} · ${after}">${emoji} ${tierAfter}${tierArrow}</span>
+    </div>`;
+  };
+  const myNick = state.nicknames?.[myColor] || '나';
+  const oppNick = state.nicknames?.[oppColor] || '상대';
+  el.innerHTML = buildLine(myNick, myColor) + buildLine(oppNick, oppColor);
+  el.classList.remove('hidden');
 };
 
 export const showGameOverNeutral = (text) => {
