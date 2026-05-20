@@ -17,7 +17,12 @@ const { getStore } = require('./store');
 const log = require('./infra/log');
 
 const PORT = Number(process.env.PORT) || 8080;
-const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 30000;
+// 좀비 ws 감지 주기 — 15s × 2 사이클 = 0-30s 안에 좀비 정리.
+// 봇 게임 시나리오: 사람 ws 좀비 상태에서 봇 차례 도래 시 scheduleBotMove 의
+// bothPlayersOnline 가드로 SKIP → 사용자 체감 멈춤. heartbeat 가 짧을수록 정리 빨라
+// 봇 응수 재개 시간 단축. 사용자 결정 (5/20 SKIP 분석 후): 30s → 15s.
+// 트래픽 영향 미미 — ping/pong 은 1-byte 프레임.
+const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 15000;
 // 기본: omok/ — 운영(Render) 배포와 동일
 // 로컬 LAN 테스트에서 2048 등 형제 디렉토리까지 같이 띄우려면 STATIC_ROOT=../.. 로 실행.
 const STATIC_ROOT = process.env.STATIC_ROOT
