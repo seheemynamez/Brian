@@ -54,10 +54,16 @@ const onLeaveRoom = (ws) => {
     const winnerColor = oppColor;
     room.status = 'over';
     room.winner = winnerColor;
-    sendToPlayer(room, oppColor, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left' });
-    forEachSpectatorWs(room, (s) => send(s, { type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left' }));
-    // 명시적 leave_room → 자진 포기로 간주, 랭킹 반영
-    recordGameResult(room, { winnerColor, reason: 'opponent_left' });
+    // 명시적 leave_room → 자진 포기로 간주, 랭킹 반영. broadcast 전에 호출해 entry 의 새 rating
+    // + delta 를 game_over payload 에 포함 → 클라가 종료 화면 즉시 표시.
+    const entry = recordGameResult(room, { winnerColor, reason: 'opponent_left' });
+    const gameOverPayload = {
+      type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left',
+      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
+      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+    };
+    sendToPlayer(room, oppColor, gameOverPayload);
+    forEachSpectatorWs(room, (s) => send(s, gameOverPayload));
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', { code: room.code, gameId: room.gameId, winner: winnerColor, reason: 'opponent_left' });
@@ -129,8 +135,6 @@ const finalizeAbandon = (room, color) => {
   // 봇 게임도 동일 흐름. 봇한테 sendToPlayer 는 자연히 no-op.
   if (room.status === 'playing') {
     room.status = 'over';
-    for (const c of ['black', 'white']) sendToPlayer(room, c, { type: 'opponent_abandoned', color, gameId: room.gameId, playerIds });
-    forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_abandoned', color, gameId: room.gameId, playerIds }));
     clearTurnTimer(room);
     cancelBotTimers(room);
     // 양쪽 동시 끊김 (PVP) 인지 체크 — 사용자 결정으로 그 케이스는 rating 변화 없음.
@@ -139,7 +143,16 @@ const finalizeAbandon = (room, color) => {
     const oppSlot = room.players[oppColor];
     const bothDisconnected = !room.hasBot && oppSlot && oppSlot.type === 'human' &&
       !connections.getWsBySessionId(oppSlot.sessionId);
-    recordGameResult(room, { winnerColor: oppColor, reason: 'abandoned', bothDisconnected });
+    // recordGameResult 먼저 — entry 의 새 rating + delta 를 opponent_abandoned payload 에 포함
+    // (양쪽 동시 끊김 시 entry=null 이라 ratings/deltas 도 null).
+    const entry = recordGameResult(room, { winnerColor: oppColor, reason: 'abandoned', bothDisconnected });
+    const abandonPayload = {
+      type: 'opponent_abandoned', color, gameId: room.gameId, playerIds,
+      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
+      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+    };
+    for (const c of ['black', 'white']) sendToPlayer(room, c, abandonPayload);
+    forEachSpectatorWs(room, (s) => send(s, abandonPayload));
     if (!bothDisconnected) {
       broadcastRankingUpdate();
       broadcastRecentGamesUpdate();
