@@ -1106,6 +1106,173 @@ test('D1: 봇 게임 disconnect 후 reconnect → 보드/턴 보존 + timer 재�
 // 은 D1 (봇 게임) 으로 cover — 봇 게임/PVP 모두 동일 코드 경로.
 
 // ============================================================
+// VIS — public / private 방 visibility 시나리오
+// ============================================================
+// VIS1: public 방 만들면 rooms_list 에 노출
+// VIS2: private 방 만들면 rooms_list 에 안 노출
+// VIS3: private 방에 코드로 join → 매칭 OK
+// VIS4: private 방 매칭 성사 (playing) → rooms_list 에 노출
+// VIS5: private 방 코드로 spectate → 관전 OK
+// VIS6: 빈 public 방 존재 → queue_join 즉시 그 방에 합류 (matched)
+// VIS7: 빈 public 방 없음 (private 만 있음) → queue_join 큐 대기
+// VIS8: 여러 빈 public 방 → FIFO (먼저 만든 방) 우선
+// VIS9: 방장 자신이 queue_join → 자기 방에 매칭 안 됨
+
+const requestRooms = async (ws) => {
+  ws.received.length = 0;
+  sendJson(ws, { type: 'request_rooms_list' });
+  return waitForType(ws, 'rooms_list');
+};
+
+test('VIS1: public 방 만들면 rooms_list 에 노출', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'H', clientId: 'cid-vis1-h' });
+  sendJson(host, { type: 'create_room', nickname: 'H', visibility: 'public' });
+  await waitForType(host, 'room_created');
+
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'O', clientId: 'cid-vis1-o' });
+  const list = await requestRooms(obs);
+  const found = list.rooms.find((r) => r.nicknames.black === 'H');
+  assert(found, 'public 방이 list 에 있어야 함');
+  assert(found.visibility === 'public', `expected visibility=public, got ${found.visibility}`);
+  host.close(); obs.close();
+});
+
+test('VIS2: private 방 만들면 rooms_list 에 안 노출', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'HP', clientId: 'cid-vis2-h' });
+  sendJson(host, { type: 'create_room', nickname: 'HP', visibility: 'private' });
+  await waitForType(host, 'room_created');
+
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'O2', clientId: 'cid-vis2-o' });
+  const list = await requestRooms(obs);
+  const found = list.rooms.find((r) => r.nicknames.black === 'HP');
+  assert(!found, 'private 대기 방은 list 에 없어야 함');
+  host.close(); obs.close();
+});
+
+test('VIS3: private 방 코드로 join → 매칭 OK', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'PH', clientId: 'cid-vis3-h' });
+  sendJson(host, { type: 'create_room', nickname: 'PH', visibility: 'private' });
+  const created = await waitForType(host, 'room_created');
+  const code = created.code;
+
+  const guest = await open();
+  sendJson(guest, { type: 'set_nickname', nickname: 'PG', clientId: 'cid-vis3-g' });
+  sendJson(guest, { type: 'join_room', code, nickname: 'PG' });
+  await waitForType(guest, 'game_start');
+  await waitForType(host, 'game_start');
+  host.close(); guest.close();
+});
+
+test('VIS4: private 방 매칭 후 (playing) → rooms_list 에 노출', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'P4H', clientId: 'cid-vis4-h' });
+  sendJson(host, { type: 'create_room', nickname: 'P4H', visibility: 'private' });
+  const created = await waitForType(host, 'room_created');
+  const code = created.code;
+  const guest = await open();
+  sendJson(guest, { type: 'set_nickname', nickname: 'P4G', clientId: 'cid-vis4-g' });
+  sendJson(guest, { type: 'join_room', code, nickname: 'P4G' });
+  await waitForType(guest, 'game_start');
+
+  const obs = await open();
+  sendJson(obs, { type: 'set_nickname', nickname: 'P4O', clientId: 'cid-vis4-o' });
+  const list = await requestRooms(obs);
+  const found = list.rooms.find((r) => r.code === code);
+  assert(found, 'playing 상태 private 방은 list 에 노출');
+  assert(found.status === 'playing');
+  assert(found.visibility === 'private');
+  host.close(); guest.close(); obs.close();
+});
+
+test('VIS5: private 방 코드로 spectate → 관전 OK', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'P5H', clientId: 'cid-vis5-h' });
+  sendJson(host, { type: 'create_room', nickname: 'P5H', visibility: 'private' });
+  const created = await waitForType(host, 'room_created');
+  const code = created.code;
+  const spec = await open();
+  sendJson(spec, { type: 'set_nickname', nickname: 'P5S', clientId: 'cid-vis5-s' });
+  sendJson(spec, { type: 'spectate_room', code, nickname: 'P5S' });
+  await waitForType(spec, 'spectate_success');
+  host.close(); spec.close();
+});
+
+test('VIS6: 빈 public 방 → queue_join 즉시 그 방에 합류 (matched)', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'V6H', clientId: 'cid-vis6-h' });
+  sendJson(host, { type: 'create_room', nickname: 'V6H', visibility: 'public' });
+  const created = await waitForType(host, 'room_created');
+
+  const guest = await open();
+  sendJson(guest, { type: 'set_nickname', nickname: 'V6G', clientId: 'cid-vis6-g' });
+  sendJson(guest, { type: 'queue_join', nickname: 'V6G', clientId: 'cid-vis6-g' });
+  const matched = await waitForType(guest, 'matched', 2000);
+  assert(matched.code === created.code, `expected matched into ${created.code}, got ${matched.code}`);
+  await waitForType(guest, 'game_start');
+  await waitForType(host,  'game_start');
+  host.close(); guest.close();
+});
+
+test('VIS7: 빈 public 방 없음 (private 만) → queue_join 큐 대기', async () => {
+  // private 방 만들고 — 매칭 대상 아님
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'V7H', clientId: 'cid-vis7-h' });
+  sendJson(host, { type: 'create_room', nickname: 'V7H', visibility: 'private' });
+  await waitForType(host, 'room_created');
+
+  const guest = await open();
+  sendJson(guest, { type: 'set_nickname', nickname: 'V7G', clientId: 'cid-vis7-g' });
+  sendJson(guest, { type: 'queue_join', nickname: 'V7G', clientId: 'cid-vis7-g' });
+  // matched 가 오면 안 됨 — queue_waiting 만 와야
+  const evt = await waitFor(guest, (m) => m.type === 'queue_waiting' || m.type === 'matched', 2000);
+  assert(evt.type === 'queue_waiting', `expected queue_waiting, got ${evt.type}`);
+  sendJson(guest, { type: 'queue_leave' });
+  host.close(); guest.close();
+});
+
+test('VIS8: 여러 빈 public 방 → FIFO (먼저 만든 방) 우선', async () => {
+  const h1 = await open();
+  sendJson(h1, { type: 'set_nickname', nickname: 'V8H1', clientId: 'cid-vis8-h1' });
+  sendJson(h1, { type: 'create_room', nickname: 'V8H1', visibility: 'public' });
+  const c1 = await waitForType(h1, 'room_created');
+  await sleep(30);
+  const h2 = await open();
+  sendJson(h2, { type: 'set_nickname', nickname: 'V8H2', clientId: 'cid-vis8-h2' });
+  sendJson(h2, { type: 'create_room', nickname: 'V8H2', visibility: 'public' });
+  await waitForType(h2, 'room_created');
+
+  const guest = await open();
+  sendJson(guest, { type: 'set_nickname', nickname: 'V8G', clientId: 'cid-vis8-g' });
+  sendJson(guest, { type: 'queue_join', nickname: 'V8G', clientId: 'cid-vis8-g' });
+  const matched = await waitForType(guest, 'matched', 2000);
+  assert(matched.code === c1.code, `FIFO: should match ${c1.code}, got ${matched.code}`);
+  h1.close(); h2.close(); guest.close();
+});
+
+test('VIS9: 방장이 자신이 queue_join → 자기 방에 매칭 안 됨', async () => {
+  const host = await open();
+  sendJson(host, { type: 'set_nickname', nickname: 'V9H', clientId: 'cid-vis9' });
+  sendJson(host, { type: 'create_room', nickname: 'V9H', visibility: 'public' });
+  await waitForType(host, 'room_created');
+
+  // 같은 clientId 가 새 ws 로 queue_join — leave_room 안 하고 큐 입장은 비현실적이지만
+  // findEmptyPublicRoom 의 excludeClientId 가드 검증용.
+  const second = await open();
+  sendJson(second, { type: 'set_nickname', nickname: 'V9H', clientId: 'cid-vis9' });
+  sendJson(second, { type: 'queue_join', nickname: 'V9H', clientId: 'cid-vis9' });
+  // 자기 방에 합류하면 안 됨 → queue_waiting (또는 다른 큐 entry 와 매칭) 만 와야
+  const evt = await waitFor(second, (m) => m.type === 'queue_waiting' || m.type === 'matched', 2000);
+  assert(evt.type === 'queue_waiting', `방장 자기 방 매칭 안 됨, got ${evt.type}`);
+  sendJson(second, { type: 'queue_leave' });
+  host.close(); second.close();
+});
+
+// ============================================================
 // runner
 // ============================================================
 (async () => {

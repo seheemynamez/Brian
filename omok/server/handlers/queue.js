@@ -7,6 +7,7 @@ const {
   getQueue, enqueue, dequeueByConnectionId,
   genCode,
   createRoom, createPlayerSession,
+  findEmptyPublicRoom, markRoomDirty,
 } = require('../domain/rooms');
 const connections = require('../connections');
 const { send } = require('./send');
@@ -76,6 +77,34 @@ const onQueueJoin = (ws, msg) => {
     return send(ws, { type: 'queue_waiting' });
   }
 
+  // ── 우선순위 1: 빈 public 방이 있으면 그 방에 합류 (랜덤 매칭의 핵심 신규 동작) ──
+  // FIFO — 가장 오래 대기한 public 방 우선. 방장이 큐를 누른 경우 자기 방 제외.
+  const emptyRoom = findEmptyPublicRoom(ws.clientId);
+  if (emptyRoom) {
+    const code = emptyRoom.code;
+    const opponentSlot = emptyRoom.players.black;
+    const opponentWs = opponentSlot
+      ? connections.getWsBySessionId(opponentSlot.sessionId)
+      : null;
+    // 옛 방장 ws 가 사라진 경우 race — fallback: 그 방 건너뛰고 큐 처리.
+    if (opponentWs && opponentWs.readyState === opponentWs.OPEN) {
+      ws.roomCode = code;
+      ws.color = 'white';
+      ws.role = 'player';
+      createPlayerSession(emptyRoom, 'white', {
+        type: 'human', ws, clientId: ws.clientId || null, nickname: ws.nickname,
+      });
+      send(ws, { type: 'matched', code });
+      send(opponentWs, { type: 'matched', code });
+      markRoomDirty(emptyRoom);
+      log.event('queue_matched_into_public', { code, a: opponentSlot.nickname, b: ws.nickname });
+      const { startGame } = require('./game');
+      startGame(emptyRoom);
+      return;
+    }
+  }
+
+  // ── 우선순위 2: 큐 매칭 (기존 로직) ──
   // 같은 clientId 의 좀비 큐 항목 정리 + 옛 entry 의 timer/sent 상태 상속.
   // (이슈 #5/#6, 그리고 비행기모드 reconnect: 옛 ws 가 close 안 됐는데 새 ws 가 reconnect 한 경우)
   let inheritedJoinedAt = null;

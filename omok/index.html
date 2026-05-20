@@ -440,6 +440,30 @@
     </div>
   </div>
 
+  <!-- 방 만들기 모달 — "방 만들기" 카드 클릭 시 노출. visibility 선택. -->
+  <div id="create-room-overlay" class="overlay hidden">
+    <div class="overlay-card bot-game-card">
+      <div class="overlay-title">🪄 방 만들기</div>
+      <div class="overlay-sub">방의 공개 범위를 선택하세요</div>
+
+      <div class="bot-option-group">
+        <div class="label">공개 범위</div>
+        <div class="bot-toggle-row" data-group="visibility">
+          <button data-value="public"  class="bot-toggle-btn active" type="button">🌐 공개</button>
+          <button data-value="private" class="bot-toggle-btn" type="button">🔒 비공개</button>
+        </div>
+        <div class="visibility-hint" id="visibility-hint">
+          🌐 공개: 로비 "열려있는 방" 에 노출 + 랜덤 매칭 대상
+        </div>
+      </div>
+
+      <div class="overlay-actions">
+        <button id="btn-create-room-cancel" class="btn ghost">취소</button>
+        <button id="btn-create-room-confirm" class="btn primary">만들기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 직접 링크 입장 모달 — ?room=XXXX 로 들어왔을 때 노출
        플레이어로 참가할지, 관전만 할지 사용자가 명시적으로 선택. -->
   <div id="direct-join-overlay" class="overlay hidden">

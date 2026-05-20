@@ -56,7 +56,9 @@ const onCreateRoom = (ws, msg) => {
   const { onQueueLeave } = require('./queue');
   onQueueLeave(ws);
   const code = genCode();
-  const room = createRoom(code);
+  // visibility: 'public' (default — 로비 노출 + 랜덤 매칭 대상) | 'private' (코드/링크로만)
+  const visibility = msg.visibility === 'private' ? 'private' : 'public';
+  const room = createRoom(code, visibility);
   const nickname = sanitizeNick(msg.nickname) || '익명';
   ws.roomCode = code;
   ws.color = 'black';
@@ -67,9 +69,11 @@ const onCreateRoom = (ws, msg) => {
   const slot = createPlayerSession(room, 'black', {
     type: 'human', ws, clientId: ws.clientId || null, nickname,
   });
-  send(ws, { type: 'room_created', code, sessionId: slot.sessionId });
+  send(ws, { type: 'room_created', code, sessionId: slot.sessionId, visibility });
+  // private 방도 broadcast 는 함 — getRoomsList 가 필터링.
+  // (다른 방에 매칭/관전 중인 사람들 화면 동기화에 필요 없지만, 일관성 위해 호출)
   broadcastRoomsList();
-  log.event('room_created', { code, by: nickname });
+  log.event('room_created', { code, by: nickname, visibility });
 };
 
 // 홈 진입 시 1회 요청 — 상위 N명 rating 순 + 본인 entry/순위.

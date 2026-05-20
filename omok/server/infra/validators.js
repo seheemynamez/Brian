@@ -24,7 +24,13 @@ const fail = (reason) => ({ ok: false, reason });
 const validateCode = (v) => isStr(v, 16) && ROOM_CODE_RE.test(v.trim());
 
 const validators = {
-  create_room: (m) => (isOptStr(m.nickname, NICK_MAX) ? ok : fail('nickname')),
+  create_room: (m) => {
+    if (!isOptStr(m.nickname, NICK_MAX)) return fail('nickname');
+    if (m.visibility !== undefined && m.visibility !== 'public' && m.visibility !== 'private') {
+      return fail('visibility');
+    }
+    return ok;
+  },
   join_room: (m) => {
     if (!validateCode(m.code)) return fail('code');
     if (!isOptStr(m.nickname, NICK_MAX)) return fail('nickname');
