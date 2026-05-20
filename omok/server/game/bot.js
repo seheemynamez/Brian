@@ -398,12 +398,26 @@ const generateMoveEasy = (board, color) => searchBestMove(board, color, 2, 3);
 //     이전 (3,15) 보다 후보 5개 적음. early ~66ms.
 const generateMoveMedium = (board, color) => searchBestMove(board, color, 3, 10);
 
-// 상: 6-ply × top 6 — 이전 (5, 8) 대비 depth +1, 폭 -2. α-β 가지치기 극대화.
-//     local one_stone worst 945ms, early 306ms. Render free-tier 가 로컬 대비 5-10배
-//     느릴 수 있어 worst case ≈ 5-10s — turn timeout 30s 안에 안전.
-//     이전 (7, 6) 은 local 4.2s 였는데 Render 에선 20-30s 초과해 timeout 발생 → revert.
-// (6, 6) 도 에러나서 (5, 12) 로 hotfix
-const generateMoveHard = (board, color) => searchBestMove(board, color, 5, 12);
+// 상: 5-ply × top 16 (정상 단계) + 초반 (≤ 4 stones) 은 4-ply × top 8 로 단축.
+//
+//   왜 초반만 단축?
+//     빈 보드 근처는 후보들이 다 비슷한 점수로 평가됨 → α-β 가지치기 거의 못 함.
+//     local 측정: one_stone d5×t12 = 3.3s, d5×t16 = 10.8s — Render 5-10× 슬로우 가정시
+//     turn timeout (30s) 초과. d4×t8 은 60-150ms 범위라 Render 에서도 1s 이내 안전.
+//     5수 이상부터는 결정적 응수 / 패턴이 생겨 αβ 잘 자르므로 d5 유지.
+//
+//   정상 단계 (5수+) 에서 d5×t16 인 이유:
+//     이전 hotfix 의 d5×t12 보다 후보 4 개 늘려 강화 ("top 만 조절해 상향" 요청 충족).
+//     local early 1.44s, mid 568ms, mid_dense 27ms — Render ~10s 이내.
+const countStones = (board) => {
+  let n = 0;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c]) n++;
+  return n;
+};
+const generateMoveHard = (board, color) => {
+  if (countStones(board) < 5) return searchBestMove(board, color, 4, 8);
+  return searchBestMove(board, color, 5, 16);
+};
 
 const GENERATORS = {
   easy:   generateMoveEasy,
