@@ -17,6 +17,9 @@ const serializeRoom = (room) => ({
   board: room.board,
   turn: room.turn,
   turnDeadline: room.turnDeadline || 0,
+  // disconnect 중 pauseTurnTimer 가 저장한 남은 시간. valkey hydrate 후 resumeTurnTimer
+  // 가 이 값으로 timer 재개. 누락 시 새로고침/재배포 후 남은 시간이 초기화됨.
+  turnRemainMs: room.turnRemainMs || 0,
   status: room.status,
   winner: room.winner,
   winLine: room.winLine,

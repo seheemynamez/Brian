@@ -12,8 +12,7 @@
 
 const roomRuntime = require('../domain/room-runtime');
 const log = require('../infra/log');
-
-const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 90000;
+const { DISCONNECT_GRACE_MS } = require('../infra/timings');
 
 const rehydrateTimers = () => {
   const { getStore } = require('../store');
