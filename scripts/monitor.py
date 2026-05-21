@@ -144,6 +144,49 @@ def render_search_logs(text, start_iso, end_iso, limit=100, max_pages=5):
     return all_logs
 
 
+def render_events(start_iso, end_iso, limit=100):
+    """Render events API — server_failed/available/deploy 등 인프라 이벤트.
+    API 는 startTime 미지원 → endTime + limit 으로 fetch 후 client-side 필터."""
+    qs = urllib.parse.urlencode({'endTime': end_iso, 'limit': limit})
+    url = f'https://api.render.com/v1/services/{RENDER_SERVICE_ID}/events?{qs}'
+    try:
+        events = http_get(url, render_headers())
+    except urllib.error.HTTPError:
+        return []
+    try:
+        start_dt = _parse_iso(start_iso)
+    except Exception:
+        return events
+    out = []
+    for e in events:
+        ts = e.get('event', {}).get('timestamp', '')
+        if not ts: continue
+        try:
+            dt = _parse_iso(ts)
+            if dt >= start_dt: out.append(e)
+        except Exception:
+            continue
+    return out
+
+
+def parse_server_failures(events):
+    """events → [{ts, instance, evicted, nonZeroExit, oom}]"""
+    out = []
+    for e in events:
+        ev = e.get('event', {})
+        if ev.get('type') != 'server_failed': continue
+        det = ev.get('details', {})
+        reason = det.get('reason', {})
+        out.append({
+            'ts': ev.get('timestamp', ''),
+            'instance': det.get('instanceID', ''),
+            'evicted': bool(reason.get('evicted')),
+            'nonZeroExit': reason.get('nonZeroExit'),
+            'oom': bool(reason.get('oom')),
+        })
+    return out
+
+
 # ============================================================
 # Aiven API
 # ============================================================
@@ -408,6 +451,8 @@ ALERT_LABELS = {
     'deploy_bad':       ['monitor', 'alert-deploy', 'severity-critical'],
     'bot_retry_burst':  ['monitor', 'alert-bot',    'severity-high'],
     'bot_skip_burst':   ['monitor', 'alert-bot',    'severity-critical'],
+    'server_oom':       ['monitor', 'alert-render', 'severity-critical'],   # OOM 강제 종료
+    'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
 }
 
 
@@ -431,6 +476,11 @@ def run_collect():
     # RETRY 가 정상 회복 흐름, SKIP 은 RETRY 도 못 잡는 진짜 끊김 (드물어야 정상).
     retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=50)
     skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=30)
+    # 인프라 이벤트 (PR #89) — server_failed (OOM / crash) 감지.
+    events = render_events(s_iso, e_iso, limit=100)
+    failures = parse_server_failures(events)
+    oom_fails = [f for f in failures if f['evicted'] or f['oom']]
+    crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
     aiven = aiven_metrics(period='hour')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
@@ -446,6 +496,9 @@ def run_collect():
             'no_move_count': len(nm_logs),
             'bot_retry_count': len(retry_logs),
             'bot_skip_count':  len(skip_logs),
+            'server_failed_count': len(failures),
+            'server_oom_count':    len(oom_fails),
+            'server_crash_count':  len(crash_fails),
         },
         'aiven': {
             'cpu_pct_avg': aiven_cpu['avg'] if aiven_cpu else None,
@@ -528,6 +581,38 @@ def run_collect():
             f'SKIP 은 PR #85 이후 거의 발생 X 가 정상. burst 발생 = `bothPlayersOnline` 가드를 RETRY 가 '
             f'우회 못 하는 새 패턴. 코드 회귀 또는 새 끊김 시나리오 의심.\n\n'
             f'### 샘플\n{samples}\n'))
+    if oom_fails:
+        samples = '\n'.join(f'- `{f["ts"][:19]}` instance={f["instance"][-6:]} evicted={f["evicted"]} oom={f["oom"]}' for f in oom_fails[:5])
+        alerts.append(('server_oom',
+            f'[monitor] 서버 OOM 강제 종료 {len(oom_fails)}건',
+            f'## 서버 OOM (메모리 한도 초과) 감지\n\n'
+            f'- 카운트: **{len(oom_fails)}건** (최근 30분)\n'
+            f'- 임계: > 0 (OOM 은 자원 부족 신호 — 1건도 위험)\n'
+            f'- 시각: {NOW.isoformat()}\n\n'
+            f'### 의미\n'
+            f'`evicted=true` 또는 `oom=true` — 인스턴스가 메모리 한도 (512MB) 도달로 강제 종료됨. '
+            f'Render 가 자동 재시작 하지만 진행 중 게임/세션 사라짐.\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 다음 조치\n'
+            f'- 메모리 leak 검토 (시간 따라 증가 추세)\n'
+            f'- Aiven 캐시 사용량 점검\n'
+            f'- Hobby plan ($7/월, 512MB) 또는 Standard ($25/월, 2GB) 검토\n'))
+    if crash_fails:
+        samples = '\n'.join(f'- `{f["ts"][:19]}` instance={f["instance"][-6:]} nonZeroExit={f["nonZeroExit"]}' for f in crash_fails[:5])
+        alerts.append(('server_crash',
+            f'[monitor] 서버 crash (코드 에러) {len(crash_fails)}건',
+            f'## 서버 crash 감지 (nonZeroExit)\n\n'
+            f'- 카운트: **{len(crash_fails)}건** (최근 30분)\n'
+            f'- 임계: > 0 (crash 1건도 회귀 신호)\n'
+            f'- 시각: {NOW.isoformat()}\n\n'
+            f'### 의미\n'
+            f'`nonZeroExit=1` — Node 프로세스가 코드 에러 또는 `process.exit(N≠0)` 로 종료. '
+            f'unhandled exception / startup 실패 / hydrate 실패 가능성.\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 다음 조치\n'
+            f'- 최근 deploy / PR 점검\n'
+            f'- Render 로그에서 crash 직전 에러 메시지 확인\n'
+            f'- crash loop (짧은 시간 다수) 면 rollback 검토\n'))
 
     for key, title, body in alerts:
         if not cooldown_ok(state, key):
@@ -805,6 +890,12 @@ def run_daily_summary():
     hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, max_pages=2)
     ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=10)
     ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, max_pages=10)
+    # 인프라 이벤트 — server_failed (OOM / crash), deploy 등
+    events = render_events(s_iso, e_iso, limit=200)
+    failures = parse_server_failures(events)
+    oom_fails = [f for f in failures if f['evicted'] or f['oom']]
+    crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
+    deploy_count = sum(1 for e in events if e.get('event', {}).get('type') == 'deploy_ended')
 
     # 3) 시간대별 분포 (KST hour bucket)
     games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
@@ -1003,7 +1094,30 @@ def run_daily_summary():
     body.append(f'| schedule RETRY (봇 wakeup, 정상) | {len(retry_logs)} |')
     body.append(f'| schedule SKIP (RETRY 실패) | {len(skip_logs)} |')
     body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs)} |')
+    body.append(f'| **server_failed (전체)** | **{len(failures)}** |')
+    body.append(f'| └ OOM (evicted) | {len(oom_fails)} |')
+    body.append(f'| └ crash (nonZeroExit) | {len(crash_fails)} |')
+    body.append(f'| deploy 횟수 | {deploy_count} |')
     body.append('')
+
+    # server_failed 발생 시 상세 (시각 + reason)
+    if failures:
+        body.append('### 서버 장애 상세 (server_failed, 24h)\n')
+        body.append('| 시각 (KST) | 인스턴스 | reason |')
+        body.append('|---|---|---|')
+        for f in failures[:10]:
+            try:
+                kst_ts = _parse_iso(f['ts']).astimezone(KST).strftime('%H:%M:%S')
+            except Exception:
+                kst_ts = f['ts'][:19]
+            if f['evicted'] or f['oom']:
+                reason = '**OOM** (evicted)'
+            elif f['nonZeroExit']:
+                reason = f'crash (nonZeroExit={f["nonZeroExit"]})'
+            else:
+                reason = 'unknown'
+            body.append(f'| {kst_ts} | …{f["instance"][-6:]} | {reason} |')
+        body.append('')
 
     body.append('### 임계 alert 이력 (24h)\n')
     if alert_history:
