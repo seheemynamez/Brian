@@ -52,6 +52,10 @@ AIVEN_MEM_LIMIT_MB = 1024.0
 # 임계
 THRESHOLD_RENDER_CPU_M = 90.0
 THRESHOLD_AIVEN_MEM_PCT = 80.0
+# 봇 zombie 회복 (PR #85). RETRY 가 정상 동작이지만 burst 가 잦으면 사용자 lag 심각.
+# SKIP 는 RETRY 후에도 회복 못 한 경우 — 거의 발생 X (없어야 정상).
+THRESHOLD_BOT_RETRY_30MIN = 20   # 30분 안 RETRY 20건 이상 — 사용자 다수 lag
+THRESHOLD_BOT_SKIP_30MIN = 3     # 30분 안 SKIP 3건 이상 — RETRY 가 못 잡는 진짜 끊김 패턴
 COOLDOWN_HOURS = 6
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -402,6 +406,8 @@ ALERT_LABELS = {
     'worker_timeout':   ['monitor', 'alert-bot',    'severity-critical'],
     'no_move':          ['monitor', 'alert-bot',    'severity-high'],
     'deploy_bad':       ['monitor', 'alert-deploy', 'severity-critical'],
+    'bot_retry_burst':  ['monitor', 'alert-bot',    'severity-high'],
+    'bot_skip_burst':   ['monitor', 'alert-bot',    'severity-critical'],
 }
 
 
@@ -421,6 +427,10 @@ def run_collect():
     deploy = render_recent_deploy_status()
     wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=10)
     nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=10)
+    # 봇 RETRY / SKIP (PR #85) — Wi-Fi 불안정으로 사람 zombie 판정된 빈도.
+    # RETRY 가 정상 회복 흐름, SKIP 은 RETRY 도 못 잡는 진짜 끊김 (드물어야 정상).
+    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=50)
+    skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=30)
     aiven = aiven_metrics(period='hour')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
@@ -434,6 +444,8 @@ def run_collect():
             'deploy_status': deploy['status'] if deploy else None,
             'worker_timeout_count': len(wt_logs),
             'no_move_count': len(nm_logs),
+            'bot_retry_count': len(retry_logs),
+            'bot_skip_count':  len(skip_logs),
         },
         'aiven': {
             'cpu_pct_avg': aiven_cpu['avg'] if aiven_cpu else None,
@@ -489,6 +501,33 @@ def run_collect():
         alerts.append(('deploy_bad',
             f'[monitor] Render 배포 상태 비정상: {deploy["status"]}',
             f'## Render 배포 비정상\n\n- 상태: **{deploy["status"]}**\n- 시각: {deploy["createdAt"]}\n- 커밋: {deploy["commit"]}\n'))
+    if len(retry_logs) >= THRESHOLD_BOT_RETRY_30MIN:
+        samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in retry_logs[:5])
+        alerts.append(('bot_retry_burst',
+            f'[monitor] 봇 schedule RETRY {len(retry_logs)}건 (≥{THRESHOLD_BOT_RETRY_30MIN})',
+            f'## 봇 RETRY burst — 사용자 다수 Wi-Fi lag 의심\n\n'
+            f'- 카운트: **{len(retry_logs)}건** (최근 30분)\n'
+            f'- 임계: ≥ {THRESHOLD_BOT_RETRY_30MIN}건\n'
+            f'- 시각: {NOW.isoformat()}\n\n'
+            f'### 의미\n'
+            f'RETRY = Wi-Fi 잠시 lag 으로 사람 zombie 판정 → 3s 후 재시도. PR #85 의 정상 회복 흐름. '
+            f'burst 가 잦으면 다수 사용자 lag 상황 (서버 응답 지연 / 사용자 측 ISP 등 영향).\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 같이 본 상태\n'
+            f'- Render CPU peak: {cpu_st["max"] if cpu_st else "?"}m\n'
+            f'- Aiven CPU max: {aiven_cpu["max"] if aiven_cpu else "?"}%\n'))
+    if len(skip_logs) >= THRESHOLD_BOT_SKIP_30MIN:
+        samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in skip_logs[:5])
+        alerts.append(('bot_skip_burst',
+            f'[monitor] 봇 schedule SKIP {len(skip_logs)}건 (≥{THRESHOLD_BOT_SKIP_30MIN})',
+            f'## 봇 SKIP burst — RETRY 도 못 잡는 끊김 사례\n\n'
+            f'- 카운트: **{len(skip_logs)}건** (최근 30분)\n'
+            f'- 임계: ≥ {THRESHOLD_BOT_SKIP_30MIN}건\n'
+            f'- 시각: {NOW.isoformat()}\n\n'
+            f'### 의미\n'
+            f'SKIP 은 PR #85 이후 거의 발생 X 가 정상. burst 발생 = `bothPlayersOnline` 가드를 RETRY 가 '
+            f'우회 못 하는 새 패턴. 코드 회귀 또는 새 끊김 시나리오 의심.\n\n'
+            f'### 샘플\n{samples}\n'))
 
     for key, title, body in alerts:
         if not cooldown_ok(state, key):

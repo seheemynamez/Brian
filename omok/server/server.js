@@ -57,6 +57,22 @@ if (ALLOWED_ORIGINS.length) {
 const wss = new WebSocketServer(wssOpts);
 handlers.init(wss);
 
+// ws zombie 회복 (isAlive false → true 전환) 시 봇 게임 wakeup 시도.
+// Wi-Fi 잠시 lag 으로 한 heartbeat cycle 동안 pong 못 받으면 isAlive=false 마킹 →
+// 그 사이 봇 차례 도래하면 scheduleBotMove 가 RETRY 로 대기 또는 turn timer
+// expire 시 onTurnTimeout 이 early return — 멈춤. pong 다시 들어오면 여기서 wakeup.
+const markWsAlive = (ws) => {
+  const wasZombie = ws.isAlive === false;
+  ws.isAlive = true;
+  if (wasZombie && ws.roomCode) {
+    try {
+      // lazy require — 모듈 순환 회피.
+      const { tryReviveBotIfStuck } = require('./handlers/bot');
+      tryReviveBotIfStuck(ws.roomCode);
+    } catch {}
+  }
+};
+
 wss.on('connection', (ws) => {
   ws.roomCode = null;
   ws.color = null;
@@ -66,7 +82,7 @@ wss.on('connection', (ws) => {
   ws.nickname = '';
   // heartbeat: 직전 ping 사이클에 pong(또는 client app-ping)을 받았는가
   ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('pong', () => markWsAlive(ws));
 
   // 도메인 코드가 ws 객체를 직접 unique key 로 안 쓰게 — connectionId 발급 (이슈 #31).
   connections.register(ws);
@@ -85,13 +101,13 @@ wss.on('connection', (ws) => {
     // 모바일 브라우저(WebSocket protocol ping 다루기 어려움)에서 백업 채널 역할.
     // schema 검증·rate limit 이전에 가로채 — 빈도 높고 비용 절약.
     if (msg.type === 'ping') {
-      ws.isAlive = true;
+      markWsAlive(ws);
       if (ws.sessionId) touchSession(ws.sessionId);
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'pong' }));
       return;
     }
     if (msg.type === 'pong') {
-      ws.isAlive = true;
+      markWsAlive(ws);
       if (ws.sessionId) touchSession(ws.sessionId);
       return;
     }
