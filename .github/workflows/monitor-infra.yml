@@ -2,15 +2,21 @@ name: monitor-infra
 
 # Render + Aiven 메트릭 수집 + 임계 검사 + GitHub Issue 알림.
 #
-# 두 cron:
-#   매 30분 — collect 모드: 메트릭 snapshot + 임계 검사 + alert Issue (cooldown 6h).
-#   매일 00:00 UTC (09:00 KST) — daily-summary 모드: 24h+7d 요약 Issue 생성 +
-#                                이전 daily-summary Issue 자동 close.
+# 두 cron (정각 high-load 회피 위해 7분/37분 offset):
+#   매시 7분, 37분 — collect 모드: 메트릭 snapshot + 임계 검사 + alert Issue.
+#   매일 UTC 00:07 (KST 09:07) — daily-summary 모드: 24h+7d 요약 + 이전 daily-summary close.
+#
+# 왜 7분/37분?
+#   GitHub Actions schedule cron 은 정각/30분 같은 high-load 시간에 skip 되기 쉬움.
+#   공식 docs: "schedule event can be delayed during periods of high loads ... High load
+#   times include the start of every hour. To decrease the chance of delay, schedule
+#   your workflow to run at a different time of the hour."
+#   PR #84 초기엔 '*/30 * * * *' 였으나 6시간 동안 schedule event 0건 → 7,37 으로 변경.
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # collect (매 30분)
-    - cron: '0 0 * * *'     # daily-summary (UTC 00:00 = KST 09:00)
+    - cron: '7,37 * * * *'  # collect (매시 7분 / 37분)
+    - cron: '7 0 * * *'     # daily-summary (UTC 00:07 = KST 09:07)
   workflow_dispatch:
     inputs:
       mode:
@@ -46,14 +52,14 @@ jobs:
 
       - name: Determine mode
         id: mode
-        # cron 별 모드 선택: '0 0 * * *' 면 daily, 그 외 collect
-        # workflow_dispatch input 우선
+        # cron 별 모드 선택: '7 0 * * *' (하루 1회 UTC 00:07) 면 daily-summary, 그 외 collect.
+        # workflow_dispatch input 우선.
         run: |
           INPUT="${{ github.event.inputs.mode }}"
           SCHEDULE="${{ github.event.schedule }}"
           if [ -n "$INPUT" ]; then
             echo "mode=$INPUT" >> "$GITHUB_OUTPUT"
-          elif [ "$SCHEDULE" = "0 0 * * *" ]; then
+          elif [ "$SCHEDULE" = "7 0 * * *" ]; then
             echo "mode=daily-summary" >> "$GITHUB_OUTPUT"
           else
             echo "mode=collect" >> "$GITHUB_OUTPUT"
