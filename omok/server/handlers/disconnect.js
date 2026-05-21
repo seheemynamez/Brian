@@ -19,7 +19,7 @@ const { removeSpectator } = require('./spectator');
 // PR #70 에서 disconnect 시 pauseTurnTimer 사용 (남은 시간 보존). 하지만 finalizeAbandon /
 // onLeaveRoom 등 "게임이 진짜 끝나는" 흐름은 clearTurnTimer 가 맞음 (timer 완전 취소 + remainMs=0).
 // 그 import 가 빠져서 prod 에서 ReferenceError 발생 → finalizeAbandon 실패 → 좀비 방 잔존 버그.
-const { pauseTurnTimer, clearTurnTimer } = require('./game');
+const { pauseTurnTimer, clearTurnTimer, gameOverFields } = require('./game');
 const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
@@ -69,7 +69,7 @@ const onLeaveRoom = (ws) => {
     forEachSpectatorWs(room, (s) => send(s, gameOverPayload));
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
-    log.event('game_over', { code: room.code, gameId: room.gameId, winner: winnerColor, reason: 'opponent_left' });
+    log.event('game_over', gameOverFields(room, entry, { winner: winnerColor, reason: 'opponent_left' }));
   } else {
     sendToPlayer(room, oppColor, { type: 'opponent_left' });
     forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_left' }));
@@ -163,7 +163,7 @@ const finalizeAbandon = (room, color) => {
     clearPlayerSession(room, color);
     markRoomDirty(room);
     broadcastRoomsList();
-    log.event('game_over', { code: room.code, gameId: room.gameId, winner: oppColor, reason: 'abandoned' });
+    log.event('game_over', gameOverFields(room, entry, { winner: oppColor, reason: 'abandoned' }));
     // 봇대전이면 rematch 의미 없으니 방 자체 폐쇄. 사람 대전은 status='over' 채로 유지
     // (남은 사람이 leave_room 누르거나 grace 만료될 때까지).
     if (room.hasBot) {

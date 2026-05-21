@@ -144,6 +144,49 @@ def render_search_logs(text, start_iso, end_iso, limit=100, max_pages=5):
     return all_logs
 
 
+def render_events(start_iso, end_iso, limit=100):
+    """Render events API — server_failed/available/deploy 등 인프라 이벤트.
+    API 는 startTime 미지원 → endTime + limit 으로 fetch 후 client-side 필터."""
+    qs = urllib.parse.urlencode({'endTime': end_iso, 'limit': limit})
+    url = f'https://api.render.com/v1/services/{RENDER_SERVICE_ID}/events?{qs}'
+    try:
+        events = http_get(url, render_headers())
+    except urllib.error.HTTPError:
+        return []
+    try:
+        start_dt = _parse_iso(start_iso)
+    except Exception:
+        return events
+    out = []
+    for e in events:
+        ts = e.get('event', {}).get('timestamp', '')
+        if not ts: continue
+        try:
+            dt = _parse_iso(ts)
+            if dt >= start_dt: out.append(e)
+        except Exception:
+            continue
+    return out
+
+
+def parse_server_failures(events):
+    """events → [{ts, instance, evicted, nonZeroExit, oom}]"""
+    out = []
+    for e in events:
+        ev = e.get('event', {})
+        if ev.get('type') != 'server_failed': continue
+        det = ev.get('details', {})
+        reason = det.get('reason', {})
+        out.append({
+            'ts': ev.get('timestamp', ''),
+            'instance': det.get('instanceID', ''),
+            'evicted': bool(reason.get('evicted')),
+            'nonZeroExit': reason.get('nonZeroExit'),
+            'oom': bool(reason.get('oom')),
+        })
+    return out
+
+
 # ============================================================
 # Aiven API
 # ============================================================
@@ -408,6 +451,8 @@ ALERT_LABELS = {
     'deploy_bad':       ['monitor', 'alert-deploy', 'severity-critical'],
     'bot_retry_burst':  ['monitor', 'alert-bot',    'severity-high'],
     'bot_skip_burst':   ['monitor', 'alert-bot',    'severity-critical'],
+    'server_oom':       ['monitor', 'alert-render', 'severity-critical'],   # OOM 강제 종료
+    'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
 }
 
 
@@ -431,6 +476,11 @@ def run_collect():
     # RETRY 가 정상 회복 흐름, SKIP 은 RETRY 도 못 잡는 진짜 끊김 (드물어야 정상).
     retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=50)
     skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=30)
+    # 인프라 이벤트 (PR #89) — server_failed (OOM / crash) 감지.
+    events = render_events(s_iso, e_iso, limit=100)
+    failures = parse_server_failures(events)
+    oom_fails = [f for f in failures if f['evicted'] or f['oom']]
+    crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
     aiven = aiven_metrics(period='hour')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
@@ -446,6 +496,9 @@ def run_collect():
             'no_move_count': len(nm_logs),
             'bot_retry_count': len(retry_logs),
             'bot_skip_count':  len(skip_logs),
+            'server_failed_count': len(failures),
+            'server_oom_count':    len(oom_fails),
+            'server_crash_count':  len(crash_fails),
         },
         'aiven': {
             'cpu_pct_avg': aiven_cpu['avg'] if aiven_cpu else None,
@@ -528,6 +581,38 @@ def run_collect():
             f'SKIP 은 PR #85 이후 거의 발생 X 가 정상. burst 발생 = `bothPlayersOnline` 가드를 RETRY 가 '
             f'우회 못 하는 새 패턴. 코드 회귀 또는 새 끊김 시나리오 의심.\n\n'
             f'### 샘플\n{samples}\n'))
+    if oom_fails:
+        samples = '\n'.join(f'- `{f["ts"][:19]}` instance={f["instance"][-6:]} evicted={f["evicted"]} oom={f["oom"]}' for f in oom_fails[:5])
+        alerts.append(('server_oom',
+            f'[monitor] 서버 OOM 강제 종료 {len(oom_fails)}건',
+            f'## 서버 OOM (메모리 한도 초과) 감지\n\n'
+            f'- 카운트: **{len(oom_fails)}건** (최근 30분)\n'
+            f'- 임계: > 0 (OOM 은 자원 부족 신호 — 1건도 위험)\n'
+            f'- 시각: {NOW.isoformat()}\n\n'
+            f'### 의미\n'
+            f'`evicted=true` 또는 `oom=true` — 인스턴스가 메모리 한도 (512MB) 도달로 강제 종료됨. '
+            f'Render 가 자동 재시작 하지만 진행 중 게임/세션 사라짐.\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 다음 조치\n'
+            f'- 메모리 leak 검토 (시간 따라 증가 추세)\n'
+            f'- Aiven 캐시 사용량 점검\n'
+            f'- Hobby plan ($7/월, 512MB) 또는 Standard ($25/월, 2GB) 검토\n'))
+    if crash_fails:
+        samples = '\n'.join(f'- `{f["ts"][:19]}` instance={f["instance"][-6:]} nonZeroExit={f["nonZeroExit"]}' for f in crash_fails[:5])
+        alerts.append(('server_crash',
+            f'[monitor] 서버 crash (코드 에러) {len(crash_fails)}건',
+            f'## 서버 crash 감지 (nonZeroExit)\n\n'
+            f'- 카운트: **{len(crash_fails)}건** (최근 30분)\n'
+            f'- 임계: > 0 (crash 1건도 회귀 신호)\n'
+            f'- 시각: {NOW.isoformat()}\n\n'
+            f'### 의미\n'
+            f'`nonZeroExit=1` — Node 프로세스가 코드 에러 또는 `process.exit(N≠0)` 로 종료. '
+            f'unhandled exception / startup 실패 / hydrate 실패 가능성.\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 다음 조치\n'
+            f'- 최근 deploy / PR 점검\n'
+            f'- Render 로그에서 crash 직전 에러 메시지 확인\n'
+            f'- crash loop (짧은 시간 다수) 면 rollback 검토\n'))
 
     for key, title, body in alerts:
         if not cooldown_ok(state, key):
@@ -569,88 +654,311 @@ def load_recent_metrics(days=7):
     return out
 
 
+# ============================================================
+# 봇 운영 지표 — game_started / game_over 로그 파싱 (PR #86 보강된 필드)
+# ============================================================
+# 새 game_over 로그 형식: key=value pairs (value 가 공백 / "..." 으로 인용)
+#   [game_over] code=XXXX gameId=YY winner=black reason=five bot=true botDiff=hard
+#               blackNick="홍길동" whiteNick=오목봇·상 blackRating=1318 whiteRating=1180
+#               blackDelta=+8 whiteDelta=-8 stones=23
+LOG_FIELD_RE = re.compile(r'(\w+)=("(?:[^"\\]|\\.)*"|\S+)')
+
+
+def parse_log_fields(message):
+    """`[event] k=v k=v` → dict. 값이 따옴표면 unquote."""
+    out = {}
+    for k, v in LOG_FIELD_RE.findall(message):
+        if v.startswith('"') and v.endswith('"'):
+            v = v[1:-1].replace('\\"', '"')
+        out[k] = v
+    return out
+
+
+def parse_game_over(logs):
+    """game_over 로그 → [{gameId, winner, reason, bot, botDiff, blackNick, whiteNick,
+                          blackRating, whiteRating, blackDelta, whiteDelta, stones, ts}]"""
+    out = []
+    for L in logs:
+        msg = L.get('message', '')
+        if '[game_over]' not in msg:
+            continue
+        f = parse_log_fields(msg)
+        f['ts'] = L.get('timestamp', '')
+        out.append(f)
+    return out
+
+
+def parse_game_started(logs):
+    """game_started → [{gameId, black, white, bot, ts}]"""
+    out = []
+    for L in logs:
+        msg = L.get('message', '')
+        if '[game_started]' not in msg:
+            continue
+        f = parse_log_fields(msg)
+        f['ts'] = L.get('timestamp', '')
+        out.append(f)
+    return out
+
+
+# ============================================================
+# 시간대별 분포 (KST hour bucket)
+# ============================================================
+def hourly_bucket_by_ts(items, ts_field='ts'):
+    """items 의 ts 필드 (UTC ISO) → KST hour (0-23) 카운트."""
+    buckets = defaultdict(int)
+    for r in items:
+        ts = r.get(ts_field, '')
+        if not ts: continue
+        try:
+            dt = _parse_iso(ts).astimezone(KST)
+            buckets[dt.hour] += 1
+        except Exception:
+            continue
+    return dict(buckets)
+
+
+def parse_online_count_series(logs):
+    """ws_connected / ws_disconnected 로그의 `online=N` 시계열 추출 → KST hour 별 평균/peak."""
+    pat = re.compile(r'online=(\d+)')
+    series = []  # [(kst_dt, online_n)]
+    for L in logs:
+        m = pat.search(L.get('message', ''))
+        if not m: continue
+        try:
+            dt = _parse_iso(L['timestamp']).astimezone(KST)
+            series.append((dt, int(m.group(1))))
+        except Exception:
+            continue
+    series.sort()
+    by_hour_avg = {}
+    by_hour_peak = {}
+    grouped = defaultdict(list)
+    for dt, n in series:
+        grouped[dt.hour].append(n)
+    for h, vals in grouped.items():
+        by_hour_avg[h] = sum(vals) / len(vals)
+        by_hour_peak[h] = max(vals)
+    return by_hour_avg, by_hour_peak
+
+
+# ============================================================
+# 봇 운영 지표 — 봇 별 win/loss + 상대 rating 분포
+# ============================================================
+def bot_perf_stats(game_overs):
+    """game_over (bot=true only) → {difficulty: {wins, losses, draws, abandoned,
+                                                  opponents, opp_ratings, avg_stones, total}}"""
+    bot_diffs = {}  # difficulty -> stats
+    for g in game_overs:
+        if g.get('bot') != 'true': continue
+        diff = g.get('botDiff')
+        if not diff: continue
+        if diff not in bot_diffs:
+            bot_diffs[diff] = {
+                'wins': 0, 'losses': 0, 'draws': 0, 'abandoned': 0, 'left': 0,
+                'total': 0,
+                'opp_nicks': [],
+                'opp_ratings': [],  # 봇이 만난 사람 rating 리스트
+                'stones_list': [],
+            }
+        s = bot_diffs[diff]
+        s['total'] += 1
+        # 봇 색 식별 — black/white 중 nick 이 botDiff 이름과 매칭되는 색
+        # 또는 더 간단: botNick prefix 'BOT_' 또는 '오목봇·' 검사
+        black_nick = g.get('blackNick', '')
+        white_nick = g.get('whiteNick', '')
+        bot_is_black = black_nick.startswith('오목봇')
+        bot_color = 'black' if bot_is_black else 'white'
+        human_color = 'white' if bot_is_black else 'black'
+        human_nick = white_nick if bot_is_black else black_nick
+        try:
+            human_rating = int(g.get(f'{human_color}Rating', 0))
+        except Exception:
+            human_rating = 0
+        s['opp_nicks'].append(human_nick)
+        if human_rating > 0:
+            s['opp_ratings'].append(human_rating)
+        try:
+            stones = int(g.get('stones', 0))
+            if stones > 0: s['stones_list'].append(stones)
+        except Exception:
+            pass
+        # 결과 분류
+        reason = g.get('reason', '')
+        winner = g.get('winner', '')
+        if reason == 'draw':
+            s['draws'] += 1
+        elif reason == 'opponent_left':
+            s['left'] += 1
+        elif reason == 'abandoned':
+            s['abandoned'] += 1
+        elif winner == bot_color:
+            s['wins'] += 1
+        elif winner == human_color:
+            s['losses'] += 1
+    return bot_diffs
+
+
+def player_activity(game_overs):
+    """사람 닉네임 별 활동 통계 → {nickname: {games, wins, losses, rating_delta_sum, last_rating}}"""
+    by_nick = {}
+    for g in game_overs:
+        for color in ('black', 'white'):
+            nick = g.get(f'{color}Nick')
+            if not nick or nick.startswith('오목봇'): continue
+            if nick not in by_nick:
+                by_nick[nick] = {'games': 0, 'wins': 0, 'losses': 0, 'draws': 0,
+                                  'delta_sum': 0, 'last_rating': 0}
+            d = by_nick[nick]
+            d['games'] += 1
+            try:
+                delta_s = g.get(f'{color}Delta', '0').replace('+', '')
+                delta = int(delta_s)
+                d['delta_sum'] += delta
+            except Exception:
+                pass
+            try:
+                d['last_rating'] = int(g.get(f'{color}Rating', d['last_rating']))
+            except Exception:
+                pass
+            reason = g.get('reason', '')
+            winner = g.get('winner', '')
+            if reason == 'draw':
+                d['draws'] += 1
+            elif winner == color:
+                d['wins'] += 1
+            elif winner != 'draw' and winner:
+                d['losses'] += 1
+    return by_nick
+
+
+# ============================================================
+# daily stats 저장 — 7일 trend 위해 일별 PVP/봇 게임 수 누적
+# ============================================================
+DAILY_STATS_FILE = METRICS_DIR / 'daily-stats.json'
+
+
+def load_daily_stats():
+    if DAILY_STATS_FILE.exists():
+        try: return json.loads(DAILY_STATS_FILE.read_text())
+        except Exception: pass
+    return {}
+
+
+def save_daily_stats(d):
+    METRICS_DIR.mkdir(exist_ok=True)
+    DAILY_STATS_FILE.write_text(json.dumps(d, indent=2, ensure_ascii=False))
+
+
 def run_daily_summary():
-    # 시간 범위 — 지난 24시간
-    win_end = NOW
-    win_start = NOW - timedelta(hours=24)
-    s_iso = win_start.strftime('%Y-%m-%dT%H:%M:%SZ')
-    e_iso = win_end.strftime('%Y-%m-%dT%H:%M:%SZ')
-    kst_today = NOW.astimezone(KST).strftime('%Y-%m-%d')
+    # 시간 윈도우 — KST 어제 00:00 ~ 오늘 00:00 (캘린더 day)
+    kst_today_00 = NOW.astimezone(KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    win_end_kst = kst_today_00
+    win_start_kst = kst_today_00 - timedelta(days=1)
+    win_end_utc = win_end_kst.astimezone(timezone.utc)
+    win_start_utc = win_start_kst.astimezone(timezone.utc)
+    s_iso = win_start_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+    e_iso = win_end_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+    summary_date = win_start_kst.strftime('%Y-%m-%d')  # 어제 KST 날짜
+    print(f'=== daily-summary {summary_date} KST (window {s_iso} ~ {e_iso}) ===')
 
-    print(f'=== daily-summary {kst_today} (KST) ===')
-
-    # 1) Render 24h 메트릭
+    # 1) Render / Aiven 메트릭 (24h KST 캘린더 day)
     cpu = render_metric('cpu', s_iso, e_iso, 300)
     mem = render_metric('memory', s_iso, e_iso, 300)
-    bw_start = (NOW - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    bw = render_metric('bandwidth', bw_start, e_iso, 300)
+    bw_30d_start = (win_end_utc - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    bw = render_metric('bandwidth', bw_30d_start, e_iso, 300)
     cpu_st = render_cpu_stats(cpu) or {}
     mem_st = render_mem_stats(mem) or {}
     bw_30d = render_bw_sum_mb(bw)
-
-    # 2) Aiven 24h 메트릭
     aiven = aiven_metrics(period='day')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage') or {}
     aiven_mem = aiven_stats(aiven, 'mem_usage') or {}
     aiven_disk = aiven_stats(aiven, 'disk_usage') or {}
     aiven_load = aiven_stats(aiven, 'load_average') or {}
 
-    # 3) 봇 활동 24h
+    # 2) 로그 fetch
     bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, max_pages=10)
     bot_moves = parse_bot_moves(bot_logs)
     bot_by_cfg = bot_stats_by_cfg(bot_moves)
-    by_hour_kst = hourly_bot_activity(bot_moves)
-
-    # 4) 게임 결과 / 안정성 지표 — Render 로그 카운트
-    game_over_logs = render_search_logs('game_over', s_iso, e_iso, limit=100, max_pages=3)
+    bot_moves_by_hour = hourly_bucket_by_ts(bot_moves, 'ts')
+    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, max_pages=5)
+    game_started = parse_game_started(game_started_raw)
+    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, max_pages=5)
+    game_overs = parse_game_over(game_over_raw)
     skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50)
+    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, max_pages=3)
     hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, max_pages=2)
-    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=5)
-    game_started_logs = render_search_logs('game_started', s_iso, e_iso, limit=100)
+    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=10)
+    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, max_pages=10)
+    # 인프라 이벤트 — server_failed (OOM / crash), deploy 등
+    events = render_events(s_iso, e_iso, limit=200)
+    failures = parse_server_failures(events)
+    oom_fails = [f for f in failures if f['evicted'] or f['oom']]
+    crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
+    deploy_count = sum(1 for e in events if e.get('event', {}).get('type') == 'deploy_ended')
 
-    # game_over reason 카운트
-    reason_re = re.compile(r'reason=(\w+)')
+    # 3) 시간대별 분포 (KST hour bucket)
+    games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
+    pvp_games = [g for g in game_started if g.get('bot') == 'false']
+    pvp_games_by_hour = hourly_bucket_by_ts(pvp_games, 'ts')
+    online_avg_by_hour, online_peak_by_hour = parse_online_count_series(ws_conn_logs + ws_disc_logs)
+
+    # 4) 봇 운영 지표 (봇별 승패 + 상대 rating 분포)
+    bot_perf = bot_perf_stats(game_overs)
+
+    # 5) 사람 활동 (TOP / rating movers)
+    player_acts = player_activity(game_overs)
+    top_active = sorted(player_acts.items(), key=lambda kv: -kv[1]['games'])[:5]
+    top_movers_up = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] > 0],
+                           key=lambda kv: -kv[1]['delta_sum'])[:5]
+    top_movers_dn = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] < 0],
+                           key=lambda kv: kv[1]['delta_sum'])[:5]
+
+    # 6) reason 카운트
     reason_counts = defaultdict(int)
-    for L in game_over_logs:
-        m = reason_re.search(L.get('message', ''))
-        if m: reason_counts[m.group(1)] += 1
+    for g in game_overs:
+        r = g.get('reason', '')
+        if r: reason_counts[r] += 1
 
-    # 5) 임계 alert 이력 24h (state.json 의 last_alert 시각 기준)
+    # 7) alert 이력 (state.json 의 24h 안 last_alert 시각)
     state = load_state()
     alert_history = []
     for k, ts in state.get('last_alert', {}).items():
         try:
             dt = _parse_iso(ts)
-            if dt > NOW - timedelta(hours=24):
+            if dt >= win_start_utc and dt < win_end_utc:
                 alert_history.append((k, ts))
         except Exception:
             pass
 
-    # 6) 7일 트렌드 — metrics/ 시계열에서 일별 max 추출
+    # 8) 7일 trend — metrics/ snapshot + daily-stats.json
     recent = load_recent_metrics(days=7)
-    trend_days = []  # [(date_str, render_cpu_max, aiven_mem_max)]
+    trend_days = []
     by_day = defaultdict(list)
     for s in recent:
         d = s.get('ts', '')[:10]
         if d: by_day[d].append(s)
+    daily_stats = load_daily_stats()
     for d in sorted(by_day.keys())[-7:]:
         snaps = by_day[d]
         cpu_maxes = [s.get('render', {}).get('cpu_peak_m') for s in snaps if s.get('render', {}).get('cpu_peak_m') is not None]
         mem_maxes = [s.get('aiven', {}).get('mem_pct_max') for s in snaps if s.get('aiven', {}).get('mem_pct_max') is not None]
+        ds = daily_stats.get(d, {})
         trend_days.append({
             'date': d,
             'render_cpu_max_m': max(cpu_maxes) if cpu_maxes else None,
             'aiven_mem_max_pct': max(mem_maxes) if mem_maxes else None,
+            'pvp_games': ds.get('pvp_games'),
+            'bot_games': ds.get('bot_games'),
         })
 
-    # 7) Aiven memory 장기 추정 (선형 회귀 간단 — 7일 변화율)
+    # Aiven memory 장기 추정
     aiven_trend_msg = '(데이터 부족)'
     valid_mem = [(d['date'], d['aiven_mem_max_pct']) for d in trend_days if d['aiven_mem_max_pct'] is not None]
     if len(valid_mem) >= 2:
-        first_p = valid_mem[0][1]
-        last_p = valid_mem[-1][1]
+        first_p = valid_mem[0][1]; last_p = valid_mem[-1][1]
         days_span = max(1, len(valid_mem) - 1)
-        per_week_pct = (last_p - first_p) / days_span * 7  # %p / 주
+        per_week_pct = (last_p - first_p) / days_span * 7
         if per_week_pct > 0.01:
             weeks_to_80 = (80 - last_p) / per_week_pct
             aiven_trend_msg = f'주당 {per_week_pct:+.2f}%p — 80% 도달 예상: ~{weeks_to_80:.1f}주 후'
@@ -659,16 +967,18 @@ def run_daily_summary():
         else:
             aiven_trend_msg = f'주당 {per_week_pct:+.2f}%p (평탄)'
 
-    # ====== Issue 본문 작성 ======
+    # ====== Issue 본문 ======
     bot_total = len(bot_moves)
-    games_started = len(game_started_logs)
-    ws_unique = len(ws_conn_logs)
+    total_games = len(game_started)
+    pvp_count = len(pvp_games)
+    bot_game_count = total_games - pvp_count
 
     body = []
-    body.append(f'## 일일 인프라 요약 — {kst_today} KST (지난 24h)\n')
+    body.append(f'## 일일 인프라 요약 — {summary_date} KST (00:00 ~ 익일 00:00)\n')
+    body.append(f'_시간 기준: 모두 KST. 측정 window: `{s_iso} ~ {e_iso}` (UTC)._\n')
 
-    # 자원 사용율 gauge (table)
-    body.append('### 자원 사용율 (현재 → 한도)\n')
+    # 자원 사용율
+    body.append('### 자원 사용율 (한도 대비)\n')
     body.append(gauge_table([
         ('Render CPU peak',  cpu_st.get('max') or 0, RENDER_CPU_LIMIT_M, 'm'),
         ('Render Memory peak', mem_st.get('max') or 0, RENDER_MEM_LIMIT_MB, 'MB'),
@@ -678,17 +988,14 @@ def run_daily_summary():
     ]))
     body.append('')
 
-    # Render/Aiven 24h 통계
-    body.append('### Render 메트릭 (24h)\n')
-    body.append('| 항목 | avg | p50 | p95 | max |')
+    # Render/Aiven 24h 메트릭
+    body.append('### Render 메트릭\n| 항목 | avg | p50 | p95 | max |')
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU (m) | {cpu_st.get("avg",0):.1f} | {cpu_st.get("p50",0):.1f} | {cpu_st.get("p95",0):.1f} | {cpu_st.get("max",0):.1f} |')
     body.append(f'| Memory (MB) | {mem_st.get("avg",0):.1f} | {mem_st.get("p50",0):.1f} | {mem_st.get("p95",0):.1f} | {mem_st.get("max",0):.1f} |')
     body.append(f'| Bandwidth 30d 누적 | {bw_30d:.1f}MB (한도 100GB) |  |  |  |')
     body.append('')
-
-    body.append('### Aiven valkey 메트릭 (24h)\n')
-    body.append('| 항목 | avg | p50 | p95 | max |')
+    body.append('### Aiven valkey 메트릭\n| 항목 | avg | p50 | p95 | max |')
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU % | {aiven_cpu.get("avg",0):.2f} | {aiven_cpu.get("p50",0):.2f} | {aiven_cpu.get("p95",0):.2f} | {aiven_cpu.get("max",0):.2f} |')
     body.append(f'| Memory % | {aiven_mem.get("avg",0):.2f} | {aiven_mem.get("p50",0):.2f} | {aiven_mem.get("p95",0):.2f} | {aiven_mem.get("max",0):.2f} |')
@@ -697,13 +1004,32 @@ def run_daily_summary():
     body.append('')
     body.append(f'**Aiven 장기 메모리 트렌드**: {aiven_trend_msg}\n')
 
-    # 봇 활동
-    body.append('### 봇 활동 (24h)\n')
-    body.append(f'- 총 봇 착수: **{bot_total}건**')
-    body.append(f'- 새 게임 시작: **{games_started}건**')
-    body.append(f'- 새 ws 연결 (대략): **{ws_unique}건**')
+    # 게임 활동 요약
+    body.append('### 게임 활동 요약\n')
+    body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count} / 봇 {bot_game_count})')
+    body.append(f'- 봇 착수 총 횟수: **{bot_total}건**')
+    body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**\n')
+
+    # 봇 운영 지표 (핵심)
+    body.append('### 봇 운영 지표 (난이도 별)\n')
+    if bot_perf:
+        body.append('| 난이도 | 총 | 봇 승 | 봇 패 | 무 | 이탈/포기 | 상대 rating avg/min/max | 평균 게임 길이 (수) |')
+        body.append('|---|---|---|---|---|---|---|---|')
+        for diff in ['easy', 'medium', 'hard']:
+            s = bot_perf.get(diff)
+            if not s: continue
+            ratings = s['opp_ratings']
+            rating_str = f'{sum(ratings)/len(ratings):.0f} / {min(ratings)} / {max(ratings)}' if ratings else '-'
+            stones = s['stones_list']
+            stones_str = f'{sum(stones)/len(stones):.1f}' if stones else '-'
+            left_total = s['left'] + s['abandoned']
+            body.append(f'| {diff} | {s["total"]} | {s["wins"]} | {s["losses"]} | {s["draws"]} | {left_total} | {rating_str} | {stones_str} |')
+        body.append('\n_상대 rating avg/min/max — 해당 봇과 대국한 사람 측 rating 분포. 봇 난이도가 유저 풀에 맞는지 판단._')
+    else:
+        body.append('- (봇 게임 데이터 없음)')
     body.append('')
 
+    # cfgMax 도달율
     if bot_by_cfg:
         body.append('### cfgMax 도달율 (cfg 별)\n')
         body.append('| 난이도 | cfg | n | avg/p50/p95 elapsed (ms) | cfgMax 도달 |')
@@ -714,18 +1040,85 @@ def run_daily_summary():
                 body.append(f'| {diff} | {cfg_key} | {st["n"]} | {st["avg_elap"]}/{st["p50_elap"]}/{st["p95_elap"]} | **{st["cfgmax_pct"]:.1f}%** |')
         body.append('')
 
-    # 안정성 지표
-    body.append('### 안정성 지표 (24h)\n')
-    body.append('| 항목 | 카운트 |')
-    body.append('|---|---|')
-    body.append(f'| game_over (전체 종료) | {len(game_over_logs)} |')
-    for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]):
-        body.append(f'| └ reason={r} | {c} |')
-    body.append(f'| [bot] schedule SKIP | {len(skip_logs)} |')
-    body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs)} |')
+    # 시간대별 활동 (KST hour, 세 종류 통합 표)
+    body.append('### 시간대별 활동 (KST hour)\n')
+    body.append('| hour | 동접 평균 | 동접 peak | 게임 시작 | 봇 착수 | bar (게임) |')
+    body.append('|---|---|---|---|---|---|')
+    max_g = max(games_by_hour.values()) if games_by_hour else 1
+    for h in range(24):
+        avg_o = online_avg_by_hour.get(h, 0)
+        peak_o = online_peak_by_hour.get(h, 0)
+        g = games_by_hour.get(h, 0)
+        bm = bot_moves_by_hour.get(h, 0)
+        bar = '█' * int(20 * g / max_g) if max_g > 0 else ''
+        body.append(f'| {h:02d}:00 | {avg_o:.1f} | {peak_o} | {g} | {bm} | `{bar}` |')
     body.append('')
 
-    # 임계 alert 이력
+    # 사람 활동 TOP / rating movers
+    body.append('### TOP 활동 사용자 (24h 게임 수)\n')
+    if top_active:
+        body.append('| # | nickname | 게임 | W/L/D | rating Δ | 현재 rating |')
+        body.append('|---|---|---|---|---|---|')
+        for i, (n, d) in enumerate(top_active, 1):
+            body.append(f'| {i} | {n} | {d["games"]} | {d["wins"]}/{d["losses"]}/{d["draws"]} | {d["delta_sum"]:+d} | {d["last_rating"]} |')
+    else:
+        body.append('- (사람 게임 데이터 없음)')
+    body.append('')
+
+    body.append('### Rating 상위 변동자 (24h Δ)\n')
+    body.append('**↑ 상승 TOP 5**')
+    if top_movers_up:
+        body.append('| nickname | Δ | 게임 | 현재 rating |')
+        body.append('|---|---|---|---|')
+        for n, d in top_movers_up:
+            body.append(f'| {n} | {d["delta_sum"]:+d} | {d["games"]} | {d["last_rating"]} |')
+    else:
+        body.append('- 없음')
+    body.append('\n**↓ 하락 TOP 5**')
+    if top_movers_dn:
+        body.append('| nickname | Δ | 게임 | 현재 rating |')
+        body.append('|---|---|---|---|')
+        for n, d in top_movers_dn:
+            body.append(f'| {n} | {d["delta_sum"]:+d} | {d["games"]} | {d["last_rating"]} |')
+    else:
+        body.append('- 없음')
+    body.append('')
+
+    # 안정성 / 임계 이력
+    body.append('### 안정성 지표\n')
+    body.append('| 항목 | 카운트 |')
+    body.append('|---|---|')
+    body.append(f'| game_over (전체) | {len(game_overs)} |')
+    for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]):
+        body.append(f'| └ reason={r} | {c} |')
+    body.append(f'| schedule RETRY (봇 wakeup, 정상) | {len(retry_logs)} |')
+    body.append(f'| schedule SKIP (RETRY 실패) | {len(skip_logs)} |')
+    body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs)} |')
+    body.append(f'| **server_failed (전체)** | **{len(failures)}** |')
+    body.append(f'| └ OOM (evicted) | {len(oom_fails)} |')
+    body.append(f'| └ crash (nonZeroExit) | {len(crash_fails)} |')
+    body.append(f'| deploy 횟수 | {deploy_count} |')
+    body.append('')
+
+    # server_failed 발생 시 상세 (시각 + reason)
+    if failures:
+        body.append('### 서버 장애 상세 (server_failed, 24h)\n')
+        body.append('| 시각 (KST) | 인스턴스 | reason |')
+        body.append('|---|---|---|')
+        for f in failures[:10]:
+            try:
+                kst_ts = _parse_iso(f['ts']).astimezone(KST).strftime('%H:%M:%S')
+            except Exception:
+                kst_ts = f['ts'][:19]
+            if f['evicted'] or f['oom']:
+                reason = '**OOM** (evicted)'
+            elif f['nonZeroExit']:
+                reason = f'crash (nonZeroExit={f["nonZeroExit"]})'
+            else:
+                reason = 'unknown'
+            body.append(f'| {kst_ts} | …{f["instance"][-6:]} | {reason} |')
+        body.append('')
+
     body.append('### 임계 alert 이력 (24h)\n')
     if alert_history:
         for k, ts in alert_history:
@@ -734,73 +1127,43 @@ def run_daily_summary():
         body.append('- 0건 (모두 임계 미달, 안전)')
     body.append('')
 
-    # 7일 트렌드 비교
-    body.append('### 7일 트렌드 비교\n')
+    # 7일 trend (CPU/Memory + PVP 게임 수)
+    body.append('### 7일 트렌드\n')
     if len(trend_days) >= 2:
-        body.append('| 날짜 | Render CPU max | Aiven Memory max |')
-        body.append('|---|---|---|')
+        body.append('| 날짜 | Render CPU max | Aiven Mem max | PVP 게임 | 봇 게임 |')
+        body.append('|---|---|---|---|---|')
         for d in trend_days:
             cpu_v = f'{d["render_cpu_max_m"]:.1f}m' if d['render_cpu_max_m'] is not None else '-'
             mem_v = f'{d["aiven_mem_max_pct"]:.2f}%' if d['aiven_mem_max_pct'] is not None else '-'
-            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} |')
+            pvp_v = str(d['pvp_games']) if d['pvp_games'] is not None else '-'
+            bot_v = str(d['bot_games']) if d['bot_games'] is not None else '-'
+            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} |')
     else:
         body.append('- 데이터 부족 (수집 시작 직후)')
     body.append('')
 
-    # 시간대별 봇 활동 (KST)
-    if by_hour_kst:
-        body.append('### 시간대별 봇 활동 (KST hour, 24h)\n')
-        body.append('| hour (KST) | 봇 착수 | bar |')
-        body.append('|---|---|---|')
-        max_v = max(by_hour_kst.values()) if by_hour_kst.values() else 1
-        for h in range(24):
-            v = by_hour_kst.get(h, 0)
-            bar = '█' * int(20 * v / max_v) if max_v > 0 else ''
-            body.append(f'| {h:02d}:00 | {v} | `{bar}` |')
-        body.append('')
-
-    # ====== Mermaid 차트 4종 ======
-    body.append('### 시각화\n')
-
-    # 1) 7일 CPU/Memory 트렌드
-    if len(trend_days) >= 2:
-        x = [d['date'][5:] for d in trend_days]  # MM-DD
-        cpu_vals = [d['render_cpu_max_m'] or 0 for d in trend_days]
-        mem_vals = [d['aiven_mem_max_pct'] or 0 for d in trend_days]
-        body.append('#### Render CPU peak vs Aiven Memory max (7일)\n')
-        body.append(mermaid_line_chart('Render CPU (m) / Aiven Memory (%) - 7d', x,
-                                       {'Render_CPU_m': cpu_vals, 'Aiven_Mem_pct': mem_vals},
-                                       'value'))
-        body.append('')
-
-    # 2) 24h 시간대별 봇 활동
-    if by_hour_kst:
-        x = [f'{h:02d}' for h in range(24)]
-        v = [by_hour_kst.get(h, 0) for h in range(24)]
-        body.append('#### 시간대별 봇 활동 (KST hour, bar)\n')
-        body.append(mermaid_bar_chart('Bot moves per KST hour (24h)', x, v, 'moves'))
-        body.append('')
-
-    # 3) cfgMax 도달율 변화 (7일) — 단순화: 오늘만 표시 (시계열 누적 필요)
-    if bot_by_cfg.get('hard'):
-        body.append('#### hard 봇 cfgMax 도달율 (오늘, cfg 별)\n')
-        cfgs = sorted(bot_by_cfg['hard'].keys())
-        x = cfgs
-        v = [bot_by_cfg['hard'][k]['cfgmax_pct'] for k in cfgs]
-        body.append(mermaid_bar_chart('hard cfgMax 도달율 %', x, v, '%'))
-        body.append('')
-
-    # 4) gauge — 이미 위에서 표로 표현됨
-    body.append('#### 자원 사용율 (표는 상단)\n')
-    body.append('한도 대비 사용율은 본문 상단 "자원 사용율" 표 참고.\n')
-
     body.append('---')
-    body.append(f'_생성: {NOW.isoformat()} (workflow: monitor-infra)_')
+    body.append(f'_생성: {NOW.isoformat()} (workflow: monitor-infra, KST {NOW.astimezone(KST).strftime("%Y-%m-%d %H:%M")})_')
 
     body_text = '\n'.join(body)
     print(f'본문 길이: {len(body_text)} chars')
 
-    # 이전 daily-summary Issue close
+    # 일별 stats 저장 (7일 trend 누적용)
+    if not DRY_RUN or os.environ.get('SAVE_METRICS') == '1':
+        daily_stats[summary_date] = {
+            'pvp_games': pvp_count,
+            'bot_games': bot_game_count,
+            'total_bot_moves': bot_total,
+            'render_cpu_max_m': cpu_st.get('max') or 0,
+            'aiven_mem_max_pct': aiven_mem.get('max') or 0,
+        }
+        # 30일 이상 오래된 entry 정리
+        cutoff = (kst_today_00 - timedelta(days=30)).strftime('%Y-%m-%d')
+        daily_stats = {k: v for k, v in daily_stats.items() if k >= cutoff}
+        save_daily_stats(daily_stats)
+        print(f'  saved: daily-stats.json ({len(daily_stats)} entries)')
+
+    # 이전 daily-summary close
     prev = list_issues_by_label('daily-summary', state='open')
     print(f'이전 open daily-summary Issue: {len(prev)}개')
     for issue in prev:
@@ -808,8 +1171,8 @@ def run_daily_summary():
             close_issue(issue['number'])
             print(f'  closed: #{issue["number"]} {issue.get("title", "")[:60]}')
 
-    # 새 daily-summary Issue 생성
-    title = f'[daily-summary] {kst_today} KST 인프라 요약'
+    # 새 daily-summary Issue
+    title = f'[daily-summary] {summary_date} KST 인프라/게임 요약'
     labels = ['monitor', 'daily-summary', 'severity-low']
     url = create_issue(title, body_text, labels)
     print(f'  created: {url}')
