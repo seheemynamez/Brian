@@ -22,6 +22,34 @@ const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS) || 30000;
 
 const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 
+// game_over 로그 풍부화 — monitor.py daily-summary 가 봇 운영 지표 추출 시 사용.
+// 봇 게임 식별 (bot=true/false) + 봇 난이도 + 양 색 nickname + rating + delta.
+// entry 가 null (양쪽 동시 끊김 케이스 등) 이면 rating/delta 필드는 undefined — log 가 skip.
+// stones = 종료 시점 보드 돌 수 = 게임 길이 지표.
+const gameOverFields = (room, entry, extra) => {
+  const black = room.players?.black;
+  const white = room.players?.white;
+  const botColor = room.hasBot ? (black?.type === 'bot' ? 'black' : (white?.type === 'bot' ? 'white' : undefined)) : undefined;
+  const botDiff = botColor ? room.players[botColor]?.difficulty : undefined;
+  let stones = 0;
+  if (room.board) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (room.board[r][c]) stones++;
+      }
+    }
+  }
+  return {
+    code: room.code, gameId: room.gameId,
+    bot: !!room.hasBot, botDiff,
+    blackNick: black?.nickname, whiteNick: white?.nickname,
+    blackRating: entry?.black?.rating, whiteRating: entry?.white?.rating,
+    blackDelta: entry?.black?.delta, whiteDelta: entry?.white?.delta,
+    stones,
+    ...extra,
+  };
+};
+
 // ============================================================
 // 차례 타이머
 // ============================================================
@@ -211,7 +239,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRoomsList();
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
-    log.event('game_over', { code: room.code, gameId: room.gameId, winner: color, reason: 'five' });
+    log.event('game_over', gameOverFields(room, entry, { winner: color, reason: 'five' }));
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
@@ -227,7 +255,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRoomsList();
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
-    log.event('game_over', { code: room.code, gameId: room.gameId, winner: 'draw', reason: 'draw' });
+    log.event('game_over', gameOverFields(room, entry, { winner: 'draw', reason: 'draw' }));
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color, turn: room.turn });
@@ -246,4 +274,5 @@ module.exports = {
   applyMove,
   onMove,
   startGame,
+  gameOverFields,  // disconnect.js 의 game_over 로그도 같은 형식 사용
 };
