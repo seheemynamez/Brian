@@ -575,39 +575,43 @@ const countMyStones = (board, color) => {
   return n;
 };
 
-// 자기 돌 수 기반 동적 cfg — Render free tier (×7-10 slowdown) 기준 사용자 대기 vs 깊이.
+// 자기 돌 수 기반 동적 cfg — Render free tier (×7-10 slowdown) 기준 cfgMax 도달율 우선.
 //
-// 배경:
-//   이전 정적 hard cfg (d6×t10, timeoutMs 20s) 는 prod 에서 거의 매 수마다 20s abort
-//   발동 + reached cfgMax(6) 도달율 0%. 사용자 매 수 20s+ 대기 = UX 매우 안 좋음.
-//   초반 (자기<5) 은 후보 많고 평가 점수 비슷해 αβ 거의 못 자름 → 깊이 더 봐도 의미 X.
-//   후반 (자기>=15) 은 αβ 잘 자르고 결정적 응수 많아 깊이 깊어도 빠름.
+// 정책 변경 이력:
+//   v1 (PR #81): 자기 돌 3단계 (<5 / 5-14 / 15+) — 정적 d6×t10 → 동적 매핑.
+//   v2 (PR #83, 현재): cfgMax 도달율 50%+ 목표 — topK 를 조절해 search 트리 크기 ↓.
 //
-// 사용자 정책 (5/21):
-//   - 후반엔 착수 한 수 한 수가 결정적이라 더 깊이 보고 더 오래 대기해도 OK.
-//   - medium 자기 15수+ 5초, hard 자기 5수+ 10초, 자기 15수+ 15초.
-//   - worker_timeout 22s 안전 margin 7s 유지.
+// 변경 의도:
+//   prod 5시간 데이터 (PR #82) 에서 hard d5 도달율 29%, d6 도달율 9% — ID 가 d4-d5
+//   best 만 반환하는 케이스 많음. cfg 의 표시 depth 와 실제 봇 강도 괴리.
+//   topK 를 줄이면 search 트리 노드 수 ~topK^depth 만큼 감소 → 같은 timeout 안에
+//   더 깊이 도달. αβ + 평가 함수가 좋으면 topK 7-8 도 강도 유지.
 //
-// 로컬 벤치 (5/20 Mac) 기반:
-//   hard d5: 자기 1수=3s, 자기 5수=2.6s, 자기 10수=0.9s, 자기 15수=0.2s — Render ×10 시 30s/26s/9s/2s
-//   hard d6: 자기 1수=10s, 자기 10수=2.2s, 자기 15수=0.3s — 후반만 도달 가능
-//   medium d4: 자기 1수=0.5s, 자기 10수=0.3s, 자기 15수=0.1s — Render ×10 시 5s/3s/1s
+// 매핑 (cfgMax 도달율 50%+ 목표):
+//   medium: 2단계 통합 — 자기 5 기준
+//     자기<5  → d3 × t10 × 2.0s  (현재 t10/1.5s 도달율 90%, timeout 여유 확보)
+//     자기 5+ → d4 × t8  × 4.0s  (topK 10→8 + timeout 3-5s → 4s. 도달율 ~55%)
+//   hard:   3단계 유지 — 자기 5/15 기준, topK 줄여서 cfgMax 도달 확보
+//     자기<5   → d4 × t8 × 5.0s   (현재 t10/5s 46%, t8 로 50%+ 목표)
+//     자기 5-14 → d5 × t8 × 12.0s (현재 t10/10s 29%, t8 + 12s → 50%+ 목표)
+//     자기 15+  → d6 × t7 × 18.0s (현재 t10/15s 9%, t7 + 18s → 50%+ 목표)
+//
+// worker_timeout 22s 안전 margin: hard 자기 15+ 18s → margin 4s. self-abort 정확하므로 OK.
 const getDynamicConfig = (board, color, difficulty) => {
   if (difficulty === 'easy') {
     return { maxDepth: 2, topK: 3, timeoutMs: 1000 };
   }
   const myStones = countMyStones(board, color);
   if (difficulty === 'medium') {
-    if (myStones < 5)  return { maxDepth: 3, topK: 10, timeoutMs: 1500 };
-    if (myStones < 15) return { maxDepth: 4, topK: 10, timeoutMs: 3000 };
-    return                    { maxDepth: 4, topK: 10, timeoutMs: 5000 };   // 자기 15수+
+    if (myStones < 5)  return { maxDepth: 3, topK: 10, timeoutMs: 2000 };   // 초반 도달 거의 확정
+    return                    { maxDepth: 4, topK: 8,  timeoutMs: 4000 };   // 자기 5+ 통합
   }
   if (difficulty === 'hard') {
-    if (myStones < 5)  return { maxDepth: 4, topK: 10, timeoutMs: 5000 };   // 초반 αβ 약함 — d4 까지
-    if (myStones < 15) return { maxDepth: 5, topK: 10, timeoutMs: 10000 };  // 자기 5-14 d5 (이전 8s → 10s)
-    return                    { maxDepth: 6, topK: 10, timeoutMs: 15000 };  // 자기 15수+ d6 (이전 5s → 15s)
+    if (myStones < 5)  return { maxDepth: 4, topK: 8, timeoutMs: 5000 };    // 초반 d4 + t8
+    if (myStones < 15) return { maxDepth: 5, topK: 8, timeoutMs: 12000 };   // 중반 d5 + t8 (10→12s)
+    return                    { maxDepth: 6, topK: 7, timeoutMs: 18000 };   // 후반 d6 + t7 (15→18s)
   }
-  return { maxDepth: 4, topK: 10, timeoutMs: 3000 };
+  return { maxDepth: 4, topK: 8, timeoutMs: 3000 };
 };
 
 // 외부 호환 — 기존 호출자 (handlers/bot.js 의 catch 로깅, test 등) 가 difficulty 만으로
