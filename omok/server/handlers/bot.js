@@ -45,6 +45,12 @@ const getBotColor = (room) => {
 //   - cfgMax 는 maxDepth (상한). reached 는 timeout 안에 완성된 최종 depth.
 //   - 운영 중 reached < cfgMax 가 자주 보이면 cfg 줄이고 평가 함수 강화 등 검토.
 //   - reached == cfgMax 면 cfg 더 올릴 여유 있다는 신호.
+// 사람 zombie (Wi-Fi 잠시 lag — ws close 안 fire 됐지만 응답 없음) 상태에서
+// 봇 차례 도래 시 짧은 retry 로 회복 대기. 진짜 끊김이면 grace timer (60s) 가 자연 정리.
+// 이전엔 SKIP 후 사용자 새로고침 (resume_session) 까지 영원히 대기 → 봇 멈춤 사례 다발.
+// PR #85 부터: RETRY 로 자동 회복. heartbeat pong 으로 wakeup 도 시도 (server.js).
+const BOT_ZOMBIE_RETRY_MS = 3000;
+
 const scheduleBotMove = (room) => {
   if (!room || !room.hasBot) return;
   if (room.status !== 'playing') return;
@@ -52,13 +58,15 @@ const scheduleBotMove = (room) => {
   if (!botColor) return;
   const bot = room.players[botColor];
   if (room.turn !== botColor) return;
-  // 사람 player 가 offline (좀비 ws — close 가 fire 안 된 채 응답 없는 상태) 이면
-  // 봇이 두지 않음. 좀비 + turn timeout 으로 봇이 혼자 게임을 끝까지 진행해 사람이
-  // 부재중 패배 처리되던 버그 방지.
-  // 이 분기로 들어왔다는 건 사람이 끊긴 상태 → 새로고침으로 ws 재연결 시 풀림.
+  // 사람 player 가 offline/zombie 면 SKIP 안 함 — 짧은 retry 로 회복 대기.
+  // setTimer 가 같은 botMoveTimer 덮어쓰니 중복 호출돼도 안전.
   const { bothPlayersOnline } = require('./send');
   if (!bothPlayersOnline(room)) {
-    console.error(`[bot] schedule SKIP (사람 offline/zombie): bot=${bot.difficulty} stones=${countStones(room.board)} room=${room.code} color=${botColor}`);
+    console.error(`[bot] schedule RETRY (사람 잠시 offline/zombie, ${BOT_ZOMBIE_RETRY_MS}ms 후 재시도): bot=${bot.difficulty} stones=${countStones(room.board)} room=${room.code} color=${botColor}`);
+    roomRuntime.setTimer(room.code, 'botMoveTimer', setTimeout(() => {
+      roomRuntime.clearTimer(room.code, 'botMoveTimer');
+      scheduleBotMove(room);
+    }, BOT_ZOMBIE_RETRY_MS));
     return;
   }
   const delay = thinkTimeMs(bot.difficulty);
@@ -101,6 +109,19 @@ const scheduleBotMove = (room) => {
 const cancelBotTimers = (room) => {
   if (!room) return;
   roomRuntime.clearTimer(room.code, 'botMoveTimer');
+};
+
+// 사람 ws 가 zombie 에서 회복됐을 때 (heartbeat pong/ping 도착) 호출.
+// 봇 차례 + 진행 중 게임이면 즉시 scheduleBotMove 로 wakeup.
+// botMoveTimer 가 RETRY pending 중일 수 있어 setTimer 가 덮어쓰는 흐름.
+// server.js 의 markWsAlive (false → true 전환 시) 에서 호출.
+const tryReviveBotIfStuck = (roomCode) => {
+  if (!roomCode) return;
+  const room = getRoom(roomCode);
+  if (!room || !room.hasBot || room.status !== 'playing') return;
+  const botColor = getBotColor(room);
+  if (!botColor || room.turn !== botColor) return;
+  scheduleBotMove(room);
 };
 
 // 매 성공적인 move 직후 호출 — 봇 게임이면 emote / 다음 봇 차례 처리.
@@ -178,6 +199,7 @@ module.exports = {
   getBotColor,
   scheduleBotMove,
   cancelBotTimers,
+  tryReviveBotIfStuck,
   afterSuccessfulMove,
   onCreateBotGame,
 };
