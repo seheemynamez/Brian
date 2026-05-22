@@ -954,15 +954,29 @@ def run_daily_summary():
             pass
 
     # 8) 7일 trend — metrics/ snapshot + daily-stats.json
+    #
+    # Timezone 통일 (issue #95 fix): 모든 day key 는 KST 기준.
+    # snapshot ts 는 UTC ISO 라 KST 변환 후 date 추출. daily_stats key 도 KST date.
+    # 이전엔 by_day key 가 UTC date 라 daily_stats KST key 와 불일치 →
+    # daily_stats.get(d) 가 거의 항상 None → PVP/봇 게임 컬럼 "-".
     recent = load_recent_metrics(days=7)
     trend_days = []
     by_day = defaultdict(list)
     for s in recent:
-        d = s.get('ts', '')[:10]
-        if d: by_day[d].append(s)
+        ts = s.get('ts', '')
+        if not ts: continue
+        try:
+            d = _parse_iso(ts).astimezone(KST).strftime('%Y-%m-%d')
+        except Exception:
+            continue
+        by_day[d].append(s)
     daily_stats = load_daily_stats()
-    for d in sorted(by_day.keys())[-7:]:
-        snaps = by_day[d]
+    # snapshot 만 있는 날 + daily_stats 만 있는 날 모두 표시 (union). 이번 발행의
+    # self entry 는 마지막 단계에서 저장되므로 load_daily_stats() 결과엔 아직 없음 —
+    # 다음 발행 표에서 보임.
+    all_days = sorted(set(by_day.keys()) | set(daily_stats.keys()))[-7:]
+    for d in all_days:
+        snaps = by_day.get(d, [])
         cpu_maxes = [s.get('render', {}).get('cpu_peak_m') for s in snaps if s.get('render', {}).get('cpu_peak_m') is not None]
         mem_maxes = [s.get('aiven', {}).get('mem_pct_max') for s in snaps if s.get('aiven', {}).get('mem_pct_max') is not None]
         ds = daily_stats.get(d, {})
