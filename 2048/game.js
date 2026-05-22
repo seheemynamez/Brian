@@ -265,13 +265,17 @@ document.addEventListener('keydown', (e) => {
 
 let touchStart = null;
 
-document.addEventListener('touchstart', (e) => {
+// 스와이프 입력은 보드 안에서 시작한 것만 처리.
+// document 에 걸면 사이드바(랭킹) 스크롤이 game move 로 잘못 해석됨.
+const boardEl = document.getElementById('board');
+
+boardEl.addEventListener('touchstart', (e) => {
   if (e.touches.length !== 1) { touchStart = null; return; }
   const t = e.touches[0];
   touchStart = { x: t.clientX, y: t.clientY, time: Date.now() };
 }, { passive: true });
 
-document.addEventListener('touchend', (e) => {
+boardEl.addEventListener('touchend', (e) => {
   if (!touchStart) return;
   const t = e.changedTouches[0];
   const dx = t.clientX - touchStart.x;
@@ -285,10 +289,15 @@ document.addEventListener('touchend', (e) => {
   else               move(dy > 0 ? 'down' : 'up');
 }, { passive: true });
 
-// 보드 위에서 시작한 스와이프가 페이지 스크롤로 이어지지 않게
-document.getElementById('board').addEventListener('touchmove', (e) => {
+// 보드 안 스와이프가 페이지 스크롤(특히 모바일 pull-to-refresh)로 이어지지 않게.
+// board 바깥(사이드바 등)에서는 정상 스크롤 가능 — 여기는 preventDefault 안 함.
+boardEl.addEventListener('touchmove', (e) => {
   e.preventDefault();
 }, { passive: false });
+
+// 보드 외 영역에서 스와이프하다가 보드 위에서 손가락을 떼면 touchend 가 board 에
+// 안 들어옴 (출발점이 board 가 아니므로). 그래도 touchStart 가 null 이라
+// 잘못된 move 가 일어나지 않는다.
 
 // ============================================================
 // 음소거 토글

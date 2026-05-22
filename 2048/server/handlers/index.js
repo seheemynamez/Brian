@@ -40,11 +40,20 @@ const handleMessage = (ws, msg) => {
       const clientId = String(msg.clientId || '').slice(0, 64);
       const nickname = String(msg.nickname || '');
       if (!clientId) return send.send(ws, { type: 'error', message: 'clientId 필요' });
+      // 닉 변경 전 영속 사용자의 닉을 스냅샷 — ws.nickname 은 connection-bound 이라
+      // 재연결마다 '' 로 시작해서 같은 닉 재전송에도 broadcast 가 일어남. 영속 비교가 정확.
+      const before = users.getUser(clientId);
+      const prevPersistedNick = before ? before.nickname : null;
       const user = users.setNickname(clientId, nickname);
       if (!user) return send.send(ws, { type: 'error', message: '닉네임 형식 오류' });
       ws.clientId = clientId;
       ws.nickname = user.nickname;
       send.send(ws, { type: 'nickname_set', user });
+      // 사용자가 랭킹에 노출돼 있고 (= 점수 > 0) 실제로 닉이 바뀌었으면 broadcast.
+      // 점수 0 인 익명/자동닉 사용자가 닉만 정하는 케이스에서는 굳이 broadcast 안 함 (트래픽 절약).
+      const hasScore = user.allTimeBest > 0 || user.dailyBest > 0;
+      const nickActuallyChanged = prevPersistedNick !== null && prevPersistedNick !== user.nickname;
+      if (hasScore && nickActuallyChanged) broadcastRanking();
       log.event('nickname_set', { client: log.mask(clientId), nick: user.nickname });
       return;
     }

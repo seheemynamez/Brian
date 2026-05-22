@@ -234,6 +234,10 @@
     myRank = e.detail || null;
     renderMyRank();
   });
+  // 서버가 닉 변경을 confirm 하면 (자기 자신 또는 reconnect 시 자동 동기화) 헤더 갱신.
+  // 모달 확인 버튼은 즉시 renderHeader 하지만, 다른 경로 (programmatic / 재연결) 도
+  // 안전하게 처리하도록 nickname_set 이벤트를 listen.
+  window.addEventListener('net2048:nickname_set', renderHeader);
   window.addEventListener('net2048:score_recorded', (e) => {
     const { allTimeUpdated, dailyUpdated } = e.detail || {};
     if (allTimeUpdated || dailyUpdated) {
