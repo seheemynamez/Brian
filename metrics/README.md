@@ -1,11 +1,11 @@
 # Infra Metrics
 
-`.github/workflows/monitor-infra.yml` 가 cron 으로 자동 수집·commit 합니다.
+`.github/workflows/monitor-infra.yml` 가 외부 cron (cron-job.org) 의 `workflow_dispatch` 호출로 자동 수집·commit 합니다.
 
-- 매시 **7분/37분** — collect 모드: snapshot 저장 + 임계 검사 + 필요 시 alert Issue.
-- 매일 **UTC 00:07 (KST 09:07)** — daily-summary 모드: 24h + 7d 요약 Issue 발행, 이전 daily-summary close.
+- **매 5분** — collect 모드: snapshot 저장 + 임계 검사 + 필요 시 alert Issue.
+- **매일 KST 09:00 (UTC 00:00)** — daily-summary 모드: 24h + 7d 요약 Issue 발행, 이전 daily-summary close.
 
-7분/37분 offset 사용 이유: GitHub Actions schedule 이 정각/30분 같은 high-load 시간에 skip 되기 쉬워서. 7,37 로 옮긴 후 안정.
+GitHub Actions 내장 `schedule` 은 best-effort 라 peak 시 수십분~수시간 skip 발생. 외부 ping 으로 ~99%+ 신뢰도 확보. setup: [`docs/MONITOR_RELIABILITY.md`](../docs/MONITOR_RELIABILITY.md).
 
 ## 파일
 

@@ -1,86 +1,85 @@
-# monitor-infra 안정성 강화 — 외부 ping 설정 가이드
+# monitor-infra 안정성 — 외부 ping 설정 가이드
 
 ## 배경
 
 GitHub Actions 의 `schedule` cron 은 **best-effort** — peak load 시 수십분~수시간 delay 또는 skip 발생. 공식 docs 명시 + paid plan 도 SLA 없음.
 
 - PR #84 (`*/30 * * * *`) → 6시간 동안 schedule event 0건
-- PR #89 (`7,37 * * * *`) → 정각 회피로 개선, 단 100% 보장 X
+- PR #89 (`7,37 * * * *`) → 정각 회피 했지만 100% 보장 X
 
-해결책: **외부 cron 서비스에서 GitHub `workflow_dispatch` API 호출**. 이 PR 이 workflow 측 준비 끝낸 상태. 아래는 사용자가 외부 서비스 등록할 절차.
+결정: **GitHub `schedule` 완전 제거 + 외부 ping (cron-job.org) primary 만 사용**. workflow 측 trigger 는 `workflow_dispatch` + `repository_dispatch` 만 받음. cron-job.org 가 GitHub API 호출로 trigger.
 
 ---
 
-## 권장: cron-job.org (무료, 5분)
+## Setup — cron-job.org (무료, 5분)
 
-### Step 1. Personal Access Token (PAT) 발급
+### Step 1. GitHub Personal Access Token (PAT) 발급
 
-GitHub Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token
+[GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens](https://github.com/settings/personal-access-tokens/new) → Generate new token
 
-설정:
-- **Token name**: `monitor-infra-cron`
-- **Expiration**: 1년 (캘린더 알림 등록 권장 — 만료 silent fail 방지)
-- **Repository access**: Only select repositories → `seheemynamez/Brian`
-- **Permissions** (Repository permissions):
-  - `Actions`: **Read and write**
-  - `Contents`: Read-only
-  - 그 외 모두 No access
+| 필드 | 값 |
+|---|---|
+| Token name | `monitor-infra-cron` |
+| Expiration | 1년 (캘린더 알림 등록 — 만료 silent fail 방지) |
+| Repository access | Only select repositories → `seheemynamez/Brian` |
+| Permissions → Actions | **Read and write** |
+| Permissions → Contents | Read-only |
+| 그 외 | No access |
 
-→ token 값 (`github_pat_...`) 복사. 한 번만 보임.
+→ token 값 (`github_pat_...`) **한 번만 보임** — 즉시 복사 + 안전한 곳에 보관.
 
-### Step 2. cron-job.org 가입 + cronjob 등록
+### Step 2. cron-job.org cronjob 2개 등록
 
-[cron-job.org](https://cron-job.org/) 가입 → "Cronjobs" → "Create cronjob"
+cron-job.org → "Cronjobs" → "Create cronjob"
 
-#### collect (매 30분)
+#### Cronjob A — collect (매 5분)
 
 | 필드 | 값 |
 |---|---|
 | Title | `monitor-infra collect` |
 | URL | `https://api.github.com/repos/seheemynamez/Brian/actions/workflows/monitor-infra.yml/dispatches` |
-| Schedule | Every 30 minutes (offset 5분 권장 — GitHub 큐 회피) |
 | Request method | **POST** |
+| Schedule | Every **5 minutes** (00, 05, 10, …) |
 | Request body | `{"ref":"main","inputs":{"mode":"collect"}}` |
 | Headers | `Authorization: Bearer <PAT>` <br> `Accept: application/vnd.github+json` <br> `X-GitHub-Api-Version: 2022-11-28` <br> `Content-Type: application/json` |
 | Notifications | "On failure" 활성화 (PAT 만료 / API 다운 즉시 알림) |
 
-#### daily-summary (매일 KST 09:07)
+#### Cronjob B — daily-summary (매일 KST 09:00)
+
+A 와 동일하되:
 
 | 필드 | 값 |
 |---|---|
 | Title | `monitor-infra daily-summary` |
-| URL | (collect 와 동일) |
-| Schedule | Daily at **00:07 UTC** (= KST 09:07) |
+| Schedule | Daily at **00:00 UTC** (= KST 09:00) |
 | Request body | `{"ref":"main","inputs":{"mode":"daily-summary"}}` |
-| Headers | (collect 와 동일) |
+
+> **collect 와 daily-summary 동시 fire 가능성**: 매일 UTC 00:00 (KST 09:00) 에 두 cronjob 가 동시 trigger. workflow 의 `concurrency.group: monitor-infra` 가 단일 실행 보장 — 먼저 도착한 쪽이 실행되고 다른 쪽은 큐에 대기. 한쪽 lost 가 우려되면 daily-summary 를 KST 09:01 (UTC 00:01) 로 1분 offset 권장.
 
 ### Step 3. 검증
 
-저장 후 "Execution history" 에서 응답 확인:
+cron-job.org "Execution history" 확인:
 - ✅ HTTP **204 No Content** = workflow trigger 성공
 - ❌ HTTP 401 = PAT 인증 실패 (재발급 필요)
-- ❌ HTTP 404 = repo/workflow path 오타 또는 PAT 권한 부족
+- ❌ HTTP 404 = repo / workflow path 오타 또는 PAT 권한 부족
 
-5-10분 후 GitHub Actions 탭 → monitor-infra → 새 run 이 `Triggered via workflow dispatch` 로 표시되면 정상 작동.
-
+또는 터미널:
 ```sh
 gh api 'repos/seheemynamez/Brian/actions/workflows/monitor-infra.yml/runs' \
-  --jq '.workflow_runs[0:3] | .[] | "\(.created_at[:19]) event=\(.event)"'
-# → event=workflow_dispatch 가 매 30분 보이면 정상
+  --jq '.workflow_runs[0:5] | .[] | "\(.created_at[:19]) event=\(.event)"'
 ```
+→ `event=workflow_dispatch` 가 5분 주기로 보이면 ✅ 완료.
 
 ---
 
-## 이중 안전망 (선택)
+## 이중 안전망 — healthchecks.io (선택)
 
-### healthchecks.io — "30분 내 ping 없으면 알림"
+PAT 만료 / cron-job.org 다운 / GitHub Actions 측 이슈로 trigger silent fail 시 외부 감지.
 
-cron-job.org PAT 만료 / API 다운 / GitHub 측 이슈로 trigger 실패 시 silent. healthchecks.io 로 이중 감지 가능.
-
-1. healthchecks.io 가입 → "Add Check"
-2. Period: 30 min, Grace: 10 min
-3. 받은 ping URL (`https://hc-ping.com/<uuid>`) 복사
-4. `monitor-infra.yml` 의 마지막 step 에 추가:
+1. [healthchecks.io](https://healthchecks.io/) 가입 → "Add Check"
+2. Period: 10 min, Grace: 5 min (collect 5분 + 여유)
+3. ping URL (`https://hc-ping.com/<uuid>`) 복사
+4. `monitor-infra.yml` 의 마지막 step:
    ```yaml
    - name: Healthcheck ping
      if: always()
@@ -88,33 +87,39 @@ cron-job.org PAT 만료 / API 다운 / GitHub 측 이슈로 trigger 실패 시 s
    ```
 5. GitHub repo Settings → Secrets → `HEALTHCHECK_PING_URL` 등록
 
-→ 30분 내 ping 안 오면 healthchecks.io 가 이메일 알림.
+→ 10분 내 ping 없으면 healthchecks.io 가 이메일 알림.
 
 ---
 
-## 더 엄격한 SLA 가 필요할 때 — GCP Cloud Scheduler
+## 더 엄격한 SLA — GCP Cloud Scheduler (선택)
 
 cron-job.org 무료 plan 의 신뢰도가 부족하면:
 
 1. GCP 프로젝트 + Cloud Scheduler API 활성화
-2. Job 생성: HTTP target → 같은 GitHub API URL
+2. Job: HTTP target → GitHub repository_dispatch endpoint
+   ```
+   POST https://api.github.com/repos/seheemynamez/Brian/dispatches
+   Body: {"event_type":"monitor-collect"}
+   ```
 3. Auth: Service Account 또는 OIDC
-4. Frequency: `*/30 * * * *`
+4. Frequency: `*/5 * * * *` (5분)
 
 비용: ~$0.01/월 미만. 신뢰도 ~99.9% (Google SLA).
 
+workflow 측은 이미 `repository_dispatch` types `monitor-collect` / `monitor-daily-summary` 받게 준비됨.
+
 ---
 
-## Trade-off 요약
+## Trade-off
 
 | 옵션 | 신뢰도 | 비용 | 셋업 |
 |---|---|---|---|
 | **cron-job.org → workflow_dispatch** ⭐ | ~99%+ | 무료 | 5분 |
 | GCP Cloud Scheduler → repository_dispatch | ~99.9% | <$0.01/월 | 중간 |
-| healthchecks.io (감지만) | — | 무료 | 5분 (위 위에 add-on) |
-| GitHub schedule cron (기존) | best-effort | 무료 | 0분 (이미 있음, fallback) |
+| healthchecks.io (감지만 — add-on) | — | 무료 | 5분 |
+| ~~GitHub schedule cron~~ | best-effort (수시간 skip) | 무료 | — (이 PR 에서 제거) |
 
-권장: **cron-job.org primary + healthchecks.io 이중감지** + GitHub schedule 은 fallback 으로 유지.
+권장: **cron-job.org primary + healthchecks.io 이중감지**. 더 엄격해지면 GCP.
 
 ---
 

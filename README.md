@@ -108,7 +108,7 @@ Brian/
 - **이모트** — 정해진 셋 (👏🔥😅🤔 등) 으로 양쪽·관전자에 broadcast. 봇도 상황별로 응답.
 - **재연결 복구** — 새로고침 / 비행기모드 / Render 재배포 모두 대응. 진행 중 게임 보존.
 - **초대 URL** — `/i/CODE` 가 OG 메타 응답 후 사람에게 canonical 게임 URL 로 redirect.
-- **운영 모니터링** — Render + Aiven 메트릭 30분 cron 수집, 임계 도달 시 GitHub Issue 자동 발행, 매일 daily-summary 발행.
+- **운영 모니터링** — 외부 cron (cron-job.org) 이 5분마다 Render + Aiven 메트릭 수집, 임계 도달 시 GitHub Issue 자동 발행. 매일 KST 09:00 daily-summary 발행.
 
 ---
 
@@ -171,9 +171,11 @@ npm run test:hydrate # 재시작 hydrate 검증 (SIGTERM → restart → resume 
 
 배포된 서버 주소는 [omok/js/net.js](omok/js/net.js) 의 `PROD_WS_URL` 에 박혀 있습니다.
 
-### 운영 모니터링 — GitHub Actions
-- [`.github/workflows/monitor-infra.yml`](.github/workflows/monitor-infra.yml) 가 cron 으로 자동 실행:
-  - 매시 **7분/37분** — collect (snapshot 저장 + 임계 검사 + alert Issue)
-  - 매일 **UTC 00:07** — daily-summary (24h+7d 요약 Issue 발행)
+### 운영 모니터링 — GitHub Actions + 외부 cron
+- [`.github/workflows/monitor-infra.yml`](.github/workflows/monitor-infra.yml) 가 외부 cron (cron-job.org) 의 `workflow_dispatch` 호출로 자동 실행:
+  - **매 5분** — collect (snapshot 저장 + 임계 검사 + alert Issue)
+  - **매일 KST 09:00** — daily-summary (24h+7d 요약 Issue 발행)
+- GitHub Actions 내장 `schedule` 은 best-effort skip 다발로 의도적 제거. 외부 ping 만 사용.
+- 외부 ping setup: [`docs/MONITOR_RELIABILITY.md`](docs/MONITOR_RELIABILITY.md) 참고 (PAT 발급 + cron-job.org 등록).
 - 결과는 [`metrics/`](metrics/) 에 자동 commit. 상세는 [`metrics/README.md`](metrics/README.md).
 - Issue 자동 발행 정책 (label `monitor`, severity, 6시간 cooldown) 도 같은 README 에.
