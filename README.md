@@ -4,7 +4,7 @@
 
 - 🌐 라이브: https://seheemynamez.github.io/Brian/
 - 🧩 게임:
-  - [2048](https://seheemynamez.github.io/Brian/2048/) — 클래식 슬라이드 퍼즐 (싱글 플레이)
+  - [2048](https://seheemynamez.github.io/Brian/2048/) — 클래식 슬라이드 퍼즐 (싱글 플레이 + 전체/오늘 랭킹)
   - [오목대전](https://seheemynamez.github.io/Brian/omok/) — 실시간 멀티플레이 오목 (방 코드 / 랜덤 매칭 / 봇 대전 / 관전 / 랭킹)
 
 ---
@@ -13,7 +13,7 @@
 
 ```
 Brian/
-├── 2048/                    # 2048 게임 — 정적 파일만 (HTML/CSS/JS)
+├── 2048/                    # 2048 게임 — 정적 FE + 랭킹 server/ (omok 와 같은 구조)
 ├── omok/                    # 오목대전
 │   ├── index.html           # 진입 페이지 (canonical / OG / JSON-LD 메타 포함)
 │   ├── css/                 # base / components / screens 로 분리
@@ -46,7 +46,7 @@ Brian/
 ## 아키텍처
 
 ### 2048
-순수 정적 페이지입니다. GitHub Pages 가 HTML/CSS/JS 를 그대로 서빙하고, 모든 게임 로직은 브라우저에서 돌아갑니다.
+게임 로직은 정적 페이지 (GitHub Pages) 에서 브라우저로 돌아가고, **점수 등록 / 랭킹 broadcast / 닉네임 관리** 만 별도 Render 서버 (`2048/server/`) 가 처리합니다. omok 와 같은 Aiven Valkey 인스턴스에 prefix `2048:prod` 로 namespace 격리해서 영속화. 랭킹은 all-time + daily (KST 자정 reset) 두 종류.
 
 ### 오목대전
 프론트엔드와 서버가 **분리 배포**되어 있습니다.

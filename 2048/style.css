@@ -286,3 +286,297 @@ button#new-game:active { transform: scale(0.98); }
   button { padding: 8px 14px; font-size: 13px; }
   .help { font-size: 12px; }
 }
+
+/* ============================================================
+   레이아웃 — 게임 + 랭킹 사이드바 (데스크탑 2 col / 모바일 stacked)
+   ============================================================ */
+.layout {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  max-width: 880px;
+}
+.game-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ============================================================
+   랭킹 사이드바
+   ============================================================ */
+.rank-col {
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--ink);
+  margin-top: 6px;  /* h1 baseline 보정 */
+}
+.rank-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rank-title {
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rank-conn {
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.rank-conn.online { color: var(--accent-1); }
+.rank-conn.offline { color: var(--ink-faint); }
+
+.rank-me {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+.rank-me-label { color: var(--ink-faint); }
+.rank-my-nick {
+  flex: 1;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rank-edit-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  padding: 0;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rank-edit-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+
+.rank-tabs {
+  display: flex;
+  gap: 6px;
+}
+.rank-tab {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.rank-tab:hover { border-color: var(--border-strong); color: var(--ink); }
+.rank-tab.active {
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+  border-color: transparent;
+  color: var(--bg-0);
+  font-weight: 700;
+}
+
+.rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 320px;
+  position: relative;  /* FLIP transform 기준점 */
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  font-size: 13px;
+  will-change: transform;
+}
+.rank-row.me {
+  background: rgba(0, 229, 255, 0.10);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  padding: 7px 9px;  /* border 두께 보정 */
+}
+.rank-num {
+  text-align: center;
+  color: var(--ink-faint);
+  font-weight: 700;
+  font-size: 13px;
+}
+.rank-nick {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.rank-score {
+  font-weight: 700;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  color: var(--ink);
+}
+.rank-empty {
+  color: var(--ink-faint);
+  text-align: center;
+  font-size: 12px;
+  padding: 40px 10px;
+}
+.rank-myrank {
+  font-size: 12px;
+  color: var(--ink-muted);
+  text-align: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* ============================================================
+   닉네임 모달
+   ============================================================ */
+.nick-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.nick-modal.hidden { display: none; }
+.nick-modal-box {
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 360px;
+  width: 100%;
+  color: var(--ink);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+.nick-modal-box h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.nick-modal-desc {
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+.nick-modal input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.nick-modal input:focus { border-color: var(--accent-1); }
+.nick-modal input::placeholder { color: var(--ink-faint); }
+.nick-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+.nick-modal-actions button {
+  padding: 9px 18px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+}
+.nick-modal-actions button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
+}
+.nick-modal-actions button:not(.ghost) {
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+  color: var(--bg-0);
+}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+.rank-toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+  z-index: 1100;
+}
+.rank-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ============================================================
+   모바일 — 사이드바를 게임 아래로
+   ============================================================ */
+@media (max-width: 760px) {
+  .layout {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .rank-col {
+    width: 100%;
+    max-width: 380px;
+    margin-top: 0;
+  }
+  .rank-list {
+    min-height: 0;
+  }
+}
