@@ -259,6 +259,39 @@
     showToast('⚠ ' + m);
   });
 
+  // ---- 클립보드 복사 (비-HTTPS / IP 주소 환경에서도 작동) ----
+  // navigator.clipboard.writeText 는 secure context 전용 — localhost OK, 그러나
+  // 192.168.x.x 같은 LAN IP HTTP 에서는 거부됨. legacy execCommand('copy') 는
+  // deprecated 지만 secure context 외에서도 작동해서 fallback 으로 사용.
+  // 반환: true = 성공, false = 둘 다 실패.
+  const copyToClipboard = async (text) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch { /* secure context 아니거나 권한 거부 — 아래 fallback */ }
+    }
+    // Legacy fallback — hidden textarea + execCommand('copy').
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      // iOS Safari 는 contentEditable + selection range 가 필요해서 직접 호출.
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
   // ---- 게임오버 공유 모달 ----
   // showShareModal(score) — onScoreSubmitted 가 submit 후 호출 (nick modal 다음에).
   // hideShareModal() — game.js 의 newGame() 이 호출.
@@ -315,13 +348,13 @@
           // 다른 에러 → clipboard 로 fall through
         }
       }
-      // 2) 클립보드 복사 (desktop / Web Share API 없는 환경).
-      try {
-        await navigator.clipboard.writeText(url);
+      // 2) 클립보드 복사 — modern API 우선, 실패하면 legacy execCommand 로.
+      // 한 가지 함정: navigator.clipboard 는 secure context 전용 (HTTPS 또는
+      // localhost). IP 주소 HTTP (192.168.x.x 등) 에선 거부 → legacy fallback 필요.
+      if (await copyToClipboard(url)) {
         showToast('🔗 링크가 복사되었어요!');
         hide();
-      } catch {
-        // clipboard 도 안 되는 (비-HTTPS 등 매우 드문) 환경 — toast 안내만.
+      } else {
         showToast('⚠ 복사 실패 — 브라우저 권한을 확인해주세요');
       }
     });
