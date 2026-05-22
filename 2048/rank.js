@@ -80,10 +80,12 @@
       window.Net2048.sendNickname(nick);
       renderHeader();  // 헤더 닉 즉시 갱신
       hide();
-      // 등록 직후 — 만약 이 모달이 score 등록 직전 띄워졌다면 점수도 같이 등록
+      // 등록 직후 — score 등록 직전이었다면 점수 submit + 공유 모달 표시.
+      // 닉 모달이 닫히면서 자연스럽게 share 모달로 이어짐.
       if (lastSubmittedScore != null) {
         const s = lastSubmittedScore; lastSubmittedScore = null;
         window.Net2048.submitScore(s);
+        showShareModal(s);
       }
     });
     $('nick-input').addEventListener('keydown', (e) => {
@@ -227,12 +229,13 @@
     if (editBtn) editBtn.addEventListener('click', openNicknameModal);
   };
 
-  // ---- 점수 등록 후 처리 (game.js 에서 호출) ----
-  // 사용자에게 NEW BEST toast 띄움. score_recorded 이벤트 도착 시 toast 결정.
+  // ---- 점수 등록 + 공유 모달 (game.js 가 gameOver 시 호출) ----
+  // 닉이 있으면: 즉시 submit + 공유 모달.
+  // 닉이 없으면: 닉 모달 띄움 — 모달 confirm 핸들러가 submit + 공유 모달까지 처리.
   const onScoreSubmitted = (score) => {
-    // game.js 가 gameOver 직후 호출. 닉네임 없으면 모달 띄우고 등록은 모달 콜백에서.
-    if (!promptNicknameIfNeeded(score)) return;
+    if (!promptNicknameIfNeeded(score)) return;   // 닉 없음 — 모달 confirm 이 이어받음
     window.Net2048.submitScore(score);
+    showShareModal(score);
   };
 
   // ---- Net2048 이벤트 listening ----
@@ -266,6 +269,121 @@
     showToast('⚠ ' + m);
   });
 
+  // ---- 클립보드 복사 (비-HTTPS / IP 주소 환경에서도 작동) ----
+  // navigator.clipboard.writeText 는 secure context 전용 — localhost OK, 그러나
+  // 192.168.x.x 같은 LAN IP HTTP 에서는 거부됨. legacy execCommand('copy') 는
+  // deprecated 지만 secure context 외에서도 작동해서 fallback 으로 사용.
+  // 반환: true = 성공, false = 둘 다 실패.
+  const copyToClipboard = async (text) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch { /* secure context 아니거나 권한 거부 — 아래 fallback */ }
+    }
+    // Legacy fallback — hidden textarea + execCommand('copy').
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      // iOS Safari 는 contentEditable + selection range 가 필요해서 직접 호출.
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  // ---- 게임오버 공유 모달 ----
+  // showShareModal(score) — onScoreSubmitted 가 submit 후 호출 (nick modal 다음에).
+  // hideShareModal() — game.js 의 newGame() 이 호출.
+  // 닉 모달과 톤 통일 — overlay + 가운데 박스. score 강조, 큰 공유 버튼.
+  const ensureShareModalEl = () => {
+    let el = $('share-modal');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'share-modal';
+    el.className = 'share-modal hidden';
+    el.innerHTML = `
+      <div class="share-modal-box">
+        <div class="share-modal-emoji">🎉</div>
+        <div class="share-modal-score" id="share-modal-score">0</div>
+        <div class="share-modal-text">친구에게 자랑해 보세요</div>
+        <div class="share-modal-actions">
+          <button class="share-modal-share" id="share-modal-share" type="button">🔗 친구에게 공유</button>
+          <button class="share-modal-close" id="share-modal-close" type="button">닫기</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(el);
+
+    const hide = () => el.classList.add('hidden');
+
+    // overlay 클릭 (박스 바깥) 으로 닫기 — 박스 자체 클릭은 무시.
+    el.addEventListener('click', (e) => {
+      if (e.target === el) hide();
+    });
+    $('share-modal-close').addEventListener('click', hide);
+
+    // ESC 로 닫기 — 키 이벤트는 document 에 걸어서 modal visible 시에만 처리.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !el.classList.contains('hidden')) hide();
+    });
+
+    // 공유 버튼 — Web Share API → 없으면 clipboard.
+    $('share-modal-share').addEventListener('click', async () => {
+      const btn = $('share-modal-share');
+      const score = Number(btn.dataset.score || 0);
+      const nick  = window.Net2048.getNick() || '';
+      const url   = window.Net2048.buildShareUrl(nick, score);
+      const text  = nick
+        ? `${nick} 님 ${score}점! 2048 더 높은 점수에 도전해보세요`
+        : `2048 — 도전해보세요`;
+      // 1) Web Share API — 모바일 native share sheet (카카오톡 / 메시지 등).
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: '2048 도전!', text, url });
+          hide();         // 공유 성공 — 모달 닫음
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;   // 사용자 취소 — 모달 유지
+          // 다른 에러 → clipboard 로 fall through
+        }
+      }
+      // 2) 클립보드 복사 — modern API 우선, 실패하면 legacy execCommand 로.
+      // 한 가지 함정: navigator.clipboard 는 secure context 전용 (HTTPS 또는
+      // localhost). IP 주소 HTTP (192.168.x.x 등) 에선 거부 → legacy fallback 필요.
+      if (await copyToClipboard(url)) {
+        showToast('🔗 링크가 복사되었어요!');
+        hide();
+      } else {
+        showToast('⚠ 복사 실패 — 브라우저 권한을 확인해주세요');
+      }
+    });
+
+    return el;
+  };
+
+  const showShareModal = (score) => {
+    const el = ensureShareModalEl();
+    const s = Math.max(0, Math.floor(Number(score) || 0));
+    $('share-modal-score').textContent = `${s}점`;
+    $('share-modal-share').dataset.score = String(s);
+    el.classList.remove('hidden');
+  };
+  const hideShareModal = () => {
+    const el = $('share-modal');
+    if (el) el.classList.add('hidden');
+  };
+
   // ---- 가벼운 toast ----
   let toastTimer = null;
   const showToast = (text) => {
@@ -285,6 +403,7 @@
   // ---- 부팅 ----
   document.addEventListener('DOMContentLoaded', () => {
     ensureNicknameModalEl();
+    ensureShareModalEl();   // 미리 만들어두면 첫 game over 시 깜빡임 X.
     setupTabButtons();
     renderAll();
     // 최초 진입 시 닉네임 없으면 모달 자동 노출 (게임 시작과 무관, 사용자 거부 가능)
@@ -300,5 +419,7 @@
     promptNicknameIfNeeded,
     openNicknameModal,
     onScoreSubmitted,
+    showShareModal,
+    hideShareModal,
   };
 })();
