@@ -53,13 +53,17 @@ RENDER_BW_LIMIT_GB = 100.0
 AIVEN_MEM_LIMIT_MB = 1024.0
 
 # 임계 — cron 30분 → 5분 변경 (2026-05-22) 으로 window 도 30분 → 15분 축소.
-# RETRY 임계는 issue #108 의 false positive (한 사용자 한 게임의 wifi 불안정으로 21건
-# 발생) 를 거르기 위해 20 → 50 으로 상향.
+# Issue #108 분석 (Render 로그 21건 직접 분석): unique room 2개 + 비슷한 시간대
+# 의 두 봇 게임 (각 14건/5분, 7건/2분) 에서 발생. RETRY 메커니즘은 정상 동작
+# (stones 진행 중). 한 게임 평균 ~15건/5분 (≈ 매 턴마다 RETRY 1회) 기준으로:
+# - 동시 2 게임 lag = ~30건/15분
+# - 동시 3 게임 lag = ~45건/15분
+# → 임계 30 으로 동시 2 게임 이상 lag 만 잡음 (한 게임 단독 케이스 제외).
 THRESHOLD_RENDER_CPU_M = 100.0   # 한도 (100m) 도달 — throttle 시작.
 THRESHOLD_AIVEN_MEM_PCT = 80.0
 # 봇 zombie 회복 (PR #85). RETRY 가 정상 동작이지만 burst 가 잦으면 사용자 lag 심각.
 # SKIP 는 RETRY 후에도 회복 못 한 경우 — 거의 발생 X (없어야 정상).
-THRESHOLD_BOT_RETRY_15MIN = 50   # 15분 안 RETRY 50건 이상 — 다수 사용자 동시 lag
+THRESHOLD_BOT_RETRY_15MIN = 30   # 15분 안 RETRY 30건 이상 (≈동시 2 게임 lag)
 THRESHOLD_BOT_SKIP_15MIN = 3     # 15분 안 SKIP 3건 이상 — RETRY 가 못 잡는 진짜 끊김 패턴
 # Cooldown — cron 5분이라 같은 alert 가 evaluation 마다 발사되지 않게.
 # 6시간은 진짜 문제가 회복 안 됐을 때 너무 늦게 재감지 → 2시간으로 단축.
@@ -174,6 +178,57 @@ def render_events(start_iso, end_iso, limit=100):
         except Exception:
             continue
     return out
+
+
+# Bot RETRY/SKIP log message parser.
+# 예: "[bot] schedule RETRY (...): bot=hard stones=5 room=83SN color=white client=A1B2C3D4"
+# client= 는 BE 코드에 clientId 추가된 시점부터 등장 — 이전 로그엔 없을 수 있어 graceful 처리.
+_BOT_LOG_RE = re.compile(
+    r'bot=(?P<bot>\w+)\s+stones=(?P<stones>\d+)\s+room=(?P<room>\w+)\s+color=(?P<color>\w+)'
+    r'(?:\s+client=(?P<client>\S+))?'
+)
+
+
+def parse_bot_logs(logs):
+    """RETRY / SKIP 로그 list → [{ts, bot, stones, room, color, client?}].
+
+    client field 가 없는 로그는 client=None — caller 가 graceful 처리.
+    파싱 실패한 로그는 skip (아주 드물지만 message 가 truncate 됐을 수 있음).
+    """
+    out = []
+    for L in logs:
+        m = _BOT_LOG_RE.search(L.get('message', ''))
+        if not m: continue
+        out.append({
+            'ts':     L.get('timestamp', ''),
+            'bot':    m.group('bot'),
+            'stones': int(m.group('stones')),
+            'room':   m.group('room'),
+            'color':  m.group('color'),
+            'client': m.group('client'),   # None 이면 client= 필드 없는 옛 로그
+        })
+    return out
+
+
+def summarize_bot_logs(parsed):
+    """parse_bot_logs 결과 → 사람이 읽기 좋은 markdown 요약 (alert body 용).
+
+    반환: ("- 영향 게임: 2개 방, 2명 사용자 ...", parsed) 형식 문자열.
+    client 가 없는 옛 로그가 있으면 '?' 카운트.
+    """
+    if not parsed:
+        return '- 영향 분포: 파싱 실패 (로그 형식 변경 의심)'
+    rooms = sorted({p['room'] for p in parsed})
+    clients = sorted({p['client'] for p in parsed if p['client']})
+    has_old_logs = any(p['client'] is None for p in parsed)
+    rooms_str = f"**{len(rooms)}개 방** (`{', '.join(rooms[:5])}`{'…' if len(rooms) > 5 else ''})"
+    if clients:
+        clients_str = f"**{len(clients)}명 사용자** (`{', '.join(clients[:5])}`{'…' if len(clients) > 5 else ''})"
+    elif has_old_logs:
+        clients_str = "사용자 수 미상 (BE 로그에 client= 추가 전의 옛 로그)"
+    else:
+        clients_str = "사용자 수 추출 실패"
+    return f"- 영향 게임: {rooms_str}\n- 영향 사용자: {clients_str}"
 
 
 def parse_server_failures(events):
@@ -582,6 +637,11 @@ def run_collect():
             'no_move_count': len(nm_logs),
             'bot_retry_count': len(retry_logs),
             'bot_skip_count':  len(skip_logs),
+            # unique rooms / clientIds — RETRY 가 1-2 게임 lag 인지 vs 다수 사용자 lag 인지 구분.
+            'bot_retry_rooms':   len({p['room'] for p in parse_bot_logs(retry_logs)}),
+            'bot_retry_clients': len({p['client'] for p in parse_bot_logs(retry_logs) if p['client']}),
+            'bot_skip_rooms':    len({p['room'] for p in parse_bot_logs(skip_logs)}),
+            'bot_skip_clients':  len({p['client'] for p in parse_bot_logs(skip_logs) if p['client']}),
             'server_failed_count': len(failures),
             'server_oom_count':    len(oom_fails),
             'server_crash_count':  len(crash_fails),
@@ -643,6 +703,10 @@ def run_collect():
         alerts.append(('deploy_bad',
             f'[monitor] Render 배포 상태 비정상: {deploy["status"]}',
             f'## Render 배포 비정상\n\n- 상태: **{deploy["status"]}**\n- 시각: {deploy["createdAt"]}\n- 커밋: {deploy["commit"]}\n'))
+    # RETRY 분포 분석 — unique rooms / clientIds. Issue #108 같은 false positive
+    # (소수 사용자의 wifi 불안정이 임계 도달) 와 실제 다수 사용자 lag 를 구분.
+    retry_parsed = parse_bot_logs(retry_logs)
+    skip_parsed = parse_bot_logs(skip_logs)
     if len(retry_logs) >= THRESHOLD_BOT_RETRY_15MIN:
         samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in retry_logs[:5])
         alerts.append(('bot_retry_burst',
@@ -650,10 +714,12 @@ def run_collect():
             f'## 봇 RETRY burst — 사용자 다수 Wi-Fi lag 의심\n\n'
             f'- 카운트: **{len(retry_logs)}건** (최근 15분)\n'
             f'- 임계: ≥ {THRESHOLD_BOT_RETRY_15MIN}건\n'
+            f'{summarize_bot_logs(retry_parsed)}\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 의미\n'
             f'RETRY = Wi-Fi 잠시 lag 으로 사람 zombie 판정 → 3s 후 재시도. PR #85 의 정상 회복 흐름. '
-            f'burst 가 잦으면 다수 사용자 lag 상황 (서버 응답 지연 / 사용자 측 ISP 등 영향).\n\n'
+            f'burst 가 잦으면 다수 사용자 lag 상황 (서버 응답 지연 / 사용자 측 ISP 등 영향). '
+            f'영향 게임/사용자 수 비교: 1-2개면 단일 사용자 wifi 문제 가능성, 3개 이상이면 서버 측 의심.\n\n'
             f'### 샘플\n{samples}\n\n'
             f'### 같이 본 상태\n'
             f'- Render CPU peak: {cpu_st["max"] if cpu_st else "?"}m\n'
@@ -665,6 +731,7 @@ def run_collect():
             f'## 봇 SKIP burst — RETRY 도 못 잡는 끊김 사례\n\n'
             f'- 카운트: **{len(skip_logs)}건** (최근 15분)\n'
             f'- 임계: ≥ {THRESHOLD_BOT_SKIP_15MIN}건\n'
+            f'{summarize_bot_logs(skip_parsed)}\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 의미\n'
             f'SKIP 은 PR #85 이후 거의 발생 X 가 정상. burst 발생 = `bothPlayersOnline` 가드를 RETRY 가 '
