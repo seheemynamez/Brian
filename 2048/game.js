@@ -170,6 +170,10 @@ function newGame() {
   won = false;
   animating = false;
   showMessage('', '');
+  // 이전 게임의 공유 카드 정리 — 새 판 시작 시 사라져야 (이전 점수 잔존 방지).
+  if (window.Rank2048 && window.Rank2048.hideShareCard) {
+    window.Rank2048.hideShareCard();
+  }
   addRandomTile();
   addRandomTile();
   render();
@@ -242,6 +246,8 @@ function move(direction) {
       // 점수 등록 — rank.js 가 닉네임 없으면 모달 띄우고 사용자 확인 후 제출.
       if (score > 0 && window.Rank2048) {
         window.Rank2048.onScoreSubmitted(score);
+        // 공유 카드 노출 — Web Share API 또는 클립보드 복사.
+        window.Rank2048.showShareCard(score);
       }
     }
   }, SLIDE_MS);

@@ -156,6 +156,20 @@
     });
   }
 
+  // ---- 공유 URL 빌더 ----
+  // /i/2048/{nick}/{score} → Render 서버가 OG meta + canonical 2048 페이지 redirect.
+  // 메신저 봇은 OG 만 읽고 사람은 게임으로 이동. 운영(GitHub Pages) 도메인이면 prod
+  // share base 사용, 로컬은 같은 origin (launcher 의 /i/2048 endpoint).
+  const buildShareUrl = (nick, score) => {
+    const base = location.hostname === 'seheemynamez.github.io'
+      ? PROD_SHARE_BASE
+      : location.origin;
+    const segs = ['i', '2048'];
+    if (nick) segs.push(encodeURIComponent(nick));
+    if (nick && Number.isFinite(Number(score))) segs.push(String(Math.floor(score)));
+    return `${base}/${segs.join('/')}`;
+  };
+
   // ---- 노출 ----
   window.Net2048 = {
     connect,
@@ -167,6 +181,7 @@
     getNick,
     setNick,
     isConnected: () => connected,
+    buildShareUrl,
     PROD_SHARE_BASE,
   };
 })();

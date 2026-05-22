@@ -256,6 +256,57 @@
     showToast('⚠ ' + m);
   });
 
+  // ---- 게임오버 공유 카드 ----
+  // showShareCard(score) — game.js 가 game over 시 호출.
+  // hideShareCard() — game.js 의 newGame() 이 호출 (새 게임 시작 시 카드 숨김).
+  // 클릭 핸들러는 한 번만 wire — 마지막 점수는 dataset 으로 전달.
+  const showShareCard = (score) => {
+    const card = $('share-card');
+    const btn = $('share-btn');
+    if (!card || !btn) return;
+    btn.dataset.score = String(Math.max(0, Math.floor(Number(score) || 0)));
+    card.classList.remove('hidden');
+    // 텍스트도 점수에 따라 살짝 톤 변경 — 0 점은 공유 안 함 (game.js 가 미리 가드).
+    const text = $('share-card-text');
+    if (text) text.textContent = `${btn.dataset.score}점! 친구에게 자랑해보세요`;
+  };
+  const hideShareCard = () => {
+    const card = $('share-card');
+    if (card) card.classList.add('hidden');
+  };
+
+  const setupShareButton = () => {
+    const btn = $('share-btn');
+    if (!btn || btn.dataset.wired === '1') return;
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', async () => {
+      const score = Number(btn.dataset.score || 0);
+      const nick  = window.Net2048.getNick() || '';
+      const url   = window.Net2048.buildShareUrl(nick, score);
+      const text  = nick
+        ? `${nick} 님 ${score}점! 2048 더 높은 점수에 도전해보세요`
+        : `2048 — 도전해보세요`;
+      // Web Share API — 모바일 native share sheet 우선.
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: '2048 도전!', text, url });
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;   // 사용자 취소 — 조용히
+          // 다른 에러 (browser support 미흡 등) → 클립보드 fallback 으로
+        }
+      }
+      // Fallback — clipboard 복사
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('🔗 링크가 복사되었어요!');
+      } catch {
+        // 클립보드도 안 되는 환경 (구형 / 비-HTTPS) — prompt 로 마지막 수단
+        window.prompt('이 링크를 복사해서 친구에게 공유하세요:', url);
+      }
+    });
+  };
+
   // ---- 가벼운 toast ----
   let toastTimer = null;
   const showToast = (text) => {
@@ -276,6 +327,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     ensureNicknameModalEl();
     setupTabButtons();
+    setupShareButton();
     renderAll();
     // 최초 진입 시 닉네임 없으면 모달 자동 노출 (게임 시작과 무관, 사용자 거부 가능)
     if (!window.Net2048.getNick()) {
@@ -290,5 +342,7 @@
     promptNicknameIfNeeded,
     openNicknameModal,
     onScoreSubmitted,
+    showShareCard,
+    hideShareCard,
   };
 })();
