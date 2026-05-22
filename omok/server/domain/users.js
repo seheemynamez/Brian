@@ -219,9 +219,21 @@ const getMyRankEntry = (clientId) => {
   };
 };
 
+// 운영 통계 — /api/stats endpoint 용 (PR #95). 봇 user 는 제외 (사람 계정만).
+// total_human_users = recordGameResult 가 한 번이라도 호출된 사람 user 수.
+// active 는 server 가 lastPlayedAt 추적 안 해서 monitor.py 가 game_over 로그로 계산.
+const getUserStats = () => {
+  let total = 0;
+  for (const u of users.values()) {
+    if (u && !u.isBot) total++;
+  }
+  return { total_human_users: total };
+};
+
 module.exports = {
   getUser, getOrCreateUser, recordGameResult,
   getTopRanking, getRecentGames, getMyRankEntry,
   getRatingPreview, buildPlayerRatings,
+  getUserStats,                     // /api/stats endpoint 용 (PR #95)
   compareForRanking,  // unit test 용 — 정렬 로직 자체 검증
 };

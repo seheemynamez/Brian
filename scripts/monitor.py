@@ -39,6 +39,8 @@ MODE = os.environ.get('MODE', 'collect')
 DRY_RUN = os.environ.get('DRY_RUN', '0') == '1' or not GH_TOKEN
 
 RENDER_SERVICE_ID = 'srv-d84mu23tqb8s73fgcq60'
+# server 의 /api/stats endpoint — 계정 수 가져옴 (PR #95).
+SERVER_PUBLIC_URL = 'https://omok-server-u4rp.onrender.com'
 RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
 AIVEN_PROJECT = 'se2hee-93ed'
 AIVEN_SERVICE = 'valkey-411207c'
@@ -185,6 +187,18 @@ def parse_server_failures(events):
             'oom': bool(reason.get('oom')),
         })
     return out
+
+
+# ============================================================
+# Sehee server /api/stats — 운영 user 카운트 (PR #95)
+# ============================================================
+def fetch_server_stats():
+    """GET /api/stats — {total_human_users, ts}. cold-start / down 시 None."""
+    try:
+        return http_get(f'{SERVER_PUBLIC_URL}/api/stats', timeout=10)
+    except Exception as e:
+        print(f'  /api/stats fetch 실패: {e}')
+        return None
 
 
 # ============================================================
@@ -906,13 +920,21 @@ def run_daily_summary():
     # 4) 봇 운영 지표 (봇별 승패 + 상대 rating 분포)
     bot_perf = bot_perf_stats(game_overs)
 
-    # 5) 사람 활동 (TOP / rating movers)
+    # 5) 사람 활동 (TOP / rating movers + 활성 사용자)
     player_acts = player_activity(game_overs)
     top_active = sorted(player_acts.items(), key=lambda kv: -kv[1]['games'])[:5]
     top_movers_up = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] > 0],
                            key=lambda kv: -kv[1]['delta_sum'])[:5]
     top_movers_dn = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] < 0],
                            key=lambda kv: kv[1]['delta_sum'])[:5]
+    # 활성 사용자 24h — game_over 에 등장한 unique 사람 nickname.
+    # (clientId 가 game_over 로그에 없어 nickname 으로 근사. 같은 사람 닉네임 바꾸면 중복 집계 위험,
+    # 단 대부분 nickname 안정적이라 실용 OK.)
+    active_user_nicks = set(player_acts.keys())
+    active_users_24h = len(active_user_nicks)
+
+    # 5-b) server /api/stats — 현재 사람 계정 수 (PR #95).
+    server_stats = fetch_server_stats()
 
     # 6) reason 카운트
     reason_counts = defaultdict(int)
@@ -950,6 +972,8 @@ def run_daily_summary():
             'aiven_mem_max_pct': max(mem_maxes) if mem_maxes else None,
             'pvp_games': ds.get('pvp_games'),
             'bot_games': ds.get('bot_games'),
+            'active_users': ds.get('active_users'),
+            'total_users': ds.get('total_human_users'),
         })
 
     # Aiven memory 장기 추정
@@ -1004,8 +1028,12 @@ def run_daily_summary():
     body.append('')
     body.append(f'**Aiven 장기 메모리 트렌드**: {aiven_trend_msg}\n')
 
-    # 게임 활동 요약
+    # 게임 활동 요약 — 계정 수 / 활성 사용자 포함
     body.append('### 게임 활동 요약\n')
+    total_human_users = server_stats.get('total_human_users') if server_stats else None
+    user_count_str = f'**{total_human_users}**' if total_human_users is not None else '_(server /api/stats 응답 없음 — cold-start 가능성)_'
+    body.append(f'- 현재 사람 계정 수: {user_count_str}')
+    body.append(f'- **24h 활성 사용자**: **{active_users_24h}명** (게임 한 판 이상 둔 unique 닉네임)')
     body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count} / 봇 {bot_game_count})')
     body.append(f'- 봇 착수 총 횟수: **{bot_total}건**')
     body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**\n')
@@ -1127,17 +1155,20 @@ def run_daily_summary():
         body.append('- 0건 (모두 임계 미달, 안전)')
     body.append('')
 
-    # 7일 trend (CPU/Memory + PVP 게임 수)
+    # 7일 trend (CPU/Memory + PVP 게임 수 + 활성/총 사용자)
     body.append('### 7일 트렌드\n')
     if len(trend_days) >= 2:
-        body.append('| 날짜 | Render CPU max | Aiven Mem max | PVP 게임 | 봇 게임 |')
-        body.append('|---|---|---|---|---|')
+        body.append('| 날짜 | Render CPU max | Aiven Mem max | PVP 게임 | 봇 게임 | 활성 사용자 | 총 계정 |')
+        body.append('|---|---|---|---|---|---|---|')
         for d in trend_days:
             cpu_v = f'{d["render_cpu_max_m"]:.1f}m' if d['render_cpu_max_m'] is not None else '-'
             mem_v = f'{d["aiven_mem_max_pct"]:.2f}%' if d['aiven_mem_max_pct'] is not None else '-'
             pvp_v = str(d['pvp_games']) if d['pvp_games'] is not None else '-'
             bot_v = str(d['bot_games']) if d['bot_games'] is not None else '-'
-            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} |')
+            active_v = str(d['active_users']) if d.get('active_users') is not None else '-'
+            total_v = str(d['total_users']) if d.get('total_users') is not None else '-'
+            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} |')
+        body.append('\n_활성 사용자 = 그 날 게임 한 판 이상 둔 unique 닉네임 (game_over 로그 기반). 총 계정 = `/api/stats` 가 그 날 daily-summary 발행 시 server 에서 가져온 사람 계정 수._')
     else:
         body.append('- 데이터 부족 (수집 시작 직후)')
     body.append('')
@@ -1156,6 +1187,9 @@ def run_daily_summary():
             'total_bot_moves': bot_total,
             'render_cpu_max_m': cpu_st.get('max') or 0,
             'aiven_mem_max_pct': aiven_mem.get('max') or 0,
+            # PR #95 — 활성/총 사용자 trend 누적
+            'active_users': active_users_24h,
+            'total_human_users': (server_stats or {}).get('total_human_users'),
         }
         # 30일 이상 오래된 entry 정리
         cutoff = (kst_today_00 - timedelta(days=30)).strftime('%Y-%m-%d')
