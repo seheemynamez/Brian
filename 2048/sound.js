@@ -1,29 +1,42 @@
 // ============================================================
 // 2048 효과음 — Web Audio API 즉석 톤 생성 (외부 파일 0개)
-// 오목 omok/js/sound.js 와 같은 패턴.
+// omok/js/sound.js 와 같은 패턴 — context lifecycle 안정성 확보.
 // ============================================================
 (function () {
+  'use strict';
+
   let audioCtx = null;
-  let audioReady = false;
   let muted = localStorage.getItem('2048_muted') === '1';
 
+  // AudioContext lifecycle:
+  //   created (state='suspended')
+  //     --[user gesture 안의 resume()]--> running
+  //     --[브라우저 / 시스템 sleep / 탭 background]--> suspended (자동)
+  // 한 번 만들고 끝이 아니라, suspended 일 때 매번 resume 시도해야 한다.
+  // resume() 은 user gesture 밖에선 reject — silent catch.
+  // 멱등 — 여러 번 불러도 안전 (audioReady 같은 플래그를 두면 init 실패 시 영구 차단됨).
   const initAudio = () => {
-    if (audioReady) return;
-    audioReady = true;
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-    } catch {}
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch { return; }
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
   };
 
-  // 사용자의 첫 입력이 들어오기 전엔 브라우저가 AudioContext 를 허용하지 않으므로
-  // 한 번만 자동 unlock.
+  // 첫 사용자 입력에 unlock. once:true 라 listener 자체는 한 번만 발사되지만,
+  // initAudio 는 멱등이라 이후 setMuted / playSound 가 호출해도 안전.
   ['click', 'keydown', 'touchstart'].forEach((ev) =>
     document.addEventListener(ev, initAudio, { once: true })
   );
 
   const tone = (freq, duration, type = 'sine', volume = 0.18) => {
     if (muted || !audioCtx) return;
+    // 탭 백그라운드 / 시스템 sleep 후 자동 suspend 된 경우 매 사운드마다 복구 시도.
+    // 호출 시점이 user gesture 안이면 resume 성공해서 즉시 들림. 아니면 다음 클릭 때 복구.
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     const t0 = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -67,6 +80,15 @@
     if (!muted) initAudio();
   };
 
+  // 디버깅 — context 상태 확인용 (개발자 콘솔에서 Sound2048._debug() 가능)
+  const _debug = () => ({
+    hasCtx: !!audioCtx,
+    ctxState: audioCtx ? audioCtx.state : null,
+    muted,
+  });
+  // 테스트용 — 외부에서 직접 suspend / resume / 시도 가능. 일반 사용 X.
+  const _getCtx = () => audioCtx;
+
   // 외부 노출
-  window.Sound2048 = { playSound, isMuted, setMuted };
+  window.Sound2048 = { playSound, isMuted, setMuted, _debug, _getCtx };
 })();
