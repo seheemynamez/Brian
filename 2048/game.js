@@ -170,9 +170,9 @@ function newGame() {
   won = false;
   animating = false;
   showMessage('', '');
-  // 이전 게임의 공유 카드 정리 — 새 판 시작 시 사라져야 (이전 점수 잔존 방지).
-  if (window.Rank2048 && window.Rank2048.hideShareCard) {
-    window.Rank2048.hideShareCard();
+  // 이전 게임의 공유 모달 정리 — 새 판 시작 시 사라져야 (이전 점수 잔존 방지).
+  if (window.Rank2048 && window.Rank2048.hideShareModal) {
+    window.Rank2048.hideShareModal();
   }
   addRandomTile();
   addRandomTile();
@@ -243,11 +243,9 @@ function move(direction) {
       gameOver = true;
       if (!won) showMessage('게임 끝! "새 게임"을 눌러 다시 시작하세요.', '');
       window.Sound2048 && window.Sound2048.playSound('gameover');
-      // 점수 등록 — rank.js 가 닉네임 없으면 모달 띄우고 사용자 확인 후 제출.
+      // 점수 등록 — rank.js 가 닉네임 모달 → submit → 공유 모달까지 일괄 처리.
       if (score > 0 && window.Rank2048) {
         window.Rank2048.onScoreSubmitted(score);
-        // 공유 카드 노출 — Web Share API 또는 클립보드 복사.
-        window.Rank2048.showShareCard(score);
       }
     }
   }, SLIDE_MS);
@@ -261,11 +259,18 @@ const KEY_TO_DIR = {
   ArrowUp:   'up',    ArrowDown:  'down'
 };
 
+// 닉 / 공유 모달 중 하나라도 떠 있는지 — visible 시 게임 키 처리 차단.
+const isModalOpen = () => {
+  const nick  = document.getElementById('nick-modal');
+  const share = document.getElementById('share-modal');
+  return (nick  && !nick.classList.contains('hidden')) ||
+         (share && !share.classList.contains('hidden'));
+};
+
 document.addEventListener('keydown', (e) => {
-  // 닉 모달이 떠 있으면 게임 키 처리 안 함 — input 안에서 방향키 누르면 커서가
-  // 이동 안 하고 보드만 움직이던 버그 (LS 가 비어 있는 첫 진입 시 닉 입력 도중).
-  const nickModal = document.getElementById('nick-modal');
-  if (nickModal && !nickModal.classList.contains('hidden')) return;
+  // 모달 (닉/공유) 떠 있으면 게임 키 처리 안 함 — input 안 방향키가 보드 움직이는
+  // 버그 + 공유 모달에서 ESC 가 게임에도 영향 가는 것 방지.
+  if (isModalOpen()) return;
   // 포커스가 텍스트 입력에 있으면 방향키는 커서 이동용 — 게임 동작 안 함.
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
