@@ -41,8 +41,23 @@ const CANONICAL_OMOK_URL = process.env.CANONICAL_OMOK_URL || null;
 const staticHandler = makeStaticHandler(STATIC_ROOT);
 const shareHandler  = makeShareHandler({ canonicalOmokUrl: CANONICAL_OMOK_URL });
 
+// 운영 통계 endpoint — monitor.py daily-summary 가 호출해 계정 수 가져감.
+// 민감 정보 X (단순 카운트). CORS 는 GitHub Actions runner 에서만 호출하므로
+// allow-origin '*' OK. 사용자 인증 안 함.
+const { getUserStats } = require('./domain/users');
+const statsHandler = (req, res) => {
+  const payload = { ...getUserStats(), ts: new Date().toISOString() };
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
+  res.end(JSON.stringify(payload));
+};
+
 const httpServer = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
+  if (urlPath === '/api/stats') return statsHandler(req, res);
   if (urlPath.startsWith('/i/')) return shareHandler(req, res);
   return staticHandler(req, res);
 });

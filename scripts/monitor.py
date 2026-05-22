@@ -39,6 +39,8 @@ MODE = os.environ.get('MODE', 'collect')
 DRY_RUN = os.environ.get('DRY_RUN', '0') == '1' or not GH_TOKEN
 
 RENDER_SERVICE_ID = 'srv-d84mu23tqb8s73fgcq60'
+# server 의 /api/stats endpoint — 계정 수 가져옴 (PR #95).
+SERVER_PUBLIC_URL = 'https://omok-server-u4rp.onrender.com'
 RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
 AIVEN_PROJECT = 'se2hee-93ed'
 AIVEN_SERVICE = 'valkey-411207c'
@@ -185,6 +187,74 @@ def parse_server_failures(events):
             'oom': bool(reason.get('oom')),
         })
     return out
+
+
+def compute_recovery_times(events):
+    """server_failed / server_available / deploy_started 매칭 → 실제 downtime 계산.
+    한 사용자가 끊긴 채로 있던 시간 측정 (FE reconnect 들어오기 전 backend 부재 구간).
+
+    각 failure 에 대해 그 후 첫 server_available 매칭:
+      crash: server_failed → 다음 server_available
+      deploy: deploy_started → 다음 server_available (build + start + ready)
+
+    반환:
+      [{kind: 'crash'|'deploy', start_ts, end_ts, downtime_s,
+        within_grace, evicted, nonZeroExit, instance}]
+    """
+    # 시간 오름차순 정렬해야 매칭 단순.
+    by_time = sorted(events, key=lambda e: e.get('event', {}).get('timestamp', ''))
+    out = []
+    for i, e in enumerate(by_time):
+        ev = e.get('event', {})
+        t = ev.get('type', '')
+        if t not in ('server_failed', 'deploy_started'):
+            continue
+        start_ts = ev.get('timestamp', '')
+        try:
+            start_dt = _parse_iso(start_ts)
+        except Exception:
+            continue
+        # 같은 시점 이후의 첫 server_available 찾기
+        end_ts, end_dt = None, None
+        for f in by_time[i+1:]:
+            fev = f.get('event', {})
+            if fev.get('type') != 'server_available': continue
+            try:
+                cand_dt = _parse_iso(fev.get('timestamp', ''))
+            except Exception:
+                continue
+            if cand_dt >= start_dt:
+                end_ts = fev.get('timestamp', '')
+                end_dt = cand_dt
+                break
+        if not end_dt: continue   # 아직 회복 안 됨 (현재 진행 중) 또는 데이터 부족
+        downtime_s = (end_dt - start_dt).total_seconds()
+        det = ev.get('details', {}) or {}
+        reason = det.get('reason', {}) or {}
+        out.append({
+            'kind': 'crash' if t == 'server_failed' else 'deploy',
+            'start_ts': start_ts,
+            'end_ts': end_ts,
+            'downtime_s': downtime_s,
+            'within_grace': downtime_s <= 60.0,
+            'evicted': bool(reason.get('evicted')),
+            'nonZeroExit': reason.get('nonZeroExit'),
+            'oom': bool(reason.get('oom')),
+            'instance': det.get('instanceID', ''),
+        })
+    return out
+
+
+# ============================================================
+# Sehee server /api/stats — 운영 user 카운트 (PR #95)
+# ============================================================
+def fetch_server_stats():
+    """GET /api/stats — {total_human_users, ts}. cold-start / down 시 None."""
+    try:
+        return http_get(f'{SERVER_PUBLIC_URL}/api/stats', timeout=10)
+    except Exception as e:
+        print(f'  /api/stats fetch 실패: {e}')
+        return None
 
 
 # ============================================================
@@ -453,7 +523,13 @@ ALERT_LABELS = {
     'bot_skip_burst':   ['monitor', 'alert-bot',    'severity-critical'],
     'server_oom':       ['monitor', 'alert-render', 'severity-critical'],   # OOM 강제 종료
     'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
+    'server_slow_recovery': ['monitor', 'alert-render', 'severity-high'],   # downtime > 60s (grace 초과)
 }
+
+# 60s grace 임계 — server downtime 이 이를 초과하면 사용자 disconnect_grace 만료 위험.
+# 측정 근거: 5/20 crash 폭주 sample (median 43s, p75 59s, max 102s, n=10) +
+# normal deploy sample (17s, n=1). 60s 임계는 max 102s case 같은 outlier 잡기.
+THRESHOLD_DOWNTIME_S = 60.0
 
 
 # ============================================================
@@ -481,6 +557,9 @@ def run_collect():
     failures = parse_server_failures(events)
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
+    # downtime 측정 (PR #97 추가) — server_failed/deploy_started → server_available 매칭.
+    recoveries = compute_recovery_times(events)
+    slow_recoveries = [r for r in recoveries if r['downtime_s'] > THRESHOLD_DOWNTIME_S]
     aiven = aiven_metrics(period='hour')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
@@ -499,6 +578,9 @@ def run_collect():
             'server_failed_count': len(failures),
             'server_oom_count':    len(oom_fails),
             'server_crash_count':  len(crash_fails),
+            'downtime_count': len(recoveries),
+            'downtime_max_s': max((r['downtime_s'] for r in recoveries), default=None),
+            'slow_recovery_count': len(slow_recoveries),
         },
         'aiven': {
             'cpu_pct_avg': aiven_cpu['avg'] if aiven_cpu else None,
@@ -613,6 +695,26 @@ def run_collect():
             f'- 최근 deploy / PR 점검\n'
             f'- Render 로그에서 crash 직전 에러 메시지 확인\n'
             f'- crash loop (짧은 시간 다수) 면 rollback 검토\n'))
+    if slow_recoveries:
+        samples = '\n'.join(
+            f'- `{r["start_ts"][:19]}` {r["kind"]} — downtime **{r["downtime_s"]:.1f}s** (60s grace 초과)'
+            for r in slow_recoveries[:5]
+        )
+        max_dt = max(r['downtime_s'] for r in slow_recoveries)
+        alerts.append(('server_slow_recovery',
+            f'[monitor] 서버 downtime {max_dt:.0f}s (> {THRESHOLD_DOWNTIME_S:.0f}s grace)',
+            f'## 서버 downtime 이 grace 60s 초과\n\n'
+            f'- 발생: **{len(slow_recoveries)}건** (최근 30분)\n'
+            f'- 최대 downtime: **{max_dt:.1f}s**\n'
+            f'- 임계: > {THRESHOLD_DOWNTIME_S:.0f}s — DISCONNECT_GRACE_MS (60s) 안에 사용자 재연결 어려움 → '
+            f'진행 중 게임이 abandoned 처리될 위험.\n\n'
+            f'### 측정\n'
+            f'`server_failed` (또는 `deploy_started`) → `server_available` 간격.\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 다음 조치\n'
+            f'- Render free → Hobby 등급 (cold start ↓) 검토\n'
+            f'- DISCONNECT_GRACE_MS 상향 (현재 60s → 90s) 검토 — 비용 = 진짜 떠난 사용자 자리 60s 더 점유\n'
+            f'- 반복 발생 시 root cause (메모리 / 코드 회귀) 파악\n'))
 
     for key, title, body in alerts:
         if not cooldown_ok(state, key):
@@ -896,6 +998,8 @@ def run_daily_summary():
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
     deploy_count = sum(1 for e in events if e.get('event', {}).get('type') == 'deploy_ended')
+    # downtime 계산 (PR #97) — server_failed/deploy_started → server_available 매칭
+    recoveries = compute_recovery_times(events)
 
     # 3) 시간대별 분포 (KST hour bucket)
     games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
@@ -906,13 +1010,21 @@ def run_daily_summary():
     # 4) 봇 운영 지표 (봇별 승패 + 상대 rating 분포)
     bot_perf = bot_perf_stats(game_overs)
 
-    # 5) 사람 활동 (TOP / rating movers)
+    # 5) 사람 활동 (TOP / rating movers + 활성 사용자)
     player_acts = player_activity(game_overs)
     top_active = sorted(player_acts.items(), key=lambda kv: -kv[1]['games'])[:5]
     top_movers_up = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] > 0],
                            key=lambda kv: -kv[1]['delta_sum'])[:5]
     top_movers_dn = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] < 0],
                            key=lambda kv: kv[1]['delta_sum'])[:5]
+    # 활성 사용자 24h — game_over 에 등장한 unique 사람 nickname.
+    # (clientId 가 game_over 로그에 없어 nickname 으로 근사. 같은 사람 닉네임 바꾸면 중복 집계 위험,
+    # 단 대부분 nickname 안정적이라 실용 OK.)
+    active_user_nicks = set(player_acts.keys())
+    active_users_24h = len(active_user_nicks)
+
+    # 5-b) server /api/stats — 현재 사람 계정 수 (PR #95).
+    server_stats = fetch_server_stats()
 
     # 6) reason 카운트
     reason_counts = defaultdict(int)
@@ -932,15 +1044,35 @@ def run_daily_summary():
             pass
 
     # 8) 7일 trend — metrics/ snapshot + daily-stats.json
+    #
+    # Timezone 통일 (issue #95 fix): 모든 day key 는 KST 기준.
+    # snapshot ts 는 UTC ISO 라 KST 변환 후 date 추출. daily_stats key 도 KST date.
+    # 이전엔 by_day key 가 UTC date 라 daily_stats KST key 와 불일치 →
+    # daily_stats.get(d) 가 거의 항상 None → PVP/봇 게임 컬럼 "-".
     recent = load_recent_metrics(days=7)
     trend_days = []
     by_day = defaultdict(list)
     for s in recent:
-        d = s.get('ts', '')[:10]
-        if d: by_day[d].append(s)
+        ts = s.get('ts', '')
+        if not ts: continue
+        try:
+            d = _parse_iso(ts).astimezone(KST).strftime('%Y-%m-%d')
+        except Exception:
+            continue
+        by_day[d].append(s)
     daily_stats = load_daily_stats()
-    for d in sorted(by_day.keys())[-7:]:
-        snaps = by_day[d]
+    # snapshot 만 있는 날 + daily_stats 만 있는 날 모두 표시 (union). 이번 발행의
+    # self entry 는 마지막 단계에서 저장되므로 load_daily_stats() 결과엔 아직 없음 —
+    # 다음 발행 표에서 보임.
+    #
+    # Cutoff: summary_date (= 어제 KST) 까지만 포함. 발행 당일 (오늘 KST) 의 부분
+    # snapshot — collect 가 KST 00:00~09:00 동안 누적한 — 이 trend 에 보이면
+    # "21일 리포트인데 22일 행이 보임" 같이 혼란. 어제까지로 자름.
+    all_days = sorted(set(by_day.keys()) | set(daily_stats.keys()))
+    all_days = [d for d in all_days if d <= summary_date]
+    all_days = all_days[-7:]
+    for d in all_days:
+        snaps = by_day.get(d, [])
         cpu_maxes = [s.get('render', {}).get('cpu_peak_m') for s in snaps if s.get('render', {}).get('cpu_peak_m') is not None]
         mem_maxes = [s.get('aiven', {}).get('mem_pct_max') for s in snaps if s.get('aiven', {}).get('mem_pct_max') is not None]
         ds = daily_stats.get(d, {})
@@ -950,6 +1082,8 @@ def run_daily_summary():
             'aiven_mem_max_pct': max(mem_maxes) if mem_maxes else None,
             'pvp_games': ds.get('pvp_games'),
             'bot_games': ds.get('bot_games'),
+            'active_users': ds.get('active_users'),
+            'total_users': ds.get('total_human_users'),
         })
 
     # Aiven memory 장기 추정
@@ -1004,8 +1138,12 @@ def run_daily_summary():
     body.append('')
     body.append(f'**Aiven 장기 메모리 트렌드**: {aiven_trend_msg}\n')
 
-    # 게임 활동 요약
+    # 게임 활동 요약 — 계정 수 / 활성 사용자 포함
     body.append('### 게임 활동 요약\n')
+    total_human_users = server_stats.get('total_human_users') if server_stats else None
+    user_count_str = f'**{total_human_users}**' if total_human_users is not None else '_(server /api/stats 응답 없음 — cold-start 가능성)_'
+    body.append(f'- 현재 사람 계정 수: {user_count_str}')
+    body.append(f'- **24h 활성 사용자**: **{active_users_24h}명** (게임 한 판 이상 둔 unique 닉네임)')
     body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count} / 봇 {bot_game_count})')
     body.append(f'- 봇 착수 총 횟수: **{bot_total}건**')
     body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**\n')
@@ -1100,23 +1238,34 @@ def run_daily_summary():
     body.append(f'| deploy 횟수 | {deploy_count} |')
     body.append('')
 
-    # server_failed 발생 시 상세 (시각 + reason)
-    if failures:
-        body.append('### 서버 장애 상세 (server_failed, 24h)\n')
-        body.append('| 시각 (KST) | 인스턴스 | reason |')
-        body.append('|---|---|---|')
-        for f in failures[:10]:
+    # 서버 장애 + downtime 상세 (server_failed/deploy_started → server_available 매칭)
+    if recoveries:
+        body.append('### 서버 장애 / 배포 downtime (24h)\n')
+        body.append('| 시각 (KST) | 종류 | 인스턴스 | reason | recovery | grace 60s |')
+        body.append('|---|---|---|---|---|---|')
+        for r in recoveries[:15]:
             try:
-                kst_ts = _parse_iso(f['ts']).astimezone(KST).strftime('%H:%M:%S')
+                kst_ts = _parse_iso(r['start_ts']).astimezone(KST).strftime('%H:%M:%S')
             except Exception:
-                kst_ts = f['ts'][:19]
-            if f['evicted'] or f['oom']:
-                reason = '**OOM** (evicted)'
-            elif f['nonZeroExit']:
-                reason = f'crash (nonZeroExit={f["nonZeroExit"]})'
+                kst_ts = r['start_ts'][:19]
+            if r['kind'] == 'deploy':
+                reason = 'deploy'
+            elif r['evicted'] or r['oom']:
+                reason = '**OOM**'
+            elif r['nonZeroExit']:
+                reason = f'crash (exit={r["nonZeroExit"]})'
             else:
                 reason = 'unknown'
-            body.append(f'| {kst_ts} | …{f["instance"][-6:]} | {reason} |')
+            inst = f'…{r["instance"][-6:]}' if r['instance'] else '-'
+            grace_ok = '✓ OK' if r['within_grace'] else '⚠️ over'
+            body.append(f'| {kst_ts} | {r["kind"]} | {inst} | {reason} | **{r["downtime_s"]:.1f}s** | {grace_ok} |')
+        # 통계 요약
+        dts = sorted(x['downtime_s'] for x in recoveries)
+        med = dts[len(dts)//2]
+        p95 = dts[min(len(dts)-1, int(len(dts)*0.95))]
+        over_count = sum(1 for x in recoveries if not x['within_grace'])
+        body.append(f'\n_n={len(recoveries)} · median={med:.1f}s · p95={p95:.1f}s · max={max(dts):.1f}s · '
+                    f'60s grace 초과 {over_count}건. downtime = `server_failed`/`deploy_started` → `server_available` 간격._')
         body.append('')
 
     body.append('### 임계 alert 이력 (24h)\n')
@@ -1127,17 +1276,20 @@ def run_daily_summary():
         body.append('- 0건 (모두 임계 미달, 안전)')
     body.append('')
 
-    # 7일 trend (CPU/Memory + PVP 게임 수)
+    # 7일 trend (CPU/Memory + PVP 게임 수 + 활성/총 사용자)
     body.append('### 7일 트렌드\n')
     if len(trend_days) >= 2:
-        body.append('| 날짜 | Render CPU max | Aiven Mem max | PVP 게임 | 봇 게임 |')
-        body.append('|---|---|---|---|---|')
+        body.append('| 날짜 | Render CPU max | Aiven Mem max | PVP 게임 | 봇 게임 | 활성 사용자 | 총 계정 |')
+        body.append('|---|---|---|---|---|---|---|')
         for d in trend_days:
             cpu_v = f'{d["render_cpu_max_m"]:.1f}m' if d['render_cpu_max_m'] is not None else '-'
             mem_v = f'{d["aiven_mem_max_pct"]:.2f}%' if d['aiven_mem_max_pct'] is not None else '-'
             pvp_v = str(d['pvp_games']) if d['pvp_games'] is not None else '-'
             bot_v = str(d['bot_games']) if d['bot_games'] is not None else '-'
-            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} |')
+            active_v = str(d['active_users']) if d.get('active_users') is not None else '-'
+            total_v = str(d['total_users']) if d.get('total_users') is not None else '-'
+            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} |')
+        body.append('\n_활성 사용자 = 그 날 게임 한 판 이상 둔 unique 닉네임 (game_over 로그 기반). 총 계정 = `/api/stats` 가 그 날 daily-summary 발행 시 server 에서 가져온 사람 계정 수._')
     else:
         body.append('- 데이터 부족 (수집 시작 직후)')
     body.append('')
@@ -1156,6 +1308,9 @@ def run_daily_summary():
             'total_bot_moves': bot_total,
             'render_cpu_max_m': cpu_st.get('max') or 0,
             'aiven_mem_max_pct': aiven_mem.get('max') or 0,
+            # PR #95 — 활성/총 사용자 trend 누적
+            'active_users': active_users_24h,
+            'total_human_users': (server_stats or {}).get('total_human_users'),
         }
         # 30일 이상 오래된 entry 정리
         cutoff = (kst_today_00 - timedelta(days=30)).strftime('%Y-%m-%d')

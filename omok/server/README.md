@@ -160,6 +160,12 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 
 지금은 가정하지 않음.
 
+### HTTP endpoint
+- `GET /` — 정적 파일 (omok 클라이언트). [omok/index.html](../index.html) 등.
+- `GET /i/{CODE}?n={NICK}` — 초대 링크. OG 메타 응답 후 canonical URL 로 redirect. [infra/share.js](infra/share.js).
+- `GET /api/stats` — 운영 통계 (monitor.py daily-summary 가 호출). `{ total_human_users, ts }` JSON. 봇 user 제외, 인증 없음, no-store cache.
+- `GET /ws` (upgrade) — WebSocket 진입. 모든 게임 / 매칭 / 봇 / 관전 통신.
+
 ### 보안
 - `VALKEY_URL` 에 password 포함. **절대 코드/commit 에 inline 하지 말 것**. 항상 `.env` 또는 Render env 로만.
 - chat / 이슈 / 로그에 노출되면 즉시 Aiven 콘솔에서 password rotate.
