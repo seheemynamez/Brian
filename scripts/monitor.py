@@ -3,7 +3,8 @@
 인프라 메트릭 수집 + 임계 검사 + GitHub Issue 알림.
 
 두 가지 모드:
-  MODE=collect (default) — 매 30분 cron. 메트릭 수집 + 임계 검사 + alert Issue 생성.
+  MODE=collect (default) — 매 5분 cron (외부 cron-job.org → workflow_dispatch).
+                          메트릭 수집 + 임계 검사 + alert Issue 생성.
   MODE=daily-summary    — 매일 09:00 KST (00:00 UTC) cron. 24h+7d 요약 Issue 생성,
                           이전 daily-summary Issue 자동 close.
 
@@ -51,14 +52,18 @@ RENDER_MEM_LIMIT_MB = 512.0
 RENDER_BW_LIMIT_GB = 100.0
 AIVEN_MEM_LIMIT_MB = 1024.0
 
-# 임계
-THRESHOLD_RENDER_CPU_M = 90.0
+# 임계 — cron 30분 → 5분 변경 (2026-05-22) 으로 window 도 30분 → 15분 축소.
+# RETRY 임계는 issue #108 의 false positive (한 사용자 한 게임의 wifi 불안정으로 21건
+# 발생) 를 거르기 위해 20 → 50 으로 상향.
+THRESHOLD_RENDER_CPU_M = 100.0   # 한도 (100m) 도달 — throttle 시작.
 THRESHOLD_AIVEN_MEM_PCT = 80.0
 # 봇 zombie 회복 (PR #85). RETRY 가 정상 동작이지만 burst 가 잦으면 사용자 lag 심각.
 # SKIP 는 RETRY 후에도 회복 못 한 경우 — 거의 발생 X (없어야 정상).
-THRESHOLD_BOT_RETRY_30MIN = 20   # 30분 안 RETRY 20건 이상 — 사용자 다수 lag
-THRESHOLD_BOT_SKIP_30MIN = 3     # 30분 안 SKIP 3건 이상 — RETRY 가 못 잡는 진짜 끊김 패턴
-COOLDOWN_HOURS = 6
+THRESHOLD_BOT_RETRY_15MIN = 50   # 15분 안 RETRY 50건 이상 — 다수 사용자 동시 lag
+THRESHOLD_BOT_SKIP_15MIN = 3     # 15분 안 SKIP 3건 이상 — RETRY 가 못 잡는 진짜 끊김 패턴
+# Cooldown — cron 5분이라 같은 alert 가 evaluation 마다 발사되지 않게.
+# 6시간은 진짜 문제가 회복 안 됐을 때 너무 늦게 재감지 → 2시간으로 단축.
+COOLDOWN_HOURS = 2
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 METRICS_DIR = REPO_ROOT / 'metrics'
@@ -533,11 +538,13 @@ THRESHOLD_DOWNTIME_S = 60.0
 
 
 # ============================================================
-# MODE: collect (매 30분)
+# MODE: collect (매 5분)
 # ============================================================
 def run_collect():
     win_end = NOW
-    win_start = NOW - timedelta(minutes=30)
+    # Window 30분 → 15분 (cron 30분 → 5분 변경에 맞춰 더 세밀하게).
+    # 같은 alert 가 evaluation 마다 재발사되지 않게 COOLDOWN_HOURS=2 으로 묶임.
+    win_start = NOW - timedelta(minutes=15)
     s_iso = win_start.strftime('%Y-%m-%dT%H:%M:%SZ')
     e_iso = win_end.strftime('%Y-%m-%dT%H:%M:%SZ')
 
@@ -598,7 +605,7 @@ def run_collect():
         alerts.append(('render_cpu_high',
             f'[monitor] Render CPU peak {cpu_st["max"]:.1f}m (≥{THRESHOLD_RENDER_CPU_M:.0f}m)',
             f'## Render CPU peak 임계 초과\n\n'
-            f'- 측정: **{cpu_st["max"]:.1f}m** (CPU peak, 최근 30분)\n'
+            f'- 측정: **{cpu_st["max"]:.1f}m** (CPU peak, 최근 15분)\n'
             f'- 임계: ≥ {THRESHOLD_RENDER_CPU_M:.0f}m (한도 {RENDER_CPU_LIMIT_M:.0f}m)\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 같이 본 상태\n'
@@ -623,7 +630,7 @@ def run_collect():
         alerts.append(('worker_timeout',
             f'[monitor] worker_timeout 발생 {len(wt_logs)}건',
             f'## 봇 worker_timeout 발생\n\n'
-            f'- 카운트: **{len(wt_logs)}건** (최근 30분)\n'
+            f'- 카운트: **{len(wt_logs)}건** (최근 15분)\n'
             f'- 임계: > 0 (PR #82+ 0건 유지 베이스)\n\n'
             f'### 샘플\n{samples}\n\n'
             f'self-abort 회귀 의심. 최근 PR 점검 필요.\n'))
@@ -636,13 +643,13 @@ def run_collect():
         alerts.append(('deploy_bad',
             f'[monitor] Render 배포 상태 비정상: {deploy["status"]}',
             f'## Render 배포 비정상\n\n- 상태: **{deploy["status"]}**\n- 시각: {deploy["createdAt"]}\n- 커밋: {deploy["commit"]}\n'))
-    if len(retry_logs) >= THRESHOLD_BOT_RETRY_30MIN:
+    if len(retry_logs) >= THRESHOLD_BOT_RETRY_15MIN:
         samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in retry_logs[:5])
         alerts.append(('bot_retry_burst',
-            f'[monitor] 봇 schedule RETRY {len(retry_logs)}건 (≥{THRESHOLD_BOT_RETRY_30MIN})',
+            f'[monitor] 봇 schedule RETRY {len(retry_logs)}건 (≥{THRESHOLD_BOT_RETRY_15MIN})',
             f'## 봇 RETRY burst — 사용자 다수 Wi-Fi lag 의심\n\n'
-            f'- 카운트: **{len(retry_logs)}건** (최근 30분)\n'
-            f'- 임계: ≥ {THRESHOLD_BOT_RETRY_30MIN}건\n'
+            f'- 카운트: **{len(retry_logs)}건** (최근 15분)\n'
+            f'- 임계: ≥ {THRESHOLD_BOT_RETRY_15MIN}건\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 의미\n'
             f'RETRY = Wi-Fi 잠시 lag 으로 사람 zombie 판정 → 3s 후 재시도. PR #85 의 정상 회복 흐름. '
@@ -651,13 +658,13 @@ def run_collect():
             f'### 같이 본 상태\n'
             f'- Render CPU peak: {cpu_st["max"] if cpu_st else "?"}m\n'
             f'- Aiven CPU max: {aiven_cpu["max"] if aiven_cpu else "?"}%\n'))
-    if len(skip_logs) >= THRESHOLD_BOT_SKIP_30MIN:
+    if len(skip_logs) >= THRESHOLD_BOT_SKIP_15MIN:
         samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in skip_logs[:5])
         alerts.append(('bot_skip_burst',
-            f'[monitor] 봇 schedule SKIP {len(skip_logs)}건 (≥{THRESHOLD_BOT_SKIP_30MIN})',
+            f'[monitor] 봇 schedule SKIP {len(skip_logs)}건 (≥{THRESHOLD_BOT_SKIP_15MIN})',
             f'## 봇 SKIP burst — RETRY 도 못 잡는 끊김 사례\n\n'
-            f'- 카운트: **{len(skip_logs)}건** (최근 30분)\n'
-            f'- 임계: ≥ {THRESHOLD_BOT_SKIP_30MIN}건\n'
+            f'- 카운트: **{len(skip_logs)}건** (최근 15분)\n'
+            f'- 임계: ≥ {THRESHOLD_BOT_SKIP_15MIN}건\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 의미\n'
             f'SKIP 은 PR #85 이후 거의 발생 X 가 정상. burst 발생 = `bothPlayersOnline` 가드를 RETRY 가 '
@@ -668,7 +675,7 @@ def run_collect():
         alerts.append(('server_oom',
             f'[monitor] 서버 OOM 강제 종료 {len(oom_fails)}건',
             f'## 서버 OOM (메모리 한도 초과) 감지\n\n'
-            f'- 카운트: **{len(oom_fails)}건** (최근 30분)\n'
+            f'- 카운트: **{len(oom_fails)}건** (최근 15분)\n'
             f'- 임계: > 0 (OOM 은 자원 부족 신호 — 1건도 위험)\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 의미\n'
@@ -684,7 +691,7 @@ def run_collect():
         alerts.append(('server_crash',
             f'[monitor] 서버 crash (코드 에러) {len(crash_fails)}건',
             f'## 서버 crash 감지 (nonZeroExit)\n\n'
-            f'- 카운트: **{len(crash_fails)}건** (최근 30분)\n'
+            f'- 카운트: **{len(crash_fails)}건** (최근 15분)\n'
             f'- 임계: > 0 (crash 1건도 회귀 신호)\n'
             f'- 시각: {NOW.isoformat()}\n\n'
             f'### 의미\n'
@@ -704,7 +711,7 @@ def run_collect():
         alerts.append(('server_slow_recovery',
             f'[monitor] 서버 downtime {max_dt:.0f}s (> {THRESHOLD_DOWNTIME_S:.0f}s grace)',
             f'## 서버 downtime 이 grace 60s 초과\n\n'
-            f'- 발생: **{len(slow_recoveries)}건** (최근 30분)\n'
+            f'- 발생: **{len(slow_recoveries)}건** (최근 15분)\n'
             f'- 최대 downtime: **{max_dt:.1f}s**\n'
             f'- 임계: > {THRESHOLD_DOWNTIME_S:.0f}s — DISCONNECT_GRACE_MS (60s) 안에 사용자 재연결 어려움 → '
             f'진행 중 게임이 abandoned 처리될 위험.\n\n'
