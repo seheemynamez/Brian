@@ -2,21 +2,23 @@ name: monitor-infra
 
 # Render + Aiven 메트릭 수집 + 임계 검사 + GitHub Issue 알림.
 #
-# 두 cron (정각 high-load 회피 위해 7분/37분 offset):
-#   매시 7분, 37분 — collect 모드: 메트릭 snapshot + 임계 검사 + alert Issue.
-#   매일 UTC 00:07 (KST 09:07) — daily-summary 모드: 24h+7d 요약 + 이전 daily-summary close.
+# Trigger 정책 (다층 안정성):
+#   1) schedule cron (GitHub 내부) — fallback. 정각 high-load 회피 위해 7분/37분 offset.
+#      그러나 GitHub Actions 의 schedule 은 best-effort (peak 시 수십분~수시간 delay/skip
+#      가능, paid plan 도 SLA 없음). PR #84 ~ PR #89 운영 중 skip 사례 다발.
+#   2) workflow_dispatch — 외부 cron 서비스 (예: cron-job.org) 에서 매 30분 PAT 으로 trigger.
+#      이게 primary. docs/MONITOR_RELIABILITY.md 의 setup 절차 참고.
+#   3) repository_dispatch (event_type: 'monitor-collect' / 'monitor-daily-summary') —
+#      향후 GCP Cloud Scheduler 같은 더 신뢰도 높은 외부 trigger 옵션 위해 enabled.
 #
-# 왜 7분/37분?
-#   GitHub Actions schedule cron 은 정각/30분 같은 high-load 시간에 skip 되기 쉬움.
-#   공식 docs: "schedule event can be delayed during periods of high loads ... High load
-#   times include the start of every hour. To decrease the chance of delay, schedule
-#   your workflow to run at a different time of the hour."
-#   PR #84 초기엔 '*/30 * * * *' 였으나 6시간 동안 schedule event 0건 → 7,37 으로 변경.
+# concurrency lock: 외부 ping + schedule + 수동 trigger 가 짧은 시간에 중복 호출돼도
+# 한 번에 1 인스턴스만 실행되도록 보장. cancel-in-progress=false 라 진행 중인 collect
+# 를 끊지 않고 새 trigger 는 큐에 대기 또는 skip.
 
 on:
   schedule:
-    - cron: '7,37 * * * *'  # collect (매시 7분 / 37분)
-    - cron: '7 0 * * *'     # daily-summary (UTC 00:07 = KST 09:07)
+    - cron: '7,37 * * * *'  # collect (매시 7분 / 37분) — fallback
+    - cron: '7 0 * * *'     # daily-summary (UTC 00:07 = KST 09:07) — fallback
   workflow_dispatch:
     inputs:
       mode:
@@ -27,9 +29,14 @@ on:
         options:
           - collect
           - daily-summary
+  # 외부 trigger (GCP Cloud Scheduler 등) 위해 enabled. event_type 으로 mode 분기.
+  repository_dispatch:
+    types: [monitor-collect, monitor-daily-summary]
 
 concurrency:
-  group: monitor-infra-${{ github.event.schedule || github.event.inputs.mode || 'collect' }}
+  # 단일 group key — schedule / workflow_dispatch / repository_dispatch 모두 한 group.
+  # 외부 ping + 내부 cron 동시 trigger 시 한 번만 실행.
+  group: monitor-infra
   cancel-in-progress: false
 
 permissions:
@@ -52,13 +59,21 @@ jobs:
 
       - name: Determine mode
         id: mode
-        # cron 별 모드 선택: '7 0 * * *' (하루 1회 UTC 00:07) 면 daily-summary, 그 외 collect.
-        # workflow_dispatch input 우선.
+        # Trigger 별 mode 매핑:
+        #   workflow_dispatch input → 그대로 사용 (수동 / 외부 ping cron-job.org 의 body)
+        #   repository_dispatch event_type='monitor-daily-summary' → daily-summary
+        #   schedule '7 0 * * *' → daily-summary
+        #   그 외 → collect
         run: |
           INPUT="${{ github.event.inputs.mode }}"
           SCHEDULE="${{ github.event.schedule }}"
+          ACTION="${{ github.event.action }}"
           if [ -n "$INPUT" ]; then
             echo "mode=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ "$ACTION" = "monitor-daily-summary" ]; then
+            echo "mode=daily-summary" >> "$GITHUB_OUTPUT"
+          elif [ "$ACTION" = "monitor-collect" ]; then
+            echo "mode=collect" >> "$GITHUB_OUTPUT"
           elif [ "$SCHEDULE" = "7 0 * * *" ]; then
             echo "mode=daily-summary" >> "$GITHUB_OUTPUT"
           else
