@@ -62,7 +62,12 @@ const scheduleBotMove = (room) => {
   // setTimer 가 같은 botMoveTimer 덮어쓰니 중복 호출돼도 안전.
   const { bothPlayersOnline } = require('./send');
   if (!bothPlayersOnline(room)) {
-    console.error(`[bot] schedule RETRY (사람 잠시 offline/zombie, ${BOT_ZOMBIE_RETRY_MS}ms 후 재시도): bot=${bot.difficulty} stones=${countStones(room.board)} room=${room.code} color=${botColor}`);
+    // 사람의 clientId 도 같이 log — monitor 가 unique user 카운트 (issue #108
+    // 같은 false positive 차단). log.mask 로 앞 8자만 (PII 보호).
+    const { mask } = require('../infra/log');
+    const humanColor = botColor === 'black' ? 'white' : 'black';
+    const humanCid = mask(room.players[humanColor]?.clientId);
+    console.error(`[bot] schedule RETRY (사람 잠시 offline/zombie, ${BOT_ZOMBIE_RETRY_MS}ms 후 재시도): bot=${bot.difficulty} stones=${countStones(room.board)} room=${room.code} color=${botColor} client=${humanCid}`);
     roomRuntime.setTimer(room.code, 'botMoveTimer', setTimeout(() => {
       roomRuntime.clearTimer(room.code, 'botMoveTimer');
       scheduleBotMove(room);
