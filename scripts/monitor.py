@@ -189,6 +189,62 @@ def parse_server_failures(events):
     return out
 
 
+def compute_recovery_times(events):
+    """server_failed / server_available / deploy_started 매칭 → 실제 downtime 계산.
+    한 사용자가 끊긴 채로 있던 시간 측정 (FE reconnect 들어오기 전 backend 부재 구간).
+
+    각 failure 에 대해 그 후 첫 server_available 매칭:
+      crash: server_failed → 다음 server_available
+      deploy: deploy_started → 다음 server_available (build + start + ready)
+
+    반환:
+      [{kind: 'crash'|'deploy', start_ts, end_ts, downtime_s,
+        within_grace, evicted, nonZeroExit, instance}]
+    """
+    # 시간 오름차순 정렬해야 매칭 단순.
+    by_time = sorted(events, key=lambda e: e.get('event', {}).get('timestamp', ''))
+    out = []
+    for i, e in enumerate(by_time):
+        ev = e.get('event', {})
+        t = ev.get('type', '')
+        if t not in ('server_failed', 'deploy_started'):
+            continue
+        start_ts = ev.get('timestamp', '')
+        try:
+            start_dt = _parse_iso(start_ts)
+        except Exception:
+            continue
+        # 같은 시점 이후의 첫 server_available 찾기
+        end_ts, end_dt = None, None
+        for f in by_time[i+1:]:
+            fev = f.get('event', {})
+            if fev.get('type') != 'server_available': continue
+            try:
+                cand_dt = _parse_iso(fev.get('timestamp', ''))
+            except Exception:
+                continue
+            if cand_dt >= start_dt:
+                end_ts = fev.get('timestamp', '')
+                end_dt = cand_dt
+                break
+        if not end_dt: continue   # 아직 회복 안 됨 (현재 진행 중) 또는 데이터 부족
+        downtime_s = (end_dt - start_dt).total_seconds()
+        det = ev.get('details', {}) or {}
+        reason = det.get('reason', {}) or {}
+        out.append({
+            'kind': 'crash' if t == 'server_failed' else 'deploy',
+            'start_ts': start_ts,
+            'end_ts': end_ts,
+            'downtime_s': downtime_s,
+            'within_grace': downtime_s <= 60.0,
+            'evicted': bool(reason.get('evicted')),
+            'nonZeroExit': reason.get('nonZeroExit'),
+            'oom': bool(reason.get('oom')),
+            'instance': det.get('instanceID', ''),
+        })
+    return out
+
+
 # ============================================================
 # Sehee server /api/stats — 운영 user 카운트 (PR #95)
 # ============================================================
@@ -467,7 +523,13 @@ ALERT_LABELS = {
     'bot_skip_burst':   ['monitor', 'alert-bot',    'severity-critical'],
     'server_oom':       ['monitor', 'alert-render', 'severity-critical'],   # OOM 강제 종료
     'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
+    'server_slow_recovery': ['monitor', 'alert-render', 'severity-high'],   # downtime > 60s (grace 초과)
 }
+
+# 60s grace 임계 — server downtime 이 이를 초과하면 사용자 disconnect_grace 만료 위험.
+# 측정 근거: 5/20 crash 폭주 sample (median 43s, p75 59s, max 102s, n=10) +
+# normal deploy sample (17s, n=1). 60s 임계는 max 102s case 같은 outlier 잡기.
+THRESHOLD_DOWNTIME_S = 60.0
 
 
 # ============================================================
@@ -495,6 +557,9 @@ def run_collect():
     failures = parse_server_failures(events)
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
+    # downtime 측정 (PR #97 추가) — server_failed/deploy_started → server_available 매칭.
+    recoveries = compute_recovery_times(events)
+    slow_recoveries = [r for r in recoveries if r['downtime_s'] > THRESHOLD_DOWNTIME_S]
     aiven = aiven_metrics(period='hour')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
@@ -513,6 +578,9 @@ def run_collect():
             'server_failed_count': len(failures),
             'server_oom_count':    len(oom_fails),
             'server_crash_count':  len(crash_fails),
+            'downtime_count': len(recoveries),
+            'downtime_max_s': max((r['downtime_s'] for r in recoveries), default=None),
+            'slow_recovery_count': len(slow_recoveries),
         },
         'aiven': {
             'cpu_pct_avg': aiven_cpu['avg'] if aiven_cpu else None,
@@ -627,6 +695,26 @@ def run_collect():
             f'- 최근 deploy / PR 점검\n'
             f'- Render 로그에서 crash 직전 에러 메시지 확인\n'
             f'- crash loop (짧은 시간 다수) 면 rollback 검토\n'))
+    if slow_recoveries:
+        samples = '\n'.join(
+            f'- `{r["start_ts"][:19]}` {r["kind"]} — downtime **{r["downtime_s"]:.1f}s** (60s grace 초과)'
+            for r in slow_recoveries[:5]
+        )
+        max_dt = max(r['downtime_s'] for r in slow_recoveries)
+        alerts.append(('server_slow_recovery',
+            f'[monitor] 서버 downtime {max_dt:.0f}s (> {THRESHOLD_DOWNTIME_S:.0f}s grace)',
+            f'## 서버 downtime 이 grace 60s 초과\n\n'
+            f'- 발생: **{len(slow_recoveries)}건** (최근 30분)\n'
+            f'- 최대 downtime: **{max_dt:.1f}s**\n'
+            f'- 임계: > {THRESHOLD_DOWNTIME_S:.0f}s — DISCONNECT_GRACE_MS (60s) 안에 사용자 재연결 어려움 → '
+            f'진행 중 게임이 abandoned 처리될 위험.\n\n'
+            f'### 측정\n'
+            f'`server_failed` (또는 `deploy_started`) → `server_available` 간격.\n\n'
+            f'### 샘플\n{samples}\n\n'
+            f'### 다음 조치\n'
+            f'- Render free → Hobby 등급 (cold start ↓) 검토\n'
+            f'- DISCONNECT_GRACE_MS 상향 (현재 60s → 90s) 검토 — 비용 = 진짜 떠난 사용자 자리 60s 더 점유\n'
+            f'- 반복 발생 시 root cause (메모리 / 코드 회귀) 파악\n'))
 
     for key, title, body in alerts:
         if not cooldown_ok(state, key):
@@ -910,6 +998,8 @@ def run_daily_summary():
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
     deploy_count = sum(1 for e in events if e.get('event', {}).get('type') == 'deploy_ended')
+    # downtime 계산 (PR #97) — server_failed/deploy_started → server_available 매칭
+    recoveries = compute_recovery_times(events)
 
     # 3) 시간대별 분포 (KST hour bucket)
     games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
@@ -1148,23 +1238,34 @@ def run_daily_summary():
     body.append(f'| deploy 횟수 | {deploy_count} |')
     body.append('')
 
-    # server_failed 발생 시 상세 (시각 + reason)
-    if failures:
-        body.append('### 서버 장애 상세 (server_failed, 24h)\n')
-        body.append('| 시각 (KST) | 인스턴스 | reason |')
-        body.append('|---|---|---|')
-        for f in failures[:10]:
+    # 서버 장애 + downtime 상세 (server_failed/deploy_started → server_available 매칭)
+    if recoveries:
+        body.append('### 서버 장애 / 배포 downtime (24h)\n')
+        body.append('| 시각 (KST) | 종류 | 인스턴스 | reason | recovery | grace 60s |')
+        body.append('|---|---|---|---|---|---|')
+        for r in recoveries[:15]:
             try:
-                kst_ts = _parse_iso(f['ts']).astimezone(KST).strftime('%H:%M:%S')
+                kst_ts = _parse_iso(r['start_ts']).astimezone(KST).strftime('%H:%M:%S')
             except Exception:
-                kst_ts = f['ts'][:19]
-            if f['evicted'] or f['oom']:
-                reason = '**OOM** (evicted)'
-            elif f['nonZeroExit']:
-                reason = f'crash (nonZeroExit={f["nonZeroExit"]})'
+                kst_ts = r['start_ts'][:19]
+            if r['kind'] == 'deploy':
+                reason = 'deploy'
+            elif r['evicted'] or r['oom']:
+                reason = '**OOM**'
+            elif r['nonZeroExit']:
+                reason = f'crash (exit={r["nonZeroExit"]})'
             else:
                 reason = 'unknown'
-            body.append(f'| {kst_ts} | …{f["instance"][-6:]} | {reason} |')
+            inst = f'…{r["instance"][-6:]}' if r['instance'] else '-'
+            grace_ok = '✓ OK' if r['within_grace'] else '⚠️ over'
+            body.append(f'| {kst_ts} | {r["kind"]} | {inst} | {reason} | **{r["downtime_s"]:.1f}s** | {grace_ok} |')
+        # 통계 요약
+        dts = sorted(x['downtime_s'] for x in recoveries)
+        med = dts[len(dts)//2]
+        p95 = dts[min(len(dts)-1, int(len(dts)*0.95))]
+        over_count = sum(1 for x in recoveries if not x['within_grace'])
+        body.append(f'\n_n={len(recoveries)} · median={med:.1f}s · p95={p95:.1f}s · max={max(dts):.1f}s · '
+                    f'60s grace 초과 {over_count}건. downtime = `server_failed`/`deploy_started` → `server_available` 간격._')
         body.append('')
 
     body.append('### 임계 alert 이력 (24h)\n')
