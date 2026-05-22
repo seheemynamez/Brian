@@ -1,0 +1,72 @@
+"""monitor 의 환경변수 / 상수 / 임계 — 다른 monitor_* 모듈이 import 해서 사용."""
+from __future__ import annotations
+import os
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+# ============================================================
+# 환경
+# ============================================================
+RENDER_API_KEY = os.environ.get('RENDER_API_KEY', '')
+AIVEN_API_TOKEN = os.environ.get('AIVEN_API_TOKEN', '')
+GH_TOKEN = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN', '')
+GH_REPO = os.environ.get('GITHUB_REPOSITORY', 'seheemynamez/Brian')
+MODE = os.environ.get('MODE', 'collect')
+DRY_RUN = os.environ.get('DRY_RUN', '0') == '1' or not GH_TOKEN
+
+RENDER_SERVICE_ID = 'srv-d84mu23tqb8s73fgcq60'
+# server 의 /api/stats endpoint — 계정 수 가져옴 (PR #95).
+SERVER_PUBLIC_URL = 'https://omok-server-u4rp.onrender.com'
+RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
+AIVEN_PROJECT = 'se2hee-93ed'
+AIVEN_SERVICE = 'valkey-411207c'
+
+# 한도
+RENDER_CPU_LIMIT_M = 100.0   # millicore
+RENDER_MEM_LIMIT_MB = 512.0
+RENDER_BW_LIMIT_GB = 100.0
+AIVEN_MEM_LIMIT_MB = 1024.0
+
+# 임계 — cron 30분 → 5분 변경 (2026-05-22) 으로 window 도 30분 → 15분 축소.
+# Issue #108 분석 (Render 로그 21건 직접 분석): unique room 2개 + 비슷한 시간대
+# 의 두 봇 게임 (각 14건/5분, 7건/2분) 에서 발생. RETRY 메커니즘은 정상 동작
+# (stones 진행 중). 한 게임 평균 ~15건/5분 (≈ 매 턴마다 RETRY 1회) 기준으로:
+# - 동시 2 게임 lag = ~30건/15분
+# - 동시 3 게임 lag = ~45건/15분
+# → 임계 30 으로 동시 2 게임 이상 lag 만 잡음 (한 게임 단독 케이스 제외).
+THRESHOLD_RENDER_CPU_M = 100.0   # 한도 (100m) 도달 — throttle 시작.
+THRESHOLD_AIVEN_MEM_PCT = 80.0
+# 봇 zombie 회복 (PR #85). RETRY 가 정상 동작이지만 burst 가 잦으면 사용자 lag 심각.
+# SKIP 는 RETRY 후에도 회복 못 한 경우 — 거의 발생 X (없어야 정상).
+THRESHOLD_BOT_RETRY_15MIN = 30   # 15분 안 RETRY 30건 이상 (≈동시 2 게임 lag)
+THRESHOLD_BOT_SKIP_15MIN = 3     # 15분 안 SKIP 3건 이상 — RETRY 가 못 잡는 진짜 끊김 패턴
+# 60s grace 임계 — server downtime 이 이를 초과하면 사용자 disconnect_grace 만료 위험.
+# 측정 근거: 5/20 crash 폭주 sample (median 43s, p75 59s, max 102s, n=10) +
+# normal deploy sample (17s, n=1). 60s 임계는 max 102s case 같은 outlier 잡기.
+THRESHOLD_DOWNTIME_S = 60.0
+# Cooldown — cron 5분이라 같은 alert 가 evaluation 마다 발사되지 않게.
+# 6시간은 진짜 문제가 회복 안 됐을 때 너무 늦게 재감지 → 2시간으로 단축.
+COOLDOWN_HOURS = 2
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+METRICS_DIR = REPO_ROOT / 'metrics'
+STATE_FILE = METRICS_DIR / 'state.json'
+DAILY_STATS_FILE = METRICS_DIR / 'daily-stats.json'
+
+NOW = datetime.now(timezone.utc)
+KST = timezone(timedelta(hours=9))
+TODAY = NOW.strftime('%Y-%m-%d')
+
+# alert key → label 매핑
+ALERT_LABELS = {
+    'render_cpu_high':  ['monitor', 'alert-render', 'severity-high'],
+    'aiven_mem_high':   ['monitor', 'alert-aiven',  'severity-high'],
+    'worker_timeout':   ['monitor', 'alert-bot',    'severity-critical'],
+    'no_move':          ['monitor', 'alert-bot',    'severity-high'],
+    'deploy_bad':       ['monitor', 'alert-deploy', 'severity-critical'],
+    'bot_retry_burst':  ['monitor', 'alert-bot',    'severity-high'],
+    'bot_skip_burst':   ['monitor', 'alert-bot',    'severity-critical'],
+    'server_oom':       ['monitor', 'alert-render', 'severity-critical'],   # OOM 강제 종료
+    'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
+    'server_slow_recovery': ['monitor', 'alert-render', 'severity-high'],   # downtime > 60s (grace 초과)
+}
