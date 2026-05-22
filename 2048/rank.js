@@ -232,6 +232,14 @@
   window.addEventListener('net2048:ranking', (e) => {
     lastRanking = e.detail || lastRanking;
     renderRanking();
+    // ranking broadcast 는 다른 사용자가 best 갱신했을 때도 도착함 — 그땐 내 순위도
+    // 한 칸씩 밀려야 하는데 서버는 my_rank 는 broadcast 안 함 (요청-응답 only).
+    // 그래서 broadcast 받을 때마다 내 순위도 같이 fetch. 본인 score_recorded 직후의
+    // broadcast 도 여기 도착하지만 score_recorded 가 이미 requestMyRank 호출했으니
+    // 한 번 더 보내는 비용은 미미 — 최신성 보장이 우선.
+    if (window.Net2048.getNick()) {
+      window.Net2048.requestMyRank();
+    }
   });
   window.addEventListener('net2048:my_rank', (e) => {
     myRank = e.detail || null;
