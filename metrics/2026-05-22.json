@@ -174,5 +174,27 @@
       "mem_pct_avg": 66.03965653603849,
       "mem_pct_max": 67.82668171966806
     }
+  },
+  {
+    "ts": "2026-05-22T03:05:13.689936+00:00",
+    "render": {
+      "cpu_peak_m": 0.7124333,
+      "cpu_avg_m": 0.47185474857142856,
+      "mem_peak_mb": 107.12109565734863,
+      "deploy_status": "live",
+      "worker_timeout_count": 0,
+      "no_move_count": 0,
+      "bot_retry_count": 0,
+      "bot_skip_count": 0,
+      "server_failed_count": 0,
+      "server_oom_count": 0,
+      "server_crash_count": 0
+    },
+    "aiven": {
+      "cpu_pct_avg": 6.511866530378955,
+      "cpu_pct_max": 8.40981144674278,
+      "mem_pct_avg": 65.92713700780666,
+      "mem_pct_max": 67.82668171966806
+    }
   }
 ]
