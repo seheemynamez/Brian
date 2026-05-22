@@ -23,3 +23,30 @@ services:
         # /i/CODE 초대 페이지가 사람을 보낼 canonical 게임 URL.
         # 봇은 OG 메타만 읽고, 사람은 여기로 redirect 된다.
         value: https://seheemynamez.github.io/Brian/omok/
+
+  - type: web
+    name: 2048-server
+    runtime: node
+    region: singapore         # omok 과 동일 — 같은 Aiven valkey 와 가까이
+    plan: free
+    rootDir: 2048/server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/stats
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: STORE_BACKEND
+        value: valkey
+      - key: VALKEY_KEY_PREFIX
+        # omok 의 `omok:prod` 와 namespace 격리.
+        value: 2048:prod
+      - key: VALKEY_URL
+        # Aiven Connection URI. omok 과 동일 값 (같은 인스턴스 공유).
+        sync: false  # dashboard 에서 등록
+      - key: ALLOWED_ORIGINS
+        value: https://seheemynamez.github.io
+      - key: CANONICAL_2048_URL
+        # /i/2048/... 초대 페이지가 사람을 보낼 canonical 게임 URL.
+        value: https://seheemynamez.github.io/Brian/2048/

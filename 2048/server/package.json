@@ -1,0 +1,20 @@
+{
+  "name": "2048-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "2048 ranking server — Aiven Valkey backed, WebSocket realtime broadcast",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test:unit": "node --test __tests__/unit/*.test.js",
+    "test": "node --test __tests__/recovery.test.js",
+    "test:ci": "npm run test:unit && npm test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "ioredis": "^5.4.1"
+  }
+}
