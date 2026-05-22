@@ -13,14 +13,18 @@
 
 ```
 Brian/
-├── 2048/                    # 2048 게임 — 정적 FE + 랭킹 server/ (omok 와 같은 구조)
+├── 2048/                    # 2048 게임
+│   ├── index.html           # 진입 페이지 (canonical / OG / JSON-LD)
+│   ├── game.js sound.js     # 게임 로직 + Web Audio 효과음
+│   ├── net.js rank.js       # 랭킹 WS 클라이언트 + 사이드바/모달
+│   └── server/              # 점수/닉네임/랭킹 broadcast 서버 (Node.js + Aiven Valkey)
 ├── omok/                    # 오목대전
 │   ├── index.html           # 진입 페이지 (canonical / OG / JSON-LD 메타 포함)
 │   ├── css/                 # base / components / screens 로 분리
 │   ├── js/                  # ES Modules — main, net, ui, board, state, help, renju, sound
 │   └── server/              # WebSocket + 정적 서빙 (Node.js)
 ├── metrics/                 # 인프라 메트릭 시계열 (monitor-infra cron 자동 수집·commit)
-├── scripts/monitor.py       # Render + Aiven 메트릭 수집 + 임계 알림 (1,200 줄)
+├── scripts/                 # Render + Aiven 모니터링 (6 파일 모듈 — monitor.py + 5 lib)
 ├── .github/workflows/       # CI (ci.yml) + monitor-infra (monitor-infra.yml)
 ├── render.yaml              # Render 배포 설정 (omok + 2048 서버 Blueprint)
 ├── .nojekyll                # GitHub Pages 가 그대로 서빙하도록
@@ -46,7 +50,11 @@ Brian/
 ## 아키텍처
 
 ### 2048
-게임 로직은 정적 페이지 (GitHub Pages) 에서 브라우저로 돌아가고, **점수 등록 / 랭킹 broadcast / 닉네임 관리** 만 별도 Render 서버 (`2048/server/`) 가 처리합니다. omok 와 같은 Aiven Valkey 인스턴스에 prefix `2048:prod` 로 namespace 격리해서 영속화. 랭킹은 all-time + daily (KST 자정 reset) 두 종류.
+게임 로직은 정적 페이지 (GitHub Pages) 에서 브라우저로 돌아가고, **점수 등록 / 랭킹 broadcast / 닉네임 관리** 만 별도 Render 서버 (`2048/server/`) 가 처리합니다. WS 메시지 흐름은 [`2048/server/README.md`](2048/server/README.md) 참고.
+
+영속화는 Render workspace 마다 자기 Aiven Valkey 인스턴스를 사용 — 같은 인스턴스 안에서는 prefix (`omok:prod` / `2048:prod`) 로 namespace 격리. 게임 종료 시 공유 모달이 뜨고 (Web Share API → 클립보드 복사 fallback), 카카오톡 등으로 공유한 URL 은 Render 서버의 `/i/2048/{nick}/{score}` 가 OG 메타로 점수를 노출하면서 canonical 게임 페이지로 redirect.
+
+랭킹은 all-time + daily (KST 자정 reset) 두 종류. 다른 사용자가 best 갱신 시 `ranking` broadcast 가 모든 클라이언트에 즉시 전파되어 FLIP 애니메이션으로 순위 변동을 보여줌.
 
 ### 오목대전
 프론트엔드와 서버가 **분리 배포**되어 있습니다.
@@ -180,4 +188,4 @@ npm run test:hydrate # 재시작 hydrate 검증 (SIGTERM → restart → resume 
 - GitHub Actions 내장 `schedule` 은 best-effort skip 다발로 의도적 제거. 외부 ping 만 사용.
 - 외부 ping setup: [`docs/MONITOR_RELIABILITY.md`](docs/MONITOR_RELIABILITY.md) 참고 (PAT 발급 + cron-job.org 등록).
 - 결과는 [`metrics/`](metrics/) 에 자동 commit. 상세는 [`metrics/README.md`](metrics/README.md).
-- Issue 자동 발행 정책 (label `monitor`, severity, 6시간 cooldown) 도 같은 README 에.
+- Issue 자동 발행 정책 (label `monitor`, severity, **2시간 cooldown**) 과 임계 값은 [`metrics/README.md`](metrics/README.md) 참고.
