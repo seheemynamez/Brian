@@ -974,7 +974,13 @@ def run_daily_summary():
     # snapshot 만 있는 날 + daily_stats 만 있는 날 모두 표시 (union). 이번 발행의
     # self entry 는 마지막 단계에서 저장되므로 load_daily_stats() 결과엔 아직 없음 —
     # 다음 발행 표에서 보임.
-    all_days = sorted(set(by_day.keys()) | set(daily_stats.keys()))[-7:]
+    #
+    # Cutoff: summary_date (= 어제 KST) 까지만 포함. 발행 당일 (오늘 KST) 의 부분
+    # snapshot — collect 가 KST 00:00~09:00 동안 누적한 — 이 trend 에 보이면
+    # "21일 리포트인데 22일 행이 보임" 같이 혼란. 어제까지로 자름.
+    all_days = sorted(set(by_day.keys()) | set(daily_stats.keys()))
+    all_days = [d for d in all_days if d <= summary_date]
+    all_days = all_days[-7:]
     for d in all_days:
         snaps = by_day.get(d, [])
         cpu_maxes = [s.get('render', {}).get('cpu_peak_m') for s in snaps if s.get('render', {}).get('cpu_peak_m') is not None]
