@@ -22,7 +22,7 @@ Brian/
 ├── metrics/                 # 인프라 메트릭 시계열 (monitor-infra cron 자동 수집·commit)
 ├── scripts/monitor.py       # Render + Aiven 메트릭 수집 + 임계 알림 (1,200 줄)
 ├── .github/workflows/       # CI (ci.yml) + monitor-infra (monitor-infra.yml)
-├── render.yaml              # Render 배포 설정 (omok 서버용)
+├── render.yaml              # Render 배포 설정 (omok + 2048 서버 Blueprint)
 ├── .nojekyll                # GitHub Pages 가 그대로 서빙하도록
 └── README.md
 ```
@@ -156,17 +156,19 @@ npm run test:hydrate # 재시작 hydrate 검증 (SIGTERM → restart → resume 
 - `.nojekyll` 파일로 Jekyll 처리를 끄고, 폴더 구조 그대로 서빙합니다.
 - 푸시하면 자동 재배포됩니다.
 
-### 오목 서버 — Render (Blueprint)
-- [`render.yaml`](render.yaml) 한 파일로 정의돼 있어, Render 대시보드에서 New → Blueprint → 이 레포 선택 → Connect 하면 끝납니다.
-- `main` 에 push 할 때마다 자동 재배포.
+### 게임 서버 — Render (Blueprint, omok + 2048)
+- [`render.yaml`](render.yaml) 한 파일로 **omok-server + 2048-server** 두 service 가 정의돼 있어, Render 대시보드 → New → Blueprint → 이 레포 선택 → Connect 하면 둘 다 자동 생성됩니다.
+- Render workspace 별로 각자 Blueprint 연결 (e.g., 세희 workspace 가 따라가는 인스턴스 vs 병욱 workspace 가 따라가는 인스턴스). `sync: false` env 만 workspace 별로 dashboard 에서 입력.
+- `main` 에 push 할 때마다 두 service 모두 자동 재배포.
 - 무료 플랜이라 15분 무활동 시 sleep 됩니다 (첫 접속 시 30초 정도 콜드스타트).
 - 리전: `singapore` (한국에서 가장 가까움).
-- 필수 환경변수 (Render dashboard 에서 설정):
+- 필수 환경변수 (workspace 별 Render dashboard 에서 입력 — `sync: false`):
+  - `VALKEY_URL=rediss://...` — Aiven Connection URI (workspace 별 자기 Aiven 인스턴스).
+- yaml 안에 박혀 있는 (workspace 공통) env:
   - `STORE_BACKEND=valkey` — production 가드가 memory backend 거부.
-  - `VALKEY_URL=rediss://...` — Aiven Connection URI.
-  - `VALKEY_KEY_PREFIX=omok:prod` — dev 와 namespace 분리.
-  - `ALLOWED_ORIGINS=https://seheemynamez.github.io` — Origin 잠금.
-  - `CANONICAL_OMOK_URL=https://seheemynamez.github.io/Brian/omok/` — `/i/CODE` redirect 타겟.
+  - `VALKEY_KEY_PREFIX` — omok=`omok:prod`, 2048=`2048:prod` (같은 Aiven 인스턴스에 공존해도 namespace 격리).
+  - `ALLOWED_ORIGINS=https://seheemynamez.github.io` — CORS / Origin 잠금.
+  - `CANONICAL_OMOK_URL` / `CANONICAL_2048_URL` — `/i/CODE` / `/i/2048/...` 초대 페이지의 redirect 타겟.
 - 그 외 운영 튜닝 가능 env: `BOT_WORKER_POOL_SIZE`, `BOT_WORKER_TIMEOUT_MS`, `DISCONNECT_GRACE_MS` 등. [omok/server/.env.example](omok/server/.env.example) 참고.
 
 배포된 서버 주소는 [omok/js/net.js](omok/js/net.js) 의 `PROD_WS_URL` 에 박혀 있습니다.
