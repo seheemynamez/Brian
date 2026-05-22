@@ -256,6 +256,13 @@ const KEY_TO_DIR = {
 };
 
 document.addEventListener('keydown', (e) => {
+  // 닉 모달이 떠 있으면 게임 키 처리 안 함 — input 안에서 방향키 누르면 커서가
+  // 이동 안 하고 보드만 움직이던 버그 (LS 가 비어 있는 첫 진입 시 닉 입력 도중).
+  const nickModal = document.getElementById('nick-modal');
+  if (nickModal && !nickModal.classList.contains('hidden')) return;
+  // 포커스가 텍스트 입력에 있으면 방향키는 커서 이동용 — 게임 동작 안 함.
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   const dir = KEY_TO_DIR[e.key];
   if (dir) {
     e.preventDefault();
