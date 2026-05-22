@@ -3365,5 +3365,34 @@
       "mem_pct_avg": 64.85646992224939,
       "mem_pct_max": 66.18307526226009
     }
+  },
+  {
+    "ts": "2026-05-22T13:00:26.776974+00:00",
+    "render": {
+      "cpu_peak_m": 18.883584,
+      "cpu_avg_m": 1.57038128875,
+      "mem_peak_mb": 90.30077934265137,
+      "deploy_status": "live",
+      "worker_timeout_count": 0,
+      "no_move_count": 0,
+      "bot_retry_count": 0,
+      "bot_skip_count": 0,
+      "bot_retry_rooms": 0,
+      "bot_retry_clients": 0,
+      "bot_skip_rooms": 0,
+      "bot_skip_clients": 0,
+      "server_failed_count": 0,
+      "server_oom_count": 0,
+      "server_crash_count": 0,
+      "downtime_count": 0,
+      "downtime_max_s": null,
+      "slow_recovery_count": 0
+    },
+    "aiven": {
+      "cpu_pct_avg": 7.373259923785272,
+      "cpu_pct_max": 11.315832382195467,
+      "mem_pct_avg": 64.75011729368248,
+      "mem_pct_max": 65.88517416707184
+    }
   }
 ]
