@@ -1,7 +1,6 @@
 // ============================================================
-// game-logic 단위 테스트.
-// emptyBoard / isDraw / BOARD_SIZE 만 실제 사용됨 (checkWin 은 dead code,
-// 실제 승리 판정은 renju.checkWinRenju 가 담당).
+// game-logic 단위 테스트 — 보드 상수 / emptyBoard / isDraw.
+// 승리 판정은 game/renju.js 의 checkWinRenju 가 담당 — 별도 테스트 파일 (renju.test.js).
 // ============================================================
 
 'use strict';
