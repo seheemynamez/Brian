@@ -209,13 +209,6 @@ const scoreLines = (lines, patternList) => {
   return total;
 };
 
-// scoreFor 는 backward compat — classifyState 등 외부에서 단일 색 점수 필요 시.
-// 라인을 두 번 빌드하지 않게 evaluatePosition 에서는 별도 경로 사용.
-const scoreFor = (board, color) => {
-  const lines = getRawLines(board);
-  return scoreLines(lines, color === 'black' ? PATTERN_SCORES_B : PATTERN_SCORES_W);
-};
-
 // 평가: 자기 점수 - 상대 점수 × DEFENSIVE_BIAS (1.1).
 // 상대 위협이 같은 크기여도 약간 더 무겁게 다뤄 봇이 공격보다 방어를 살짝 우선시.
 // 동률 시점에서 자기 패턴 발전이 아닌 상대 차단 쪽으로 기울어짐.
