@@ -45,17 +45,24 @@
   // ---- 닉네임 모달 ----
   // 최초 진입 시 + 사용자가 직접 변경 버튼 눌렀을 때.
   // omok 의 direct-join-modal 톤을 따라 함 (빈칸 OK → 자동 부여).
+  //
+  // pendingAutoNick: 모달을 열 때 한 번 생성해서 placeholder 와 "비워두면 부여될 닉"
+  // 둘 다에 사용. 사용자에게 보여준 닉과 실제 부여될 닉을 동기화 — 이 변수 없이
+  // 호출마다 genGuestNick() 새로 부르면 placeholder 와 실제 부여 닉이 달라짐.
+  let pendingAutoNick = '';
+
   const ensureNicknameModalEl = () => {
     let el = $('nick-modal');
     if (el) return el;
     el = document.createElement('div');
     el.id = 'nick-modal';
     el.className = 'nick-modal hidden';
+    // placeholder 는 openNicknameModal 에서 항상 새로 박으니 여기선 빈 값.
     el.innerHTML = `
       <div class="nick-modal-box">
         <h2>닉네임</h2>
         <p class="nick-modal-desc">랭킹에 표시될 이름이에요. 비워두면 자동으로 정해져요.</p>
-        <input id="nick-input" type="text" maxlength="14" placeholder="${escapeHtml(genGuestNick())}" autocomplete="off" />
+        <input id="nick-input" type="text" maxlength="14" placeholder="" autocomplete="off" />
         <div class="nick-modal-actions">
           <button id="nick-cancel" type="button" class="ghost">취소</button>
           <button id="nick-confirm" type="button">확인</button>
@@ -68,7 +75,8 @@
     $('nick-cancel').addEventListener('click', hide);
     $('nick-confirm').addEventListener('click', () => {
       const raw = $('nick-input').value.trim();
-      const nick = raw || genGuestNick();
+      // 비워두면 모달 열 때 placeholder 로 보여준 그 닉이 그대로 부여 — 일관성.
+      const nick = raw || pendingAutoNick || genGuestNick();
       window.Net2048.sendNickname(nick);
       renderHeader();  // 헤더 닉 즉시 갱신
       hide();
@@ -88,7 +96,9 @@
     const el = ensureNicknameModalEl();
     const input = $('nick-input');
     input.value = window.Net2048.getNick() || '';
-    input.placeholder = genGuestNick();
+    // 모달 열 때마다 한 번 generate — placeholder 와 confirm 양쪽에서 같은 값 사용.
+    pendingAutoNick = genGuestNick();
+    input.placeholder = pendingAutoNick;
     el.classList.remove('hidden');
     setTimeout(() => input.focus(), 30);
   };
