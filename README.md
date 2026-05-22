@@ -108,7 +108,7 @@ Brian/
 - **이모트** — 정해진 셋 (👏🔥😅🤔 등) 으로 양쪽·관전자에 broadcast. 봇도 상황별로 응답.
 - **재연결 복구** — 새로고침 / 비행기모드 / Render 재배포 모두 대응. 진행 중 게임 보존.
 - **초대 URL** — `/i/CODE` 가 OG 메타 응답 후 사람에게 canonical 게임 URL 로 redirect.
-- **운영 모니터링** — Render + Aiven 메트릭 30분 cron 수집, 임계 도달 시 GitHub Issue 자동 발행, 매일 daily-summary 발행.
+- **운영 모니터링** — Render + Aiven 메트릭을 매시 **7,37분** cron 으로 수집, 임계 도달 시 GitHub Issue 자동 발행, 매일 daily-summary 발행.
 
 ---
 
