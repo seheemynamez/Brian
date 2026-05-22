@@ -5,15 +5,14 @@
 //   - boot 직후 모든 player ws 가 없으므로 turn timer 는 등록하지 않는다.
 //   - 사용자가 resume_session / clientId reclaim 으로 돌아오면 그 핸들러가
 //     bothPlayersOnline 확인 후 startTurnTimer + scheduleBotMove 재개.
-//   - 각 player 색에 새 disconnect grace timer 등록 — DISCONNECT_GRACE_MS (90s)
-//     안에 reconnect 못 하면 finalizeAbandon. Render deploy 1분 + 사용자 reconnect
-//     여유까지 보장. (deploy 직전 grace timer 는 메모리 setTimeout 이라 죽었음.)
+//   - 각 player 색에 새 disconnect grace timer 등록 — DISCONNECT_GRACE_MS (기본 60s)
+//     안에 reconnect 못 하면 finalizeAbandon. 데이터 근거는 infra/timings.js 참고.
+//     (deploy 직전 grace timer 는 메모리 setTimeout 이라 죽었음.)
 // ============================================================
 
 const roomRuntime = require('../domain/room-runtime');
 const log = require('../infra/log');
-
-const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 90000;
+const { DISCONNECT_GRACE_MS } = require('../infra/timings');
 
 const rehydrateTimers = () => {
   const { getStore } = require('../store');

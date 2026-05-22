@@ -18,8 +18,10 @@ const BOT_OFFER_DELAY_MS = Number(process.env.BOT_OFFER_DELAY_MS) || 10000;
 // 봇 제안 발송 이력 (clientId 단위) — queue 와 무관하게 유지.
 // 비행기모드 reconnect race 방어: 옛 ws 의 close 가 새 ws 의 queue_join 보다 먼저 fire
 // 되어 옛 entry 가 dequeue 된 경우에도, history 가 남아서 cooldown 으로 중복 발송 차단.
-// store.botOffer 를 통해 보관 → valkey backend 면 재시작 후에도 cooldown 유지.
-const botOfferSentByClientId = require('../store').getStore().botOffer;
+// store.botOffer (메모리 Map) 가 read SoT, persistBotOffer/deleteBotOfferFromStore 가
+// valkey 와의 write-through. 부팅 시 hydrate 가 valkey → store.botOffer 로 채움.
+const store = require('../store').getStore();
+const botOfferSentByClientId = store.botOffer;
 const BOT_OFFER_COOLDOWN_MS = 60_000;  // 발송 후 같은 사용자에게 다시 발송 가능한 최소 간격.
 
 // bot offer 타이머는 queue entry 에 부착 — ws 가 reconnect 로 교체돼도 상태 유지.
@@ -42,9 +44,13 @@ const scheduleBotOfferIfNeeded = (entry) => {
     entry.botOfferSentAt = now;
     if (entry.clientId) {
       botOfferSentByClientId.set(entry.clientId, now);
+      store.persistBotOffer(entry.clientId, now);
       // Lazy cleanup — cooldown 의 2배 지난 항목 제거 (메모리 누수 방지).
       for (const [cid, ts] of botOfferSentByClientId) {
-        if (now - ts > BOT_OFFER_COOLDOWN_MS * 2) botOfferSentByClientId.delete(cid);
+        if (now - ts > BOT_OFFER_COOLDOWN_MS * 2) {
+          botOfferSentByClientId.delete(cid);
+          store.deleteBotOfferFromStore(cid);
+        }
       }
     }
     const liveWs = connections.getWsByConnectionId(entry.connectionId);
