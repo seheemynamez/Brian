@@ -1,13 +1,23 @@
 # Render Blueprint
-# 사용법: Render 대시보드 → New → Blueprint → Brian 레포 선택 → Connect
-# 이후 main에 push할 때마다 자동 재배포됩니다.
+# ============================================================
+# 한 repo, 두 service (omok + 2048). Aiven Valkey 영속화 — 같은 인스턴스에서
+# `omok:prod` / `2048:prod` prefix 로 namespace 격리.
+#
+# Render workspace 마다 연결 — 같은 yaml 을 세희/병욱 workspace 가 각자 따라감.
+# Workspace 별로 별도 service 인스턴스가 생성됨. 환경변수 중 `sync: false` 인 것 (=
+# secret) 만 dashboard 에서 workspace 별로 직접 입력.
+#
+# 사용법:
+#   Render 대시보드 → New → Blueprint → seheemynamez/Brian 선택 → Connect.
+#   이후 main 에 push 할 때마다 두 service 모두 자동 재배포.
 
 services:
+  # ─────────────────────────────────────────────────────────────
   - type: web
     name: omok-server
     runtime: node
-    region: singapore         # 한국에서 가장 가까운 리전
-    plan: free                # 무료 (15분 무활동 시 sleep, 첫 접속 콜드스타트 ~30초)
+    region: singapore          # 한국에서 가장 가까운 리전
+    plan: free                 # 무료 (15분 무활동 시 sleep, 첫 접속 콜드스타트 ~30초)
     rootDir: omok/server
     buildCommand: npm install
     startCommand: node server.js
@@ -16,18 +26,22 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: ALLOWED_ORIGINS
-        # 쉼표 구분. Pages 도메인만 허용.
+      - key: STORE_BACKEND       # production 가드: valkey 아니면 부팅 거부
+        value: valkey
+      - key: VALKEY_KEY_PREFIX   # 2048 의 `2048:prod` 와 격리
+        value: omok:prod
+      - key: VALKEY_URL          # Aiven Connection URI — workspace 별로 dashboard 에서 등록
+        sync: false              # secret 이라 yaml 에 inline 금지 (rotate 시도 안전)
+      - key: ALLOWED_ORIGINS     # Pages 도메인만 허용 (CORS)
         value: https://seheemynamez.github.io
-      - key: CANONICAL_OMOK_URL
-        # /i/CODE 초대 페이지가 사람을 보낼 canonical 게임 URL.
-        # 봇은 OG 메타만 읽고, 사람은 여기로 redirect 된다.
+      - key: CANONICAL_OMOK_URL  # /i/CODE 초대 페이지가 사람을 보낼 canonical 게임 URL
         value: https://seheemynamez.github.io/Brian/omok/
 
+  # ─────────────────────────────────────────────────────────────
   - type: web
     name: 2048-server
     runtime: node
-    region: singapore         # omok 과 동일 — 같은 Aiven valkey 와 가까이
+    region: singapore          # omok 과 동일 — Aiven 과 가까이
     plan: free
     rootDir: 2048/server
     buildCommand: npm install
@@ -39,14 +53,11 @@ services:
         value: production
       - key: STORE_BACKEND
         value: valkey
-      - key: VALKEY_KEY_PREFIX
-        # omok 의 `omok:prod` 와 namespace 격리.
+      - key: VALKEY_KEY_PREFIX   # omok 의 `omok:prod` 와 격리
         value: 2048:prod
-      - key: VALKEY_URL
-        # Aiven Connection URI. omok 과 동일 값 (같은 인스턴스 공유).
-        sync: false  # dashboard 에서 등록
+      - key: VALKEY_URL          # workspace 별로 dashboard 에서 등록
+        sync: false
       - key: ALLOWED_ORIGINS
         value: https://seheemynamez.github.io
-      - key: CANONICAL_2048_URL
-        # /i/2048/... 초대 페이지가 사람을 보낼 canonical 게임 URL.
+      - key: CANONICAL_2048_URL  # /i/2048/... 초대 페이지의 canonical 타깃
         value: https://seheemynamez.github.io/Brian/2048/
