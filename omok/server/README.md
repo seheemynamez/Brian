@@ -7,19 +7,22 @@ Korean Gomoku WebSocket server. 정적 파일 호스팅 (omok/ 디렉토리) + `
 ```bash
 npm install
 npm start             # 기본 — memory backend, port 8080
-npm test              # 회귀 테스트 (memory backend, 57 시나리오)
-npm run test:valkey   # 같은 테스트를 valkey backend 로 (.env 의 VALKEY_URL 사용, prefix omok:test 자동격리)
+npm run test:unit     # 단위 테스트 (renju / rating / game-logic / parity / bot / ranking-sort 등 — 138 케이스)
+npm test              # E2E 회귀 (recovery / reconnect / spectator / bot lifecycle — 79 시나리오, memory backend)
+npm run test:ci       # 둘 다 (CI 와 동일)
+npm run test:valkey   # E2E 를 valkey backend 로 (.env 의 VALKEY_URL 사용, prefix omok:test 자동격리)
 npm run test:hydrate  # 부팅 hydrate 검증 — 방생성 → SIGTERM → restart → resume 일치 확인
 ```
 
 수동 스모크 체크리스트: `scripts/MANUAL_SMOKE.md`
 Render 프로덕션 검증 절차: `scripts/RENDER_VERIFY.md`
 
-`.env` 파일을 만들면 `node --env-file-if-exists=.env server.js` 가 자동 로드합니다.
+`.env` 파일을 만들면 `node --env-file-if-exists=.env server.js` 가 자동 로드합니다. 운영 튜닝 가능한 env 전체 목록은 [`.env.example`](.env.example).
 
 콘솔 부팅 로그 예시:
 ```
-[server_start] port=8080 heartbeat_ms=30000 allowed_origins=any store=memory
+[store_ready] backend=memory
+[server_start] port=8080 heartbeat_ms=15000 allowed_origins=any store=memory
 ```
 
 ## 같은 WiFi 의 다른 기기에서 접속
@@ -60,12 +63,15 @@ VALKEY_KEY_PREFIX=omok:dev      # 로컬. production 은 'omok:prod'
 
 | 키 | 값 |
 |---|---|
-| `{PREFIX}:room:{code}` | room JSON (board / turn / players / status / turnDeadline / ...) |
+| `{PREFIX}:room:{code}` | room JSON (board / turn / players / status / turnDeadline / turnRemainMs / ...) |
 | `{PREFIX}:rooms` | SET of room codes (인덱스) |
 | `{PREFIX}:session:{sid}` | session JSON (role / code / color / clientId / nickname / lastSeenAt) |
 | `{PREFIX}:sessions` | SET of session IDs |
 | `{PREFIX}:queue` | 매칭 대기 큐 array JSON |
 | `{PREFIX}:botOffer:{clientId}` | 봇 제안 발송 시각 (EX 120s 자동 만료) |
+| `{PREFIX}:user:{clientId}` | user JSON (rating / wins / losses / draws / nickname / createdAt) |
+| `{PREFIX}:users` | SET of user clientIds (랭킹 인덱스) |
+| `{PREFIX}:recent_games` | LIST of game-over JSON (LPUSH + LTRIM, cap = `RECENT_GAMES_CAP`) |
 
 쓰기 시점: 메모리 갱신 직후 fire-and-forget 으로 valkey 에 SET (write-through).
 읽기는 항상 메모리. 부팅 시 한 번 hydrate 로 메모리 cache 초기화.
