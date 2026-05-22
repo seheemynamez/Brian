@@ -6,8 +6,7 @@
 //   - 사용자가 resume_session / clientId reclaim 으로 돌아오면 그 핸들러가
 //     bothPlayersOnline 확인 후 startTurnTimer + scheduleBotMove 재개.
 //   - 각 player 색에 새 disconnect grace timer 등록 — DISCONNECT_GRACE_MS (기본 60s)
-//     안에 reconnect 못 하면 finalizeAbandon. Render deploy 시간이 길거나 사용자
-//     reconnect 여유 더 필요하면 prod env 로 DISCONNECT_GRACE_MS 90s+ 로 override.
+//     안에 reconnect 못 하면 finalizeAbandon. 데이터 근거는 infra/timings.js 참고.
 //     (deploy 직전 grace timer 는 메모리 setTimeout 이라 죽었음.)
 // ============================================================
 
