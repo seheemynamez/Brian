@@ -344,13 +344,19 @@
       const score = Number(btn.dataset.score || 0);
       const nick  = window.Net2048.getNick() || '';
       const url   = window.Net2048.buildShareUrl(nick, score);
-      const text  = nick
+      const caption = nick
         ? `${nick} 님 ${score}점! 2048 더 높은 점수에 도전해보세요`
         : `2048 — 도전해보세요`;
       // 1) Web Share API — 모바일 native share sheet (카카오톡 / 메시지 등).
+      // 주의: text + url 두 필드 분리해서 넘기면 카카오톡 같은 일부 앱이
+      // 둘을 separator 없이 concat 해서 URL 끝이 다음 단어와 붙어 깨짐
+      // (예: ".../1956SEHEE MY NAME!" — URL 이 /1956SEHEE 로 파싱됨).
+      // 해결: URL 을 text 안에 줄바꿈으로 포함시키고 url 필드는 비움.
+      // 어떤 앱이든 URL 이 독립 줄에 놓여서 OG fetcher 가 깨끗하게 파싱.
+      const shareText = `${caption}\n${url}`;
       if (navigator.share) {
         try {
-          await navigator.share({ title: '2048 도전!', text, url });
+          await navigator.share({ title: '2048 도전!', text: shareText });
           hide();         // 공유 성공 — 모달 닫음
           return;
         } catch (e) {
