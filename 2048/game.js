@@ -239,6 +239,10 @@ function move(direction) {
       gameOver = true;
       if (!won) showMessage('게임 끝! "새 게임"을 눌러 다시 시작하세요.', '');
       window.Sound2048 && window.Sound2048.playSound('gameover');
+      // 점수 등록 — rank.js 가 닉네임 없으면 모달 띄우고 사용자 확인 후 제출.
+      if (score > 0 && window.Rank2048) {
+        window.Rank2048.onScoreSubmitted(score);
+      }
     }
   }, SLIDE_MS);
 }
