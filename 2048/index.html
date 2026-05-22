@@ -72,41 +72,67 @@
 <body>
   <h1>2048</h1>
 
-  <div class="header">
-    <div class="score">
-      <div class="score-label">점수</div>
-      <div class="score-value" id="score">0</div>
+  <div class="layout">
+    <div class="game-col">
+      <div class="header">
+        <div class="score">
+          <div class="score-label">점수</div>
+          <div class="score-value" id="score">0</div>
+        </div>
+        <div class="score">
+          <div class="score-label">최고 점수</div>
+          <div class="score-value" id="best">0</div>
+        </div>
+        <button id="new-game">새 게임</button>
+        <button id="btn-mute" class="icon-btn" type="button" aria-label="음소거 토글">🔊</button>
+      </div>
+
+      <div class="board" id="board">
+        <div class="cells">
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+        </div>
+        <div class="tile-layer" id="tile-layer"></div>
+      </div>
+
+      <div class="message" id="message"></div>
+
+      <p class="help">
+        화살표 키 또는 화면을 <b>스와이프</b>해서 타일을 움직이세요.<br>
+        같은 숫자가 만나면 합쳐집니다. 2048을 만들어 보세요!
+      </p>
+
+      <a class="other-games" href="https://seheemynamez.github.io/" target="_blank" rel="noopener">
+        🎲 다른 게임은 어떠세요? →
+      </a>
     </div>
-    <div class="score">
-      <div class="score-label">최고 점수</div>
-      <div class="score-value" id="best">0</div>
-    </div>
-    <button id="new-game">새 게임</button>
-    <button id="btn-mute" class="icon-btn" type="button" aria-label="음소거 토글">🔊</button>
+
+    <aside class="rank-col" aria-label="랭킹">
+      <div class="rank-header">
+        <div class="rank-title">랭킹</div>
+        <div class="rank-conn offline" id="rank-conn">● 연결 끊김</div>
+      </div>
+      <div class="rank-me">
+        <span class="rank-me-label">내 닉네임</span>
+        <span class="rank-my-nick" id="rank-my-nick">(닉네임 없음)</span>
+        <button id="rank-edit-nick" class="rank-edit-btn" type="button" aria-label="닉네임 변경">✎</button>
+      </div>
+      <div class="rank-tabs">
+        <button class="rank-tab active" data-tab="allTime" type="button">전체</button>
+        <button class="rank-tab" data-tab="daily" type="button">오늘</button>
+      </div>
+      <div class="rank-list" id="rank-list">
+        <div class="rank-empty">로딩 중…</div>
+      </div>
+      <div class="rank-myrank" id="rank-myrank"></div>
+    </aside>
   </div>
-
-  <div class="board" id="board">
-    <div class="cells">
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
-    </div>
-    <div class="tile-layer" id="tile-layer"></div>
-  </div>
-
-  <div class="message" id="message"></div>
-
-  <p class="help">
-    화살표 키 또는 화면을 <b>스와이프</b>해서 타일을 움직이세요.<br>
-    같은 숫자가 만나면 합쳐집니다. 2048을 만들어 보세요!
-  </p>
-
-  <a class="other-games" href="https://seheemynamez.github.io/" target="_blank" rel="noopener">
-    🎲 다른 게임은 어떠세요? →
-  </a>
 
   <script src="sound.js" defer></script>
+  <script src="net.js" defer></script>
+  <script src="rank.js" defer></script>
   <script src="game.js" defer></script>
 </body>
 </html>
