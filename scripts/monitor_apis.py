@@ -13,7 +13,7 @@ from monitor_config import (
     AIVEN_API_TOKEN, AIVEN_PROJECT, AIVEN_SERVICE,
     DRY_RUN, GH_REPO, GH_TOKEN,
     RENDER_API_KEY, RENDER_OWNER_ID, RENDER_SERVICE_ID,
-    SERVER_PUBLIC_URL,
+    SERVER_PUBLIC_URL, SERVICES,
 )
 from monitor_data import parse_iso
 
@@ -50,17 +50,25 @@ def render_headers():
     return {'Authorization': f'Bearer {RENDER_API_KEY}'}
 
 
-def render_metric(kind, start_iso, end_iso, resolution_s=300):
+def _service_id(service):
+    return SERVICES[service]['service_id']
+
+
+def _service_url(service):
+    return SERVICES[service]['public_url']
+
+
+def render_metric(kind, start_iso, end_iso, resolution_s=300, service='omok'):
     qs = urllib.parse.urlencode({
-        'resource': RENDER_SERVICE_ID,
+        'resource': _service_id(service),
         'startTime': start_iso, 'endTime': end_iso,
         'resolutionSeconds': resolution_s,
     })
     return http_get(f'https://api.render.com/v1/metrics/{kind}?{qs}', render_headers())
 
 
-def render_recent_deploy_status():
-    url = f'https://api.render.com/v1/services/{RENDER_SERVICE_ID}/deploys?limit=1'
+def render_recent_deploy_status(service='omok'):
+    url = f'https://api.render.com/v1/services/{_service_id(service)}/deploys?limit=1'
     data = http_get(url, render_headers())
     if not data: return None
     dep = data[0].get('deploy', {})
@@ -71,13 +79,13 @@ def render_recent_deploy_status():
     }
 
 
-def render_search_logs(text, start_iso, end_iso, limit=100, max_pages=5):
-    """로그 검색 (페이지네이션)."""
+def render_search_logs(text, start_iso, end_iso, limit=100, max_pages=5, service='omok'):
+    """로그 검색 (페이지네이션). service 별 service_id."""
     all_logs = []
     end = end_iso
     for _ in range(max_pages):
         qs = urllib.parse.urlencode({
-            'ownerId': RENDER_OWNER_ID, 'resource': RENDER_SERVICE_ID,
+            'ownerId': RENDER_OWNER_ID, 'resource': _service_id(service),
             'startTime': start_iso, 'endTime': end,
             'text': text, 'limit': limit, 'direction': 'backward',
         })
@@ -95,11 +103,11 @@ def render_search_logs(text, start_iso, end_iso, limit=100, max_pages=5):
     return all_logs
 
 
-def render_events(start_iso, end_iso, limit=100):
+def render_events(start_iso, end_iso, limit=100, service='omok'):
     """Render events API — server_failed/available/deploy 등 인프라 이벤트.
     API 는 startTime 미지원 → endTime + limit 으로 fetch 후 client-side 필터."""
     qs = urllib.parse.urlencode({'endTime': end_iso, 'limit': limit})
-    url = f'https://api.render.com/v1/services/{RENDER_SERVICE_ID}/events?{qs}'
+    url = f'https://api.render.com/v1/services/{_service_id(service)}/events?{qs}'
     try:
         events = http_get(url, render_headers())
     except urllib.error.HTTPError:
@@ -123,12 +131,16 @@ def render_events(start_iso, end_iso, limit=100):
 # ============================================================
 # 자체 server /api/stats — 운영 user 카운트 (PR #95)
 # ============================================================
-def fetch_server_stats():
-    """GET /api/stats — {total_human_users, ts}. cold-start / down 시 None."""
+def fetch_server_stats(service='omok'):
+    """GET /api/stats — service 별 응답 형식 다름:
+      omok: {total_human_users, ts}
+      2048: {total_users, top_all_time, top_daily, active_ws, ts}
+    cold-start / down 시 None.
+    """
     try:
-        return http_get(f'{SERVER_PUBLIC_URL}/api/stats', timeout=10)
+        return http_get(f'{_service_url(service)}/api/stats', timeout=10)
     except Exception as e:
-        print(f'  /api/stats fetch 실패: {e}')
+        print(f'  [{service}] /api/stats fetch 실패: {e}')
         return None
 
 

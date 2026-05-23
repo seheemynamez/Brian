@@ -488,3 +488,29 @@ def player_activity(game_overs):
             elif winner != 'draw' and winner:
                 d['losses'] += 1
     return by_nick
+
+
+# ============================================================
+# CPU peak alert 본문 보강 — 같은 window 의 봇 활동 요약 (omok 전용).
+# parse_bot_moves 결과를 받아서 alert 본문에 들어갈 markdown 문자열 반환.
+# 원인 추적: 어떤 난이도/cfg 가 활성이었고 ≥10s 장기 search 가 몇 건이었는지.
+# ============================================================
+def bot_activity_summary(moves):
+    if not moves:
+        return '- 봇 활동: 없음'
+    by_diff = defaultdict(int)
+    by_cfg = defaultdict(int)
+    long_count = 0
+    for r in moves:
+        by_diff[r['diff']] += 1
+        by_cfg[f"d{r['cfgD']}×t{r['cfgT']}"] += 1
+        if r['elap'] >= 10000:
+            long_count += 1
+    diff_str = ', '.join(f'{k}={v}' for k, v in sorted(by_diff.items()))
+    cfg_str = ', '.join(f'{k}={v}' for k, v in sorted(by_cfg.items()))
+    return (
+        f'- 총 봇 수: **{len(moves)}건**\n'
+        f'- 난이도 분포: {diff_str}\n'
+        f'- cfg 분포: {cfg_str}\n'
+        f'- 장기 search (≥10s): **{long_count}건**'
+    )
