@@ -9849,5 +9849,63 @@
       "mem_pct_avg": 66.68790291290833,
       "mem_pct_max": 67.62437267715433
     }
+  },
+  {
+    "ts": "2026-05-23T17:10:16.359962+00:00",
+    "services": {
+      "omok": {
+        "render": {
+          "cpu_peak_m": 131.01389999999998,
+          "cpu_avg_m": 38.0907534375,
+          "mem_peak_mb": 99.70703125,
+          "deploy_status": "live",
+          "server_failed_count": 0,
+          "server_oom_count": 0,
+          "server_crash_count": 0,
+          "downtime_count": 0,
+          "downtime_max_s": null,
+          "slow_recovery_count": 0,
+          "worker_timeout_count": 0,
+          "no_move_count": 0,
+          "bot_retry_count": 0,
+          "bot_skip_count": 0,
+          "bot_retry_rooms": 0,
+          "bot_retry_clients": 0,
+          "bot_skip_rooms": 0,
+          "bot_skip_clients": 0
+        },
+        "stats": {
+          "total_human_users": 183,
+          "ts": "2026-05-23T17:10:27.742Z"
+        }
+      },
+      "2048": {
+        "render": {
+          "cpu_peak_m": 0.30861667,
+          "cpu_avg_m": 0.19827604125,
+          "mem_peak_mb": 35.69531440734863,
+          "deploy_status": "live",
+          "server_failed_count": 0,
+          "server_oom_count": 0,
+          "server_crash_count": 0,
+          "downtime_count": 0,
+          "downtime_max_s": null,
+          "slow_recovery_count": 0
+        },
+        "stats": {
+          "total_users": 6,
+          "top_all_time": 26276,
+          "top_daily": 0,
+          "active_ws": 0,
+          "ts": "2026-05-23T17:10:29.444Z"
+        }
+      }
+    },
+    "aiven": {
+      "cpu_pct_avg": 7.099339481731326,
+      "cpu_pct_max": 8.880373208954751,
+      "mem_pct_avg": 66.6784805985114,
+      "mem_pct_max": 67.62437267715433
+    }
   }
 ]
