@@ -26,7 +26,10 @@ const CANONICAL_2048_URL = process.env.CANONICAL_2048_URL || null;
 const shareHandler = makeShareHandler({ canonical2048Url: CANONICAL_2048_URL });
 
 const statsHandler = (req, res) => {
-  const payload = { ...getUserStats(), ts: new Date().toISOString() };
+  // active_ws — wss 가 아래에서 만들어지지만 statsHandler 가 실제 호출되는 시점엔
+  // 이미 init. 아직 없으면 0.
+  const activeWs = wss ? wss.clients.size : 0;
+  const payload = { ...getUserStats(), active_ws: activeWs, ts: new Date().toISOString() };
   res.writeHead(200, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
@@ -59,6 +62,9 @@ wss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.clientId = null;
   ws.nickname = '';
+  // monitor 가 시간대별 동접/연결 burst 추적용. clientId/nick 은 connection
+  // 시점엔 아직 모름 (set_nickname 도착 전) — close 시 mask 출력.
+  log.event('ws_connected', { active: wss.clients.size });
 
   ws.on('pong', () => { ws.isAlive = true; });
 
@@ -73,7 +79,13 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => { /* user 데이터는 valkey 에 영속 — 정리 필요 X */ });
+  ws.on('close', () => {
+    log.event('ws_disconnected', {
+      client: log.mask(ws.clientId), nick: ws.nickname || undefined,
+      active: wss.clients.size,
+    });
+    /* user 데이터는 valkey 에 영속 — 정리 필요 X */
+  });
 });
 
 // Heartbeat — 15s cycle, zombie ws 정리.
