@@ -46,10 +46,11 @@ PR — 2048 통합으로 service 별 분리:
   "aiven": {
     "cpu_pct_avg": 7.0, "cpu_pct_max": 8.83,
     "mem_pct_avg": 64.76, "mem_pct_max": 68.69
-  },
-  "render": { /* omok 평탄 사본 — monitor_summary 옛 코드 backward-compat. PR 3 에서 제거 예정 */ }
+  }
 }
 ```
+
+옛 metrics/*.json (`render: {...}` 평탄) 도 `snap_omok_render` helper 가 fallback 으로 처리 — 7일 트렌드 window 안에서 자연 expire.
 
 - Aiven 은 omok / 2048 공유 (같은 인스턴스, prefix 격리) — `aiven` 한 번만 수집.
 - 봇 관련 필드 (`worker_timeout_count` 등) 는 `has_bot_logs=true` 인 service (omok) 에만.

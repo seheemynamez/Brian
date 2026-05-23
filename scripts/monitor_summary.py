@@ -18,6 +18,7 @@ from monitor_data import (
     parse_bot_moves, parse_game_over, parse_game_started, parse_iso,
     parse_online_count_series, parse_server_failures, player_activity,
     render_bw_sum_mb, render_cpu_stats, render_mem_stats, save_daily_stats,
+    snap_2048_render, snap_aiven, snap_omok_render,
 )
 
 
@@ -56,41 +57,65 @@ def run_daily_summary():
     print(f'=== daily-summary {summary_date} KST (window {s_iso} ~ {e_iso}) ===')
 
     # 1) Render / Aiven 메트릭 (24h KST 캘린더 day)
-    cpu = render_metric('cpu', s_iso, e_iso, 300)
-    mem = render_metric('memory', s_iso, e_iso, 300)
+    # omok render
+    cpu = render_metric('cpu', s_iso, e_iso, 300, service='omok')
+    mem = render_metric('memory', s_iso, e_iso, 300, service='omok')
     bw_30d_start = (win_end_utc - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    bw = render_metric('bandwidth', bw_30d_start, e_iso, 300)
+    bw = render_metric('bandwidth', bw_30d_start, e_iso, 300, service='omok')
     cpu_st = render_cpu_stats(cpu) or {}
     mem_st = render_mem_stats(mem) or {}
     bw_30d = render_bw_sum_mb(bw)
+    # 2048 render — 별 service.
+    cpu_2048 = render_metric('cpu', s_iso, e_iso, 300, service='2048')
+    mem_2048 = render_metric('memory', s_iso, e_iso, 300, service='2048')
+    bw_2048 = render_metric('bandwidth', bw_30d_start, e_iso, 300, service='2048')
+    cpu_2048_st = render_cpu_stats(cpu_2048) or {}
+    mem_2048_st = render_mem_stats(mem_2048) or {}
+    bw_2048_30d = render_bw_sum_mb(bw_2048)
+    # Aiven 은 공유 (omok / 2048 같은 instance, prefix 격리).
     aiven = aiven_metrics(period='day')
     aiven_cpu = aiven_stats(aiven, 'cpu_usage') or {}
     aiven_mem = aiven_stats(aiven, 'mem_usage') or {}
     aiven_disk = aiven_stats(aiven, 'disk_usage') or {}
     aiven_load = aiven_stats(aiven, 'load_average') or {}
 
-    # 2) 로그 fetch
-    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, max_pages=10)
+    # 2) omok 로그 fetch
+    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, max_pages=10, service='omok')
     bot_moves = parse_bot_moves(bot_logs)
     bot_by_cfg = bot_stats_by_cfg(bot_moves)
     bot_moves_by_hour = hourly_bucket_by_ts(bot_moves, 'ts')
-    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, max_pages=5)
+    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, max_pages=5, service='omok')
     game_started = parse_game_started(game_started_raw)
-    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, max_pages=5)
+    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, max_pages=5, service='omok')
     game_overs = parse_game_over(game_over_raw)
-    skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50)
-    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, max_pages=3)
-    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, max_pages=2)
-    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=10)
-    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, max_pages=10)
-    # 인프라 이벤트 — server_failed (OOM / crash), deploy 등
-    events = render_events(s_iso, e_iso, limit=200)
+    skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50, service='omok')
+    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, max_pages=3, service='omok')
+    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, max_pages=2, service='omok')
+    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=10, service='omok')
+    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, max_pages=10, service='omok')
+    # PR #4(d) — worker_timeout / no_move 도 안정성 지표에 표시.
+    wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, max_pages=5, service='omok')
+    nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, max_pages=2, service='omok')
+    # omok 인프라 이벤트 — server_failed (OOM / crash), deploy 등
+    events = render_events(s_iso, e_iso, limit=200, service='omok')
     failures = parse_server_failures(events)
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
     deploy_count = sum(1 for e in events if e.get('event', {}).get('type') == 'deploy_ended')
     # downtime 계산 (PR #97) — server_failed/deploy_started → server_available 매칭
     recoveries = compute_recovery_times(events)
+
+    # 2-b) 2048 로그 fetch — 봇 없는 서비스, 활성/일일/동접 위주.
+    submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
+    user_created_logs_2048 = render_search_logs('[user_created]', s_iso, e_iso, limit=100, max_pages=3, service='2048')
+    ws_conn_logs_2048 = render_search_logs('[ws_connected]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
+    ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
+    hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, max_pages=2, service='2048')
+    score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, max_pages=5, service='2048')
+    events_2048 = render_events(s_iso, e_iso, limit=200, service='2048')
+    failures_2048 = parse_server_failures(events_2048)
+    deploy_count_2048 = sum(1 for e in events_2048 if e.get('event', {}).get('type') == 'deploy_ended')
+    recoveries_2048 = compute_recovery_times(events_2048)
 
     # 3) 시간대별 분포 (KST hour bucket)
     games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
@@ -113,7 +138,23 @@ def run_daily_summary():
     active_users_24h = len(active_user_nicks)
 
     # 5-b) server /api/stats — 현재 사람 계정 수 (PR #95).
-    server_stats = fetch_server_stats()
+    server_stats = fetch_server_stats(service='omok')
+    # 2048 stats — total_users / top_all_time / top_daily / active_ws (PR — 2048 통합).
+    stats_2048 = fetch_server_stats(service='2048') or {}
+
+    # 5-c) 2048 활성 / 일일 / 신규 사용자 — submit_score / user_created 로그 파싱.
+    from monitor_data import parse_log_fields
+    active_nicks_2048 = set()
+    daily_submits_2048 = 0
+    for L in submit_logs_2048:
+        f = parse_log_fields(L.get('message', ''))
+        if 'nick' in f:
+            active_nicks_2048.add(f['nick'])
+            daily_submits_2048 += 1
+    new_users_2048 = len(user_created_logs_2048)
+    # 시간대별 (KST) — submit_score 이벤트 분포.
+    submits_2048_by_hour = hourly_bucket_by_ts(
+        [{'ts': L['timestamp']} for L in submit_logs_2048], 'ts')
 
     # 6) reason 카운트
     reason_counts = defaultdict(int)
@@ -147,6 +188,9 @@ def run_daily_summary():
             continue
         by_day[d].append(s)
     daily_stats = load_daily_stats()
+    # PR — (a) 전일 비교: summary_date 직전 날 entry 가져옴. 첫날엔 {} (Δ 표시 안 함).
+    prev_date = (win_start_kst - timedelta(days=1)).strftime('%Y-%m-%d')
+    prev_stats = daily_stats.get(prev_date, {})
     # snapshot 만 있는 날 + daily_stats 만 있는 날 모두 표시 (union).
     # Cutoff: summary_date (= 어제 KST) 까지만 포함. 발행 당일 부분 snapshot 제외.
     all_days = sorted(set(by_day.keys()) | set(daily_stats.keys()))
@@ -154,17 +198,30 @@ def run_daily_summary():
     all_days = all_days[-7:]
     for d in all_days:
         snaps = by_day.get(d, [])
-        cpu_maxes = [s.get('render', {}).get('cpu_peak_m') for s in snaps if s.get('render', {}).get('cpu_peak_m') is not None]
-        mem_maxes = [s.get('aiven', {}).get('mem_pct_max') for s in snaps if s.get('aiven', {}).get('mem_pct_max') is not None]
+        # PR — snap helper 사용 (옛/새 구조 모두 호환). 2048 컬럼도 추가.
+        omok_renders = [snap_omok_render(s) for s in snaps]
+        r2048_renders = [snap_2048_render(s) for s in snaps]
+        aivens = [snap_aiven(s) for s in snaps]
+        omok_cpu_maxes = [r.get('cpu_peak_m') for r in omok_renders if r.get('cpu_peak_m') is not None]
+        r2048_cpu_maxes = [r.get('cpu_peak_m') for r in r2048_renders if r.get('cpu_peak_m') is not None]
+        mem_maxes = [a.get('mem_pct_max') for a in aivens if a.get('mem_pct_max') is not None]
+        # worker_timeout 누적 — snapshot 별 15분 window 카운트의 일별 합산.
+        wt_sums = sum((r.get('worker_timeout_count') or 0) for r in omok_renders)
         ds = daily_stats.get(d, {})
         trend_days.append({
             'date': d,
-            'render_cpu_max_m': max(cpu_maxes) if cpu_maxes else None,
+            'omok_cpu_max_m': max(omok_cpu_maxes) if omok_cpu_maxes else None,
+            'r2048_cpu_max_m': max(r2048_cpu_maxes) if r2048_cpu_maxes else None,
             'aiven_mem_max_pct': max(mem_maxes) if mem_maxes else None,
             'pvp_games': ds.get('pvp_games'),
             'bot_games': ds.get('bot_games'),
             'active_users': ds.get('active_users'),
             'total_users': ds.get('total_human_users'),
+            # (d) worker_timeout 일별 합산 — daily_stats 누적 우선, 없으면 snapshot 합.
+            'worker_timeout': ds.get('worker_timeout', wt_sums if wt_sums > 0 else None),
+            # 2048
+            'active_users_2048': ds.get('active_users_2048'),
+            'daily_submits_2048': ds.get('daily_submits_2048'),
         })
 
     # Aiven memory 장기 추정
@@ -219,20 +276,32 @@ def run_daily_summary():
     body.append('')
     body.append(f'**Aiven 장기 메모리 트렌드**: {aiven_trend_msg}\n')
 
-    # 게임 활동 요약 — 계정 수 / 활성 사용자 포함
-    body.append('### 게임 활동 요약\n')
-    total_human_users = server_stats.get('total_human_users') if server_stats else None
-    user_count_str = f'**{total_human_users}**' if total_human_users is not None else '_(server /api/stats 응답 없음 — cold-start 가능성)_'
-    body.append(f'- 현재 사람 계정 수: {user_count_str}')
-    body.append(f'- **24h 활성 사용자**: **{active_users_24h}명** (게임 한 판 이상 둔 unique 닉네임)')
-    body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count} / 봇 {bot_game_count})')
-    body.append(f'- 봇 착수 총 횟수: **{bot_total}건**')
-    body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**\n')
+    # 게임 활동 요약 — 계정 수 / 활성 사용자 + 전일Δ (PR — 5개 개선 (a))
+    body.append('### 게임 활동 요약 (오목)\n')
+    def _delta(cur, prev_key):
+        """(cur, prev) 비교 Δ markdown. prev 또는 cur 없으면 빈 문자열."""
+        if cur is None or not isinstance(cur, (int, float)):
+            return ''
+        prev = prev_stats.get(prev_key)
+        if prev is None or not isinstance(prev, (int, float)):
+            return ''
+        d = cur - prev
+        if d == 0: return ' (±0)'
+        return f' (**{d:+d}**)'
 
-    # 봇 운영 지표 (핵심)
+    total_human_users = server_stats.get('total_human_users') if server_stats else None
+    user_count_str = f'**{total_human_users}**{_delta(total_human_users, "total_human_users") if total_human_users is not None else ""}' \
+        if total_human_users is not None else '_(server /api/stats 응답 없음 — cold-start 가능성)_'
+    body.append(f'- 현재 사람 계정 수: {user_count_str}')
+    body.append(f'- **24h 활성 사용자**: **{active_users_24h}명**{_delta(active_users_24h, "active_users")} (게임 한 판 이상 둔 unique 닉네임)')
+    body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count}{_delta(pvp_count, "pvp_games")} / 봇 {bot_game_count}{_delta(bot_game_count, "bot_games")})')
+    body.append(f'- 봇 착수 총 횟수: **{bot_total}건**{_delta(bot_total, "total_bot_moves")}')
+    body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**{_delta(len(ws_conn_logs), "ws_connected")}\n')
+
+    # 봇 운영 지표 (핵심) — (b) 승률 + 봇 rating Δ 추가.
     body.append('### 봇 운영 지표 (난이도 별)\n')
     if bot_perf:
-        body.append('| 난이도 | 총 | 봇 승 | 봇 패 | 무 | 이탈/포기 | 상대 rating avg/min/max | 평균 게임 길이 (수) |')
+        body.append('| 난이도 | 총 | 승/패/무 | 승률 | 이탈/포기 | 봇 rating (Δ24h) | 상대 rating avg/min/max | 평균 길이 (수) |')
         body.append('|---|---|---|---|---|---|---|---|')
         for diff in ['easy', 'medium', 'hard']:
             s = bot_perf.get(diff)
@@ -242,8 +311,19 @@ def run_daily_summary():
             stones = s['stones_list']
             stones_str = f'{sum(stones)/len(stones):.1f}' if stones else '-'
             left_total = s['left'] + s['abandoned']
-            body.append(f'| {diff} | {s["total"]} | {s["wins"]} | {s["losses"]} | {s["draws"]} | {left_total} | {rating_str} | {stones_str} |')
-        body.append('\n_상대 rating avg/min/max — 해당 봇과 대국한 사람 측 rating 분포. 봇 난이도가 유저 풀에 맞는지 판단._')
+            # 승률 — total 에서 이탈/무승부 제외한 결정 게임만 분모로 두는 게 정확. 단순화:
+            # 모든 종결을 분모로 (이탈/포기도 보통 봇 승으로 처리되니 합리적).
+            wr = (100.0 * s['wins'] / s['total']) if s['total'] else 0
+            wr_str = f'{wr:.1f}%'
+            # 봇 rating 변화 — bot_delta_sum / last_rating.
+            bot_rating = s.get('bot_last_rating')
+            bot_delta = s.get('bot_delta_sum', 0)
+            if bot_rating is not None:
+                rating_col = f'{bot_rating} ({bot_delta:+d})'
+            else:
+                rating_col = '-'
+            body.append(f'| {diff} | {s["total"]} | {s["wins"]}/{s["losses"]}/{s["draws"]} | {wr_str} | {left_total} | {rating_col} | {rating_str} | {stones_str} |')
+        body.append('\n_승률 = 봇 승 / 총. 봇 rating Δ = 24h 누적 변화 (zero-sum). 상대 rating = 사람 측 분포._')
     else:
         body.append('- (봇 게임 데이터 없음)')
     body.append('')
@@ -303,13 +383,15 @@ def run_daily_summary():
         body.append('- 없음')
     body.append('')
 
-    # 안정성 / 임계 이력
-    body.append('### 안정성 지표\n')
+    # 안정성 / 임계 이력 — (d) worker_timeout / no_move 추가.
+    body.append('### 안정성 지표 (오목)\n')
     body.append('| 항목 | 카운트 |')
     body.append('|---|---|')
     body.append(f'| game_over (전체) | {len(game_overs)} |')
     for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]):
         body.append(f'| └ reason={r} | {c} |')
+    body.append(f'| **worker_timeout** | **{len(wt_logs)}** _(0 유지 베이스, > 0 = 회귀)_ |')
+    body.append(f'| search no_move | {len(nm_logs)} |')
     body.append(f'| schedule RETRY (봇 wakeup, 정상) | {len(retry_logs)} |')
     body.append(f'| schedule SKIP (RETRY 실패) | {len(skip_logs)} |')
     body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs)} |')
@@ -357,22 +439,106 @@ def run_daily_summary():
         body.append('- 0건 (모두 임계 미달, 안전)')
     body.append('')
 
-    # 7일 trend (CPU/Memory + PVP 게임 수 + 활성/총 사용자)
-    body.append('### 7일 트렌드\n')
+    # ============================================================
+    # 2048 서비스 섹션 — 인프라 + 게임 활동.
+    # ============================================================
+    body.append('---\n')
+    body.append('## 2048 서비스\n')
+    body.append('### 2048 자원 사용율 (한도 대비)\n')
+    body.append(gauge_table([
+        ('Render CPU peak',  cpu_2048_st.get('max') or 0, RENDER_CPU_LIMIT_M, 'm'),
+        ('Render Memory peak', mem_2048_st.get('max') or 0, RENDER_MEM_LIMIT_MB, 'MB'),
+        ('Render Bandwidth 30d', bw_2048_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
+    ]))
+    body.append('')
+    body.append('### 2048 Render 메트릭\n| 항목 | avg | p50 | p95 | max |')
+    body.append('|---|---|---|---|---|')
+    body.append(f'| CPU (m) | {cpu_2048_st.get("avg",0):.1f} | {cpu_2048_st.get("p50",0):.1f} | {cpu_2048_st.get("p95",0):.1f} | {cpu_2048_st.get("max",0):.1f} |')
+    body.append(f'| Memory (MB) | {mem_2048_st.get("avg",0):.1f} | {mem_2048_st.get("p50",0):.1f} | {mem_2048_st.get("p95",0):.1f} | {mem_2048_st.get("max",0):.1f} |')
+    body.append(f'| Bandwidth 30d 누적 | {bw_2048_30d:.1f}MB (한도 100GB) |  |  |  |')
+    body.append('')
+
+    body.append('### 2048 게임 활동 요약\n')
+    total_users_2048 = stats_2048.get('total_users')
+    top_all = stats_2048.get('top_all_time')
+    top_daily_2048 = stats_2048.get('top_daily')
+    active_ws_2048 = stats_2048.get('active_ws')
+    count_str = f'**{total_users_2048}**{_delta(total_users_2048, "total_users_2048")}' if total_users_2048 is not None else '_(stats fetch 실패 — cold-start 가능성)_'
+    body.append(f'- 현재 사용자 계정 수: {count_str}')
+    body.append(f'- **24h 활성 사용자**: **{len(active_nicks_2048)}명**{_delta(len(active_nicks_2048), "active_users_2048")} (점수 등록한 unique 닉)')
+    body.append(f'- 24h 점수 등록: **{daily_submits_2048}건**{_delta(daily_submits_2048, "daily_submits_2048")}')
+    body.append(f'- 24h 신규 사용자: **{new_users_2048}명**{_delta(new_users_2048, "new_users_2048")}')
+    body.append(f'- 24h 새 ws 연결: 대략 **{len(ws_conn_logs_2048)}건**')
+    if active_ws_2048 is not None:
+        body.append(f'- 현재 동접 (ws): **{active_ws_2048}명**')
+    if top_all is not None:
+        body.append(f'- 전체 최고 점수: **{top_all}**')
+    if top_daily_2048 is not None:
+        body.append(f'- 오늘 최고 점수: **{top_daily_2048}**')
+    body.append(f'- 24h best 갱신 broadcast: **{len(score_best_logs_2048)}건**\n')
+
+    # 2048 시간대별 활동
+    if submits_2048_by_hour:
+        body.append('### 2048 시간대별 활동 (KST hour)\n')
+        body.append('| hour | 점수 등록 | bar |')
+        body.append('|---|---|---|')
+        max_s = max(submits_2048_by_hour.values())
+        for h in range(24):
+            n = submits_2048_by_hour.get(h, 0)
+            bar = '█' * int(20 * n / max_s) if max_s > 0 else ''
+            body.append(f'| {h:02d}:00 | {n} | `{bar}` |')
+        body.append('')
+
+    # 2048 안정성 지표
+    body.append('### 2048 안정성 지표\n')
+    body.append('| 항목 | 카운트 |')
+    body.append('|---|---|')
+    oom_2048 = [f for f in failures_2048 if f['evicted'] or f['oom']]
+    crash_2048 = [f for f in failures_2048 if not (f['evicted'] or f['oom'])]
+    body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs_2048)} |')
+    body.append(f'| **server_failed (전체)** | **{len(failures_2048)}** |')
+    body.append(f'| └ OOM (evicted) | {len(oom_2048)} |')
+    body.append(f'| └ crash (nonZeroExit) | {len(crash_2048)} |')
+    body.append(f'| deploy 횟수 | {deploy_count_2048} |')
+    body.append('')
+    if recoveries_2048:
+        slow_2048 = [r for r in recoveries_2048 if not r['within_grace']]
+        dts = sorted(x['downtime_s'] for x in recoveries_2048)
+        body.append(f'- recovery {len(recoveries_2048)}건 (median {dts[len(dts)//2]:.1f}s · max {max(dts):.1f}s · 60s 초과 {len(slow_2048)}건)\n')
+    body.append('')
+
+    # 7일 trend — omok / 2048 분리. PVP/봇/활성 컬럼은 daily-stats.json 누적이 어제
+    # workflow fix 머지 이전엔 push 안 됐던 버그로 빈 칸이 많음 — fix 이후 채워짐.
+    body.append('### 7일 트렌드 (오목)\n')
     if len(trend_days) >= 2:
-        body.append('| 날짜 | Render CPU max | Aiven Mem max | PVP 게임 | 봇 게임 | 활성 사용자 | 총 계정 |')
-        body.append('|---|---|---|---|---|---|---|')
+        body.append('| 날짜 | CPU max | Aiven Mem | PVP | 봇 | 활성 | 계정 | worker_timeout |')
+        body.append('|---|---|---|---|---|---|---|---|')
         for d in trend_days:
-            cpu_v = f'{d["render_cpu_max_m"]:.1f}m' if d['render_cpu_max_m'] is not None else '-'
+            cpu_v = f'{d["omok_cpu_max_m"]:.1f}m' if d['omok_cpu_max_m'] is not None else '-'
             mem_v = f'{d["aiven_mem_max_pct"]:.2f}%' if d['aiven_mem_max_pct'] is not None else '-'
             pvp_v = str(d['pvp_games']) if d['pvp_games'] is not None else '-'
             bot_v = str(d['bot_games']) if d['bot_games'] is not None else '-'
             active_v = str(d['active_users']) if d.get('active_users') is not None else '-'
             total_v = str(d['total_users']) if d.get('total_users') is not None else '-'
-            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} |')
-        body.append('\n_활성 사용자 = 그 날 게임 한 판 이상 둔 unique 닉네임 (game_over 로그 기반). 총 계정 = `/api/stats` 가 그 날 daily-summary 발행 시 server 에서 가져온 사람 계정 수._')
+            wt_v = str(d['worker_timeout']) if d.get('worker_timeout') is not None else '-'
+            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} | {wt_v} |')
+        body.append('\n_활성 = 그 날 game_over 의 unique 사람 닉. 계정 = `/api/stats` total_human_users. worker_timeout = 그 날 모든 5분 snapshot 의 카운트 합산 (daily_stats 누적 우선)._')
     else:
         body.append('- 데이터 부족 (수집 시작 직후)')
+    body.append('')
+
+    body.append('### 7일 트렌드 (2048)\n')
+    if len(trend_days) >= 2:
+        body.append('| 날짜 | CPU max | 활성 사용자 | 일일 submit |')
+        body.append('|---|---|---|---|')
+        for d in trend_days:
+            cpu_v = f'{d["r2048_cpu_max_m"]:.1f}m' if d['r2048_cpu_max_m'] is not None else '-'
+            au_v = str(d['active_users_2048']) if d.get('active_users_2048') is not None else '-'
+            ds_v = str(d['daily_submits_2048']) if d.get('daily_submits_2048') is not None else '-'
+            body.append(f'| {d["date"]} | {cpu_v} | {au_v} | {ds_v} |')
+        body.append('\n_활성 = 그 날 `[submit_score]` 의 unique 닉. submit = 모든 등록 (best 갱신 여부 무관)._')
+    else:
+        body.append('- 데이터 부족')
     body.append('')
 
     body.append('---')
@@ -382,16 +548,31 @@ def run_daily_summary():
     print(f'본문 길이: {len(body_text)} chars')
 
     # 일별 stats 저장 (7일 trend 누적용)
+    # PR — workflow fix 와 같이 가야 실제 push 됨 (이전엔 collect 만 commit 해서
+    # daily-stats.json 가 절대 push 안 됐던 버그). PR #4(e) 의 7일 트렌드 빈 컬럼
+    # 원인.
     if not DRY_RUN or os.environ.get('SAVE_METRICS') == '1':
         daily_stats[summary_date] = {
+            # omok
             'pvp_games': pvp_count,
             'bot_games': bot_game_count,
             'total_bot_moves': bot_total,
             'render_cpu_max_m': cpu_st.get('max') or 0,
             'aiven_mem_max_pct': aiven_mem.get('max') or 0,
-            # PR #95 — 활성/총 사용자 trend 누적
             'active_users': active_users_24h,
             'total_human_users': (server_stats or {}).get('total_human_users'),
+            'ws_connected': len(ws_conn_logs),
+            # (d) worker_timeout 일별 누적 — 7일 트렌드에서 회귀 추적.
+            'worker_timeout': len(wt_logs),
+            'no_move': len(nm_logs),
+            # 2048
+            'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
+            'active_users_2048': len(active_nicks_2048),
+            'daily_submits_2048': daily_submits_2048,
+            'new_users_2048': new_users_2048,
+            'total_users_2048': stats_2048.get('total_users'),
+            'top_all_time_2048': stats_2048.get('top_all_time'),
+            'top_daily_2048': stats_2048.get('top_daily'),
         }
         # 30일 이상 오래된 entry 정리
         cutoff = (kst_today_00 - timedelta(days=30)).strftime('%Y-%m-%d')
