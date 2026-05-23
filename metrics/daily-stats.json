@@ -1,0 +1,23 @@
+{
+  "2026-05-22": {
+    "pvp_games": 141,
+    "bot_games": 79,
+    "total_bot_moves": 956,
+    "render_cpu_max_m": 90.22874,
+    "aiven_mem_max_pct": 68.75911626795441,
+    "active_users": 78,
+    "total_human_users": 170,
+    "ws_connected": 400,
+    "worker_timeout": 0,
+    "no_move": 0,
+    "hard_d6_pct": 18.8,
+    "hard_d6_n": 16,
+    "r2048_cpu_max_m": 0.29322333,
+    "active_users_2048": 0,
+    "daily_submits_2048": 0,
+    "new_users_2048": 0,
+    "total_users_2048": 0,
+    "top_all_time_2048": 0,
+    "top_daily_2048": 0
+  }
+}
