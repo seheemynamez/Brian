@@ -39,7 +39,7 @@ npm run test:ci       # 둘 다
 
 | Path | 응답 |
 |---|---|
-| `GET /api/stats` | `{total_users, ts}` JSON (monitor 가 호출) |
+| `GET /api/stats` | `{total_users, top_all_time, top_daily, active_ws, ts}` JSON (monitor 가 5분마다 호출 — sleep 방지 + 시계열 수집) |
 | `GET /i/2048` `/i/2048/{nick}` `/i/2048/{nick}/{score}` | 동적 OG meta + canonical 2048 페이지로 redirect |
 | 그 외 | 404 (정적 파일은 GitHub Pages 에서 서빙) |
 
@@ -76,6 +76,20 @@ npm run test:ci       # 둘 다
 | `{PREFIX}:users` | SET of clientIds (인덱스, hydrate 용) |
 
 omok 의 `omok:prod` 와 격리 — 같은 Aiven 인스턴스에 공존 가능.
+
+## 운영 로그 (monitor 가 parse)
+
+monitor (5분 cron) 이 Render 로그에서 이 prefix 들을 검색해 시계열/일일 지표로 집계.
+
+| prefix | 의미 | 출력 시점 |
+|---|---|---|
+| `[submit_score]` | 모든 점수 등록 (best 갱신 여부 무관) | 매 `submit_score` 메시지 처리 시 |
+| `[score_best]` | best 갱신 시 broadcast 트리거 — 사용자 visible 이벤트 | `submit_score` 가 allTime/daily 갱신 시 |
+| `[user_created]` | 신규 user 첫 생성 — `src=nickname`/`score` | `set_nickname` 또는 `submit_score` 가 첫 등록일 때 |
+| `[nickname_set]` | 닉네임 등록/변경 | 매 `set_nickname` 처리 시 |
+| `[ws_connected]` / `[ws_disconnected]` | WS 연결 수명 | connection / close 시 (`active=` 는 현재 연결 수) |
+| `[heartbeat_terminate]` | zombie ws 정리 (2 cycle 무응답) | 15s heartbeat 가 좀비 발견 시 |
+| `[store_ready]` / `[server_start]` / `[server_shutdown]` | 부팅 / 종료 | 해당 시점 |
 
 ## 보안
 

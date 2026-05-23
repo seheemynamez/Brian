@@ -165,7 +165,23 @@ const getMyRank = (clientId) => {
 };
 
 // 운영 통계 — /api/stats 용. 봇 user 없음.
-const getUserStats = () => ({ total_users: users.size });
+// monitor 가 5분마다 호출 (sleep 방지 + 시계열 수집). active_ws 는 server.js 의
+// statsHandler 가 wss 에서 합쳐서 응답.
+const getUserStats = () => {
+  let topAllTime = 0;
+  let topDaily = 0;
+  const today = kstDateStr();
+  for (const u of users.values()) {
+    if (u.allTimeBest > topAllTime) topAllTime = u.allTimeBest;
+    const d = (u.dailyDate === today) ? u.dailyBest : 0;
+    if (d > topDaily) topDaily = d;
+  }
+  return {
+    total_users: users.size,
+    top_all_time: topAllTime,
+    top_daily: topDaily,
+  };
+};
 
 module.exports = {
   getUser, getOrCreateUser, setNickname, submitScore,
