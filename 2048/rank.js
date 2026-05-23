@@ -29,6 +29,9 @@
   let activeTab = 'allTime';
   // 최근 ranking 메시지 (탭 전환 시 재렌더링).
   let lastRanking = { allTime: [], daily: [], dailyDate: null };
+  // 서버에서 ranking 한 번이라도 받았는지. false 상태에서 빈 배열은 cold-start /
+  // 연결 대기 중 의미 — empty 메시지 대신 loader 표시.
+  let hasReceivedRanking = false;
   // 내 순위 (서버가 보내준 값).
   let myRank = null;
   // FLIP 애니메이션 — 이전 렌더의 각 row 위치를 기억.
@@ -180,7 +183,11 @@
     const myCid = window.Net2048.getClientId();
 
     if (!list || list.length === 0) {
-      container.innerHTML = '<div class="rank-empty">아직 등록된 점수가 없어요</div>';
+      // 아직 ranking 한 번도 안 받았으면 — cold-start / 연결 대기 중. 로더 표시.
+      // 받았는데도 빈 배열이면 — 진짜로 등록된 점수 없음 (이 케이스는 드물 듯).
+      container.innerHTML = hasReceivedRanking
+        ? '<div class="rank-empty">아직 등록된 점수가 없어요</div>'
+        : '<div class="rank-loading"><div class="rank-spinner" aria-hidden="true"></div><div>랭킹 불러오는 중…</div></div>';
       return;
     }
 
@@ -241,6 +248,7 @@
   // ---- Net2048 이벤트 listening ----
   window.addEventListener('net2048:ranking', (e) => {
     lastRanking = e.detail || lastRanking;
+    hasReceivedRanking = true;
     renderRanking();
     // ranking broadcast 는 다른 사용자가 best 갱신했을 때도 도착함 — 그땐 내 순위도
     // 한 칸씩 밀려야 하는데 서버는 my_rank 는 broadcast 안 함 (요청-응답 only).

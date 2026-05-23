@@ -55,6 +55,7 @@ const handleMessage = (ws, msg) => {
       const nickActuallyChanged = prevPersistedNick !== null && prevPersistedNick !== user.nickname;
       if (hasScore && nickActuallyChanged) broadcastRanking();
       log.event('nickname_set', { client: log.mask(clientId), nick: user.nickname });
+      if (!before) log.event('user_created', { client: log.mask(clientId), nick: user.nickname, src: 'nickname' });
       return;
     }
     case 'submit_score': {
@@ -64,6 +65,7 @@ const handleMessage = (ws, msg) => {
       if (!clientId || !Number.isFinite(score) || score < 0) {
         return send.send(ws, { type: 'error', message: '잘못된 점수' });
       }
+      const before = users.getUser(clientId);
       const r = users.submitScore(clientId, nickname, score);
       if (!r) return send.send(ws, { type: 'error', message: '등록 실패' });
       ws.clientId = clientId;
@@ -74,6 +76,14 @@ const handleMessage = (ws, msg) => {
         allTimeUpdated: r.allTimeUpdated,
         dailyUpdated: r.dailyUpdated,
       });
+      // submit_score — 모든 등록 로그 (best 아니어도). monitor 가 일일 게임 수 / 활성
+      // 사용자 (unique nick) 카운트의 raw 소스로 사용. broadcast 트리거인 score_best
+      // 는 갱신 시에만 출력 (사용자 visible 이벤트).
+      log.event('submit_score', {
+        client: log.mask(clientId), nick: r.user.nickname,
+        score, allTime: r.allTimeUpdated, daily: r.dailyUpdated,
+      });
+      if (!before) log.event('user_created', { client: log.mask(clientId), nick: r.user.nickname, src: 'score' });
       if (r.allTimeUpdated || r.dailyUpdated) {
         broadcastRanking();   // best 변동 시만 broadcast — 노이즈 ↓
         log.event('score_best', {

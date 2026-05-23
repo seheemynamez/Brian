@@ -420,7 +420,7 @@ def bot_perf_stats(game_overs):
                 'opp_nicks': [],
                 'opp_ratings': [],
                 'stones_list': [],
-                # PR — 봇 운영 지표 확장: 봇 측 rating delta 누적 + 마지막 rating.
+                # 봇 운영 지표 확장: 봇 측 rating delta 누적 + 마지막 rating.
                 'bot_delta_sum': 0,
                 'bot_last_rating': None,
             }
@@ -508,8 +508,7 @@ def player_activity(game_overs):
 
 # ============================================================
 # Snapshot 구조 normalize — 옛 평탄 (render: {...omok}) 과 새 (services.{omok,2048})
-# 둘 다 호환. PR — 2048 통합 후 새 구조 우선, 옛 구조는 fallback (옛 metrics/*.json
-# 들이 자연 expire 할 때까지). 7일 트렌드는 metrics/*.json 의 옛 데이터도 읽음.
+# 둘 다 호환. 7일 트렌드는 metrics/*.json 의 옛 데이터도 읽음.
 # ============================================================
 def snap_omok_render(snap):
     """snapshot 에서 omok render 부분 추출 (옛/새 구조 모두 지원)."""
