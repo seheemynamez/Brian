@@ -14,10 +14,33 @@ GH_REPO = os.environ.get('GITHUB_REPOSITORY', 'seheemynamez/Brian')
 MODE = os.environ.get('MODE', 'collect')
 DRY_RUN = os.environ.get('DRY_RUN', '0') == '1' or not GH_TOKEN
 
-RENDER_SERVICE_ID = 'srv-d84mu23tqb8s73fgcq60'
-# server 의 /api/stats endpoint — 계정 수 가져옴 (PR #95).
-SERVER_PUBLIC_URL = 'https://omok-server-u4rp.onrender.com'
+# Render workspace (omok 과 2048 같은 owner 사용).
 RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
+
+# Render services — omok-server, 2048-server. monitor 가 5분/일간 cron 에서
+# 두 service 모두 같은 임계 / cooldown 정책으로 fetch + alert.
+# key 는 alert suffix / 본문 prefix / metrics snapshot key 로 사용 — 짧고 안정적.
+SERVICES = {
+    'omok': {
+        'name': 'omok-server',
+        'service_id': 'srv-d84mu23tqb8s73fgcq60',
+        'public_url': 'https://omok-server-u4rp.onrender.com',
+        # game-specific 로그 prefix 가 풍부 — 봇/RETRY/SKIP/server_failed 모두 추적.
+        'has_bot_logs': True,
+    },
+    '2048': {
+        'name': '2048-server',
+        'service_id': 'srv-d87tvarbc2fs73echpr0',
+        'public_url': 'https://two048-server-14x0.onrender.com',
+        # 봇 없음 — RETRY/SKIP/worker_timeout/no_move 미해당. submit_score 등은 별도.
+        'has_bot_logs': False,
+    },
+}
+
+# 기존 호출자 호환 (단일 service 가정 코드 — fetch_server_stats 등). omok 을 디폴트로.
+RENDER_SERVICE_ID = SERVICES['omok']['service_id']
+SERVER_PUBLIC_URL = SERVICES['omok']['public_url']
+
 AIVEN_PROJECT = 'se2hee-93ed'
 AIVEN_SERVICE = 'valkey-411207c'
 
@@ -57,7 +80,8 @@ NOW = datetime.now(timezone.utc)
 KST = timezone(timedelta(hours=9))
 TODAY = NOW.strftime('%Y-%m-%d')
 
-# alert key → label 매핑
+# alert key → label 매핑. service 별 alert 는 key 에 ':{service}' suffix 가 붙어
+# cooldown 추적은 분리되지만 라벨은 공통. title prefix `[{service}]` 로 issue 에서 구분.
 ALERT_LABELS = {
     'render_cpu_high':  ['monitor', 'alert-render', 'severity-high'],
     'aiven_mem_high':   ['monitor', 'alert-aiven',  'severity-high'],
@@ -70,3 +94,13 @@ ALERT_LABELS = {
     'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
     'server_slow_recovery': ['monitor', 'alert-render', 'severity-high'],   # downtime > 60s (grace 초과)
 }
+
+
+def alert_key_for(base_key: str, service: str) -> str:
+    """service 별 cooldown 분리용 key. 같은 base_key 라도 service 다르면 별도 cooldown."""
+    return f'{base_key}:{service}'
+
+
+def service_label(service: str) -> str:
+    """alert label 에 추가될 service 식별 — `service-{key}`."""
+    return f'service-{service}'
