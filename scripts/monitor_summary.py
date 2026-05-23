@@ -15,8 +15,8 @@ from monitor_apis import (
 from monitor_data import (
     aiven_stats, bot_perf_stats, bot_stats_by_cfg, compute_recovery_times,
     hourly_bucket_by_ts, load_daily_stats, load_recent_metrics, load_state,
-    parse_bot_moves, parse_game_over, parse_game_started, parse_iso,
-    parse_online_count_series, parse_server_failures, player_activity,
+    parse_bot_logs, parse_bot_moves, parse_game_over, parse_game_started,
+    parse_iso, parse_online_count_series, parse_server_failures, player_activity,
     render_bw_sum_mb, render_cpu_stats, render_mem_stats, save_daily_stats,
     snap_2048_render, snap_aiven, snap_omok_render,
 )
@@ -90,14 +90,26 @@ def run_daily_summary():
     game_overs = parse_game_over(game_over_raw)
     skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50, service='omok')
     retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, max_pages=3, service='omok')
+    # 영향 unique rooms/clients — alert 본문에는 있지만 daily-summary 표엔 단순
+    # 카운트만 있었음. burst 가 1-2 게임 집중 vs 다수 사용자 패턴인지 판단용.
+    retry_parsed = parse_bot_logs(retry_logs)
+    skip_parsed = parse_bot_logs(skip_logs)
+    retry_rooms = len({p['room'] for p in retry_parsed})
+    retry_clients = len({p['client'] for p in retry_parsed if p['client']})
+    skip_rooms = len({p['room'] for p in skip_parsed})
+    skip_clients = len({p['client'] for p in skip_parsed if p['client']})
     hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, max_pages=2, service='omok')
     ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=10, service='omok')
     ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, max_pages=10, service='omok')
     # PR #4(d) — worker_timeout / no_move 도 안정성 지표에 표시.
     wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, max_pages=5, service='omok')
     nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, max_pages=2, service='omok')
-    # omok 인프라 이벤트 — server_failed (OOM / crash), deploy 등
-    events = render_events(s_iso, e_iso, limit=200, service='omok')
+    # omok 인프라 이벤트 — server_failed (OOM / crash), deploy 등.
+    # limit max = 100 (Render API 제약). 200 으로 호출하면 400 "invalid limit:
+    # too large" 반환 + render_events 가 HTTPError catch 해서 빈 list 반환 →
+    # deploy 횟수 / server_failed / recoveries 가 항상 0 으로 보이는 silent
+    # failure 였음.
+    events = render_events(s_iso, e_iso, limit=100, service='omok')
     failures = parse_server_failures(events)
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
@@ -112,7 +124,7 @@ def run_daily_summary():
     ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
     hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, max_pages=2, service='2048')
     score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, max_pages=5, service='2048')
-    events_2048 = render_events(s_iso, e_iso, limit=200, service='2048')
+    events_2048 = render_events(s_iso, e_iso, limit=100, service='2048')
     failures_2048 = parse_server_failures(events_2048)
     deploy_count_2048 = sum(1 for e in events_2048 if e.get('event', {}).get('type') == 'deploy_ended')
     recoveries_2048 = compute_recovery_times(events_2048)
@@ -219,6 +231,9 @@ def run_daily_summary():
             'total_users': ds.get('total_human_users'),
             # (d) worker_timeout 일별 합산 — daily_stats 누적 우선, 없으면 snapshot 합.
             'worker_timeout': ds.get('worker_timeout', wt_sums if wt_sums > 0 else None),
+            # issue #122 (c) — hard/d6 cfgMax 도달율 7일 추세. d6 50% 목표 추적.
+            'hard_d6_pct': ds.get('hard_d6_pct'),
+            'hard_d6_n': ds.get('hard_d6_n'),
             # 2048
             'active_users_2048': ds.get('active_users_2048'),
             'daily_submits_2048': ds.get('daily_submits_2048'),
@@ -392,8 +407,12 @@ def run_daily_summary():
         body.append(f'| └ reason={r} | {c} |')
     body.append(f'| **worker_timeout** | **{len(wt_logs)}** _(0 유지 베이스, > 0 = 회귀)_ |')
     body.append(f'| search no_move | {len(nm_logs)} |')
-    body.append(f'| schedule RETRY (봇 wakeup, 정상) | {len(retry_logs)} |')
-    body.append(f'| schedule SKIP (RETRY 실패) | {len(skip_logs)} |')
+    # RETRY/SKIP 영향 unique 게임/사용자 — 단순 카운트만으로는 "1-2 게임 집중"
+    # vs "다수 사용자 패턴" 구분 어려움. alert 본문 패턴과 같이 노출.
+    retry_extra = f' (게임 {retry_rooms}개 / 사용자 {retry_clients}명)' if retry_logs else ''
+    skip_extra = f' (게임 {skip_rooms}개 / 사용자 {skip_clients}명)' if skip_logs else ''
+    body.append(f'| schedule RETRY (봇 wakeup, 정상) | {len(retry_logs)}{retry_extra} |')
+    body.append(f'| schedule SKIP (RETRY 실패) | {len(skip_logs)}{skip_extra} |')
     body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs)} |')
     body.append(f'| **server_failed (전체)** | **{len(failures)}** |')
     body.append(f'| └ OOM (evicted) | {len(oom_fails)} |')
@@ -511,8 +530,8 @@ def run_daily_summary():
     # workflow fix 머지 이전엔 push 안 됐던 버그로 빈 칸이 많음 — fix 이후 채워짐.
     body.append('### 7일 트렌드 (오목)\n')
     if len(trend_days) >= 2:
-        body.append('| 날짜 | CPU max | Aiven Mem | PVP | 봇 | 활성 | 계정 | worker_timeout |')
-        body.append('|---|---|---|---|---|---|---|---|')
+        body.append('| 날짜 | CPU max | Aiven Mem | PVP | 봇 | 활성 | 계정 | worker_timeout | hard d6 도달% |')
+        body.append('|---|---|---|---|---|---|---|---|---|')
         for d in trend_days:
             cpu_v = f'{d["omok_cpu_max_m"]:.1f}m' if d['omok_cpu_max_m'] is not None else '-'
             mem_v = f'{d["aiven_mem_max_pct"]:.2f}%' if d['aiven_mem_max_pct'] is not None else '-'
@@ -521,8 +540,14 @@ def run_daily_summary():
             active_v = str(d['active_users']) if d.get('active_users') is not None else '-'
             total_v = str(d['total_users']) if d.get('total_users') is not None else '-'
             wt_v = str(d['worker_timeout']) if d.get('worker_timeout') is not None else '-'
-            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} | {wt_v} |')
-        body.append('\n_활성 = 그 날 game_over 의 unique 사람 닉. 계정 = `/api/stats` total_human_users. worker_timeout = 그 날 모든 5분 snapshot 의 카운트 합산 (daily_stats 누적 우선)._')
+            # hard d6 표본 수 같이 (n=X) — 표본 적으면 신뢰도 낮으니 같이 표시
+            if d.get('hard_d6_pct') is not None:
+                n = d.get('hard_d6_n') or 0
+                d6_v = f'{d["hard_d6_pct"]:.1f}% (n={n})'
+            else:
+                d6_v = '-'
+            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} | {wt_v} | {d6_v} |')
+        body.append('\n_활성 = 그 날 game_over 의 unique 사람 닉. 계정 = `/api/stats` total_human_users. worker_timeout = 그 날 모든 5분 snapshot 의 카운트 합산. hard d6 도달% = 그 날 hard 봇 d6 cfg search 중 reached=d6 비율 (목표: 50%+)._')
     else:
         body.append('- 데이터 부족 (수집 시작 직후)')
     body.append('')
@@ -565,6 +590,9 @@ def run_daily_summary():
             # (d) worker_timeout 일별 누적 — 7일 트렌드에서 회귀 추적.
             'worker_timeout': len(wt_logs),
             'no_move': len(nm_logs),
+            # (c) hard/d6 cfgMax 도달율 — issue #122 의 d6 50% 목표 추적.
+            'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
+            'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
             # 2048
             'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
             'active_users_2048': len(active_nicks_2048),
