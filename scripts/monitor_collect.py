@@ -3,12 +3,11 @@
 snapshot 구조:
   {
     "ts": "...",
-    "services": {                    # PR — 2048 통합으로 추가된 새 구조
+    "services": {
       "omok":  {"render": {...인프라+봇...}, "stats": {...}},
       "2048":  {"render": {...인프라만...}, "stats": {...}},
     },
     "aiven": {...},                  # 공유 (omok/2048 같은 Aiven 인스턴스)
-    "render": {... omok 평탄 ...},   # backward-compat — monitor_summary 가 옛 코드일 때
   }
 
 alert key 는 `{base_key}:{service}` 로 service 별 cooldown 분리.
@@ -342,8 +341,9 @@ def run_collect():
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
 
-    # snapshot — 새 구조 (services.{omok,2048}) + omok 평탄 (monitor_summary 옛 코드 호환)
-    omok_render_snap = services_snapshot.get('omok', {}).get('render', {})
+    # snapshot — services.{omok,2048} 구조. monitor_summary 의 snap_omok_render /
+    # snap_2048_render helper 가 옛 평탄 구조 (`render`) 와 새 구조 둘 다 호환하므로
+    # 평탄 사본 불필요. 옛 metrics/*.json 도 자연 expire (7일 트렌드 window).
     snapshot = {
         'ts': NOW.isoformat(),
         'services': services_snapshot,
@@ -353,8 +353,6 @@ def run_collect():
             'mem_pct_avg': aiven_mem['avg'] if aiven_mem else None,
             'mem_pct_max': aiven_mem['max'] if aiven_mem else None,
         },
-        # ---- backward-compat for monitor_summary (PR 3 에서 새 구조로 마이그레이션 예정)
-        'render': omok_render_snap,
     }
     print(json.dumps(snapshot, indent=2, ensure_ascii=False))
 

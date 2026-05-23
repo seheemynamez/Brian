@@ -420,6 +420,9 @@ def bot_perf_stats(game_overs):
                 'opp_nicks': [],
                 'opp_ratings': [],
                 'stones_list': [],
+                # PR — 봇 운영 지표 확장: 봇 측 rating delta 누적 + 마지막 rating.
+                'bot_delta_sum': 0,
+                'bot_last_rating': None,
             }
         s = bot_diffs[diff]
         s['total'] += 1
@@ -436,6 +439,19 @@ def bot_perf_stats(game_overs):
         s['opp_nicks'].append(human_nick)
         if human_rating > 0:
             s['opp_ratings'].append(human_rating)
+        # 봇 측 rating delta — zero-sum 이라 human_delta 의 음수와 일치. 직접 봇
+        # 측 Delta 필드 읽어 정확성 보장. unknown 일 땐 0.
+        try:
+            bot_delta_s = g.get(f'{bot_color}Delta', '0').replace('+', '')
+            s['bot_delta_sum'] += int(bot_delta_s)
+        except Exception:
+            pass
+        try:
+            bot_rating = int(g.get(f'{bot_color}Rating', 0))
+            if bot_rating > 0:
+                s['bot_last_rating'] = bot_rating
+        except Exception:
+            pass
         try:
             stones = int(g.get('stones', 0))
             if stones > 0: s['stones_list'].append(stones)
@@ -488,6 +504,38 @@ def player_activity(game_overs):
             elif winner != 'draw' and winner:
                 d['losses'] += 1
     return by_nick
+
+
+# ============================================================
+# Snapshot 구조 normalize — 옛 평탄 (render: {...omok}) 과 새 (services.{omok,2048})
+# 둘 다 호환. PR — 2048 통합 후 새 구조 우선, 옛 구조는 fallback (옛 metrics/*.json
+# 들이 자연 expire 할 때까지). 7일 트렌드는 metrics/*.json 의 옛 데이터도 읽음.
+# ============================================================
+def snap_omok_render(snap):
+    """snapshot 에서 omok render 부분 추출 (옛/새 구조 모두 지원)."""
+    if 'services' in snap:
+        return (snap.get('services', {}) or {}).get('omok', {}).get('render', {}) or {}
+    return snap.get('render', {}) or {}
+
+
+def snap_2048_render(snap):
+    """snapshot 에서 2048 render 부분 추출 (새 구조에서만 존재)."""
+    return (snap.get('services', {}) or {}).get('2048', {}).get('render', {}) or {}
+
+
+def snap_omok_stats(snap):
+    """omok stats — 새 구조에만 보존. 옛 구조는 collect 시점에 fetch 만 하고
+    snapshot 엔 안 들어갔음 → 옛 데이터는 None."""
+    return (snap.get('services', {}) or {}).get('omok', {}).get('stats', {}) or {}
+
+
+def snap_2048_stats(snap):
+    return (snap.get('services', {}) or {}).get('2048', {}).get('stats', {}) or {}
+
+
+def snap_aiven(snap):
+    """Aiven 은 옛/새 둘 다 평탄."""
+    return snap.get('aiven', {}) or {}
 
 
 # ============================================================

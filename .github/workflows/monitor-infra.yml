@@ -81,8 +81,12 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python scripts/monitor.py
 
-      - name: Commit metrics (collect mode only)
-        if: steps.mode.outputs.mode == 'collect'
+      - name: Commit metrics
+        # 두 모드 모두 metrics/ 변경 가능성:
+        #   collect — YYYY-MM-DD.json (snapshot 누적), state.json (cooldown)
+        #   daily-summary — daily-stats.json (7일 트렌드 누적). 이전엔 collect 만
+        #   commit 해서 daily-stats.json 가 절대 push 안 되어 7일 트렌드 PVP/봇/
+        #   활성/총계정 컬럼이 영원히 비어 있었음.
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -90,6 +94,6 @@ jobs:
           if git diff --staged --quiet; then
             echo 'no metrics changes'
           else
-            git commit -m "chore(monitor): metrics ${{ github.run_id }}"
+            git commit -m "chore(monitor): metrics ${{ steps.mode.outputs.mode }} ${{ github.run_id }}"
             git push
           fi
