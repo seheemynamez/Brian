@@ -184,7 +184,7 @@ const dailyBotMovesHandler = async (req, res) => {
 
 // /api/online-series?from=epoch_ms&to=epoch_ms — online time-series sample 배열.
 // from/to 둘 다 필수. to 안 주면 now 로 default. from=0 같은 무한 윈도우 거절.
-const onlineSeriesHandler = (req, res) => {
+const onlineSeriesHandler = async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const fromRaw = url.searchParams.get('from');
   const toRaw = url.searchParams.get('to');
@@ -195,7 +195,9 @@ const onlineSeriesHandler = (req, res) => {
     return sendJson(res, 400, { error: 'from must be positive epoch_ms, to > from' });
   }
   const store = getStore();
-  const items = store.getOnlineSeries ? store.getOnlineSeries(from, to) : [];
+  const items = store.getOnlineSeriesFresh
+    ? await store.getOnlineSeriesFresh(from, to)
+    : (store.getOnlineSeries ? store.getOnlineSeries(from, to) : []);
   sendJson(res, 200, { from, to, count: items.length, items, ts: new Date().toISOString() });
 };
 
