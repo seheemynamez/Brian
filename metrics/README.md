@@ -80,7 +80,7 @@ PR — 2048 통합으로 service 별 분리:
 - `server_failed` 발생 1건 이상 (OOM / crash)
 - 봇 `schedule RETRY` ≥ 30 건 (≈동시 2 게임 lag — 한 게임 단독 케이스는 통과)
 - 봇 `schedule SKIP` ≥ 3 건 (RETRY 가 못 잡는 진짜 끊김)
-- Server downtime > 60 초 (DISCONNECT_GRACE_MS 초과)
+- Server downtime > 90 초 (DISCONNECT_GRACE_MS 초과 — Issue #155 deploy 136s 반영)
 - Render 배포 비정상 (`deploy_status` ∉ {`live`, `*_in_progress`})
 - **monitor 자체 fetch 연속 실패 ≥ 3회** (= 약 15분) — endpoint 별 (`render:{svc}` / `stats:{svc}` / `aiven`). transient retry (3회 exp backoff) 통과 후에도 실패. label `alert-fetch`.
 

@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from monitor_config import (
     AIVEN_MEM_LIMIT_MB, DRY_RUN, KST, NOW, RENDER_BW_LIMIT_GB,
-    RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB,
+    RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, THRESHOLD_DOWNTIME_S,
 )
 from monitor_apis import (
     aiven_metrics, close_issue, create_issue, fetch_server_stats,
@@ -499,7 +499,7 @@ def run_daily_summary():
     # 서버 장애 + downtime 상세 (server_failed/deploy_started → server_available 매칭)
     if recoveries:
         body.append('### 서버 장애 / 배포 downtime (24h)\n')
-        body.append('| 시각 (KST) | 종류 | 인스턴스 | reason | recovery | grace 60s |')
+        body.append(f'| 시각 (KST) | 종류 | 인스턴스 | reason | recovery | grace {THRESHOLD_DOWNTIME_S:.0f}s |')
         body.append('|---|---|---|---|---|---|')
         for r in recoveries[:15]:
             try:
@@ -523,7 +523,8 @@ def run_daily_summary():
         p95 = dts[min(len(dts)-1, int(len(dts)*0.95))]
         over_count = sum(1 for x in recoveries if not x['within_grace'])
         body.append(f'\n_n={len(recoveries)} · median={med:.1f}s · p95={p95:.1f}s · max={max(dts):.1f}s · '
-                    f'60s grace 초과 {over_count}건. downtime = `server_failed`/`deploy_started` → `server_available` 간격._')
+                    f'{THRESHOLD_DOWNTIME_S:.0f}s grace 초과 {over_count}건. downtime = '
+                    f'`server_failed`→`server_available` (crash) 또는 `deploy_started`→`server_available`/`deploy_ended` (deploy)._')
         body.append('')
 
     body.append('### 임계 alert 이력 (24h)\n')
@@ -618,7 +619,7 @@ def run_daily_summary():
     if recoveries_2048:
         slow_2048 = [r for r in recoveries_2048 if not r['within_grace']]
         dts = sorted(x['downtime_s'] for x in recoveries_2048)
-        body.append(f'- recovery {len(recoveries_2048)}건 (median {dts[len(dts)//2]:.1f}s · max {max(dts):.1f}s · 60s 초과 {len(slow_2048)}건)\n')
+        body.append(f'- recovery {len(recoveries_2048)}건 (median {dts[len(dts)//2]:.1f}s · max {max(dts):.1f}s · {THRESHOLD_DOWNTIME_S:.0f}s 초과 {len(slow_2048)}건)\n')
     # 배포 이력 (24h, 2048).
     if deploys_2048:
         body.append('### 배포 이력 (24h, 2048)\n')

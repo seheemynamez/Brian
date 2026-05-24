@@ -18,19 +18,36 @@ from datetime import date, datetime, timedelta, timezone
 
 from monitor_config import (
     COOLDOWN_HOURS, DAILY_STATS_FILE, KST, METRICS_DIR, NOW, STATE_FILE,
+    THRESHOLD_DOWNTIME_S,
 )
 
 # ============================================================
 # ISO 타임스탬프 파싱 + Timezone 변환 helper
 # ============================================================
-# Render 가 ns precision 으로 보낼 때 microsecond 까지만 자름.
-_TS_TRUNC_RE = re.compile(r'(\.\d{6})\d+')
+# Python ≤ 3.10 의 `datetime.fromisoformat` 은 fractional seconds 가 정확히
+# 6자리 microsecond 여야 함 — 4자리 (`.3819`) 또는 9자리 (ns) 거부.
+# Render API 가 둘 다 보낼 수 있어 정규화:
+#   - 7+자리 (ns)   → 앞 6자리 truncate
+#   - 1~5자리       → 6자리로 0-padding
+#   - 6자리 / 없음  → 그대로
+# Python 3.11+ 는 모두 받지만 로컬 dev (3.9/3.10) 호환 위해 명시.
+_TS_FRAC_RE = re.compile(r'\.(\d+)(?=[+\-Z])')
+
+
+def _normalize_frac(m):
+    frac = m.group(1)
+    if len(frac) > 6:
+        frac = frac[:6]
+    elif len(frac) < 6:
+        frac = frac.ljust(6, '0')
+    return f'.{frac}'
 
 
 def parse_iso(ts):
-    """ISO ts (UTC or any tz) → tz-aware datetime. 빈 string 은 ValueError."""
+    """ISO ts (UTC or any tz) → tz-aware datetime. 빈 string 은 ValueError.
+    fractional seconds 가 4~9자리 모두 호환 (Python 3.9+ 지원)."""
     s = ts.replace('Z', '+00:00')
-    s = _TS_TRUNC_RE.sub(r'\1', s)
+    s = _TS_FRAC_RE.sub(_normalize_frac, s)
     return datetime.fromisoformat(s)
 
 
@@ -344,7 +361,7 @@ def compute_recovery_times(events):
             'start_ts': to_kst_iso(start_ts),
             'end_ts': to_kst_iso(end_ts),
             'downtime_s': downtime_s,
-            'within_grace': downtime_s <= 60.0,
+            'within_grace': downtime_s <= THRESHOLD_DOWNTIME_S,
             'evicted': bool(reason.get('evicted')),
             'nonZeroExit': reason.get('nonZeroExit'),
             'oom': bool(reason.get('oom')),

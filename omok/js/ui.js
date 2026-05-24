@@ -224,8 +224,8 @@ export const pauseTurnTimer = (graceDeadline) => {
     return;
   }
   // grace deadline 까지 카운트다운 — 매초 갱신.
-  // 시계 skew 로 remainMs > graceMs 케이스 ("61초") 방지: state.disconnectGraceMs 로 cap.
-  const total = state.disconnectGraceMs || 60_000;
+  // 시계 skew 로 remainMs > graceMs 케이스 ("91초") 방지: state.disconnectGraceMs 로 cap.
+  const total = state.disconnectGraceMs || 90_000;
   const isSpectator = state.role === 'spectator';
   const tickPaused = () => {
     if (!state.disconnectDeadline) return;

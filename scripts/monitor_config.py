@@ -63,10 +63,11 @@ THRESHOLD_AIVEN_MEM_PCT = 80.0
 # SKIP 는 RETRY 후에도 회복 못 한 경우 — 거의 발생 X (없어야 정상).
 THRESHOLD_BOT_RETRY_15MIN = 30   # 15분 안 RETRY 30건 이상 (≈동시 2 게임 lag)
 THRESHOLD_BOT_SKIP_15MIN = 3     # 15분 안 SKIP 3건 이상 — RETRY 가 못 잡는 진짜 끊김 패턴
-# 60s grace 임계 — server downtime 이 이를 초과하면 사용자 disconnect_grace 만료 위험.
-# 측정 근거: 5/20 crash 폭주 sample (median 43s, p75 59s, max 102s, n=10) +
-# normal deploy sample (17s, n=1). 60s 임계는 max 102s case 같은 outlier 잡기.
-THRESHOLD_DOWNTIME_S = 60.0
+# grace 임계 — server downtime 이 이를 초과하면 사용자 disconnect_grace 만료 위험.
+# omok/server/infra/timings.js 의 DISCONNECT_GRACE_MS (90s, Issue #155 deploy
+# 136s 반영) 와 동기. 두 정책 같이 움직임 — server 가 grace 늘리면 monitor 도
+# alert 임계 늘려 의미 일치.
+THRESHOLD_DOWNTIME_S = 90.0
 # Cooldown — cron 5분이라 같은 alert 가 evaluation 마다 발사되지 않게.
 # 6시간은 진짜 문제가 회복 안 됐을 때 너무 늦게 재감지 → 2시간으로 단축.
 COOLDOWN_HOURS = 2

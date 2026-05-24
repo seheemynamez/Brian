@@ -73,8 +73,8 @@ export const state = {
   // opponent_disconnected.deadline 으로 set, opponent_reconnected 시 null.
   // 값이 있으면 turn timer 는 일시정지 + 이 deadline 으로 카운트다운 표시.
   disconnectDeadline: null,
-  // 서버 grace 총 길이 (ms) — 시계 skew 로 "61초" 표시 방지 cap 용. 기본 60s.
-  disconnectGraceMs: 60_000,
+  // 서버 grace 총 길이 (ms) — 시계 skew 로 "91초" 표시 방지 cap 용. 기본 90s.
+  disconnectGraceMs: 90_000,
 
   // 오디오
   muted: localStorage.getItem('omok_muted') === '1',
