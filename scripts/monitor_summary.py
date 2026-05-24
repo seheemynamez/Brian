@@ -458,6 +458,41 @@ def run_daily_summary():
                 body.append(f'| {diff} | {cfg_key} | {st["n"]} | {st["avg_elap"]}/{st["p50_elap"]}/{st["p95_elap"]} | **{st["cfgmax_pct"]:.1f}%** |')
         body.append('')
 
+    # 봇 cfg 권장 사항 — 도달율/승률 임계 기반 자동 권장.
+    # 도달율 (cfgmax_pct) = 봇이 timeout/topK 한계까지 다 써서 탐색한 비율.
+    #   너무 낮으면 (<40%) 한계가 헐거워 자원 낭비 — topK 줄여 탐색 빠르게.
+    #   너무 높으면 (>80%) 한계가 꽉 차 미흡한 수 둘 위험 — topK 늘리거나 timeout 줄여 조정.
+    # 봇 승률 — 사람 상대 평균. <30% 면 봇 너무 약함, >80% 면 봇 너무 강함 (사람 이탈).
+    # 표본 작으면 (cfg n<10, 봇 total<5) skip — noise 로 잘못된 권장 막기.
+    bot_recs = []
+    for diff in ['easy', 'medium', 'hard']:
+        cfgs = bot_by_cfg.get(diff, {}) if bot_by_cfg else {}
+        for cfg_key, st in sorted(cfgs.items()):
+            n = st.get('n', 0)
+            if n < 10: continue
+            pct = st.get('cfgmax_pct', 0)
+            if pct < 40:
+                bot_recs.append(f'- **{diff} {cfg_key}** 도달율 {pct:.1f}% (n={n}) — `topK ↓` 권장 (목표 50%+, 자원 낭비)')
+            elif pct > 80:
+                bot_recs.append(f'- **{diff} {cfg_key}** 도달율 {pct:.1f}% (n={n}) — `topK ↑` 또는 `timeout ↓` 권장 (한계 도달)')
+    if bot_perf:
+        for diff in ['easy', 'medium', 'hard']:
+            s = bot_perf.get(diff)
+            if not s or s.get('total', 0) < 5: continue
+            total = s['total']
+            wr = 100.0 * s['wins'] / total
+            if wr < 30:
+                bot_recs.append(f'- **{diff} 봇 승률 {wr:.1f}%** (총 {total}게임) — 봇 강화 권장 (난이도 ↑ / topK ↑ / timeout ↑)')
+            elif wr > 80:
+                bot_recs.append(f'- **{diff} 봇 승률 {wr:.1f}%** (총 {total}게임) — 봇 약화 권장 (사람 이탈 방지)')
+    body.append('### 봇 cfg 권장 사항\n')
+    if bot_recs:
+        body.extend(bot_recs)
+        body.append('\n_임계: 도달율 <40% → topK ↓, >80% → topK ↑. 승률 <30% → 강화, >80% → 약화. 표본 적은 cfg (n<10) / 봇 (total<5) 은 skip._')
+    else:
+        body.append('- (현재 권장 사항 없음 — 모든 cfg 도달율 40~80% & 봇 승률 30~80% 정상 범위)')
+    body.append('')
+
     # 시간대별 활동 (KST hour, 세 종류 통합 표)
     body.append('### 시간대별 활동 (KST hour)\n')
     body.append('| hour | 동접 평균 | 동접 peak | 게임 시작 | 봇 착수 | bar (게임) |')
