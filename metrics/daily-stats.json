@@ -27,7 +27,7 @@
     "render_cpu_max_m": 113.736615,
     "aiven_mem_max_pct": 70.13654830282903,
     "active_users": 46,
-    "total_human_users": 200,
+    "total_human_users": 203,
     "ws_connected": 625,
     "worker_timeout": 26,
     "no_move": 0,
@@ -35,7 +35,7 @@
     "hard_d6_n": 73,
     "tiers": {
       "Iron": 5,
-      "Bronze": 187,
+      "Bronze": 190,
       "Silver": 7,
       "Gold": 1,
       "Platinum": 0,
@@ -46,7 +46,7 @@
     "active_users_2048": 3,
     "daily_submits_2048": 5,
     "new_users_2048": 6,
-    "total_users_2048": 23,
+    "total_users_2048": 24,
     "top_all_time_2048": 26276,
     "top_daily_2048": 16964
   }
