@@ -90,10 +90,10 @@ PR — 2048 통합으로 service 별 분리:
 
 | 항목 | 정책 |
 |---|---|
-| Retry | transient HTTP 5xx / 429 / network 에러 → exp backoff (1→2→4s, 최대 3회). `monitor_apis.http_get/post/patch` 에 일괄 적용. 4xx 4xx (404/400/...) 는 영구 에러로 즉시 propagate. |
+| Retry | transient HTTP 5xx / 429 / network 에러 → 자동 재시도, **최대 5회**. 429 는 응답의 **`Retry-After` 헤더** (RFC 7231 delta-seconds) 우선 사용, 없거나 다른 transient 면 exp backoff (1→2→4→8→16s, cap 30s). 4xx 4xx (404/400/...) 는 영구 에러로 즉시 propagate. `monitor_apis.http_get/post/patch` 에 일괄 적용. |
 | Pagination | `render_search_logs` (nextEndTime), `render_events` (cursor) 모두 페이지네이션 자동 — window 안 모든 데이터 누적. safety cap `max_iter=50` (limit×50 = 5000건). Render API limit max=100 제약. |
-| 실패 처리 | 호출자 (collect) 가 try/except 로 graceful skip — 해당 metric/alert 만 None, 나머지 흐름 정상. fetch_fail_streak (state.json) 에 endpoint 별 누적, 연속 3회 (≈ 15분) 도달 시 별도 alert. 성공 시 streak 자동 reset. |
-| daily-summary | retry 효과는 자동. fail_streak 추적은 collect 만 (1일 1회 실행이라 streak 의미 ↓) — 본문에 "데이터 없음" 표시로 대신. |
+| 실패 처리 | 호출자가 try/except 로 graceful skip — 해당 metric/alert 만 None, 나머지 흐름 정상. fetch_fail_streak (state.json) 에 endpoint 별 누적, 연속 3회 (≈ 15분) 도달 시 별도 `fetch_fail` alert. 성공 시 streak 자동 reset. |
+| daily-summary fetch tracking | `render_search_logs` / `render_events` 의 `track_state` / `track_key` 인자로 fail_streak 자동 누적 — collect 와 같은 state.json 통합. **이번 발행 시점에 fetch 실패한 endpoint** 는 본문 끝의 `⚠️ Fetch 실패 endpoint` 섹션에 명시 (silent loss 인지). 누적 3회 시 collect 의 fetch_fail alert 와 같은 정책으로 Issue. |
 
 ## 수동 실행
 
