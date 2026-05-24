@@ -338,9 +338,27 @@ const createValkeyStore = () => {
       fnf(client.expire(K.daily(date), DAILY_TTL_SEC));
     },
     // 특정 date 의 카운터 dict 반환. 없으면 null.
+    // 메모리 캐시 우선이지만 backfill / 외부 write 가 valkey 직접 build 한 경우
+    // 캐시는 stale. authoritative 응답이 필요한 endpoint 는 getDailyStatsFresh 사용.
     getDailyStats(date) {
       if (!date) return null;
       return dailyStats.get(date) || null;
+    },
+    // valkey HGETALL 직접 조회 → in-memory cache 도 갱신 후 반환. endpoint 가
+    // backfill / disaster-recovery 로 직접 valkey HSET 된 값까지 항상 응답.
+    async getDailyStatsFresh(date) {
+      if (!date) return null;
+      try {
+        const h = await client.hgetall(K.daily(date));
+        if (!h || !Object.keys(h).length) return null;
+        const obj = {};
+        for (const [f, v] of Object.entries(h)) obj[f] = Number(v) || 0;
+        dailyStats.set(date, obj);   // cache 자체도 refresh
+        return obj;
+      } catch (e) {
+        log.error('valkey_daily_fresh_read_fail', { date, err: e && e.message });
+        return dailyStats.get(date) || null;   // 실패 시 cache fallback
+      }
     },
 
     // ---- 일별 SET (unique 멤버) ----
@@ -363,6 +381,19 @@ const createValkeyStore = () => {
       if (!perDate) return 0;
       const s = perDate.get(name);
       return s ? s.size : 0;
+    },
+    // SET 크기 fresh — backfill / 외부 SADD 까지 반영. endpoint authoritative 응답 용.
+    async getDailySetSizeFresh(date, name) {
+      if (!date || !name) return 0;
+      try {
+        const n = await client.scard(K.dailySet(date, name));
+        // memory cache 도 lazy refresh (멤버 까지 다 가져오면 부담 — count 만 기록).
+        // 실제 멤버 조회는 getDailySetMembers 가 별도로 SMEMBERS.
+        return Number(n) || 0;
+      } catch (e) {
+        log.error('valkey_set_card_fresh_fail', { date, name, err: e && e.message });
+        return this.getDailySetSize(date, name);
+      }
     },
     // 멤버 전체 (active_users 의 unique nick 목록 등). 큰 SET 도 그대로 array 반환.
     getDailySetMembers(date, name) {

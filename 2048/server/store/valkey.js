@@ -185,6 +185,22 @@ const getDailyStats = (date) => {
   if (!date) return null;
   return dailyStats.get(date) || null;
 };
+// valkey HGETALL 직접 조회 → cache 도 갱신. backfill / 외부 HSET 까지 반영.
+const getDailyStatsFresh = async (date) => {
+  if (!date) return null;
+  if (!redis) return getDailyStats(date);
+  try {
+    const h = await redis.hgetall(dailyKey(date));
+    if (!h || !Object.keys(h).length) return null;
+    const obj = {};
+    for (const [f, v] of Object.entries(h)) obj[f] = Number(v) || 0;
+    dailyStats.set(date, obj);
+    return obj;
+  } catch (e) {
+    log.event('valkey_daily_fresh_fail', { date, err: String(e && e.message).slice(0, 200) });
+    return getDailyStats(date);
+  }
+};
 
 // ---- daily SET ----
 const addDailySetMember = (date, name, member) => {
@@ -203,6 +219,16 @@ const getDailySetSize = (date, name) => {
   if (!perDate) return 0;
   const s = perDate.get(name);
   return s ? s.size : 0;
+};
+const getDailySetSizeFresh = async (date, name) => {
+  if (!date || !name) return 0;
+  if (!redis) return getDailySetSize(date, name);
+  try {
+    return Number(await redis.scard(dailySetKey(date, name))) || 0;
+  } catch (e) {
+    log.event('valkey_set_card_fresh_fail', { date, name, err: String(e && e.message).slice(0, 200) });
+    return getDailySetSize(date, name);
+  }
 };
 const getDailySetMembers = (date, name) => {
   const perDate = dailySets.get(date);
@@ -233,7 +259,7 @@ module.exports = {
   users, dailyStats, dailySets, onlineSamples,
   connect, hydrate, disconnect,
   persistUser, removeUser,
-  incrementDailyCounter, getDailyStats,
-  addDailySetMember, getDailySetSize, getDailySetMembers,
+  incrementDailyCounter, getDailyStats, getDailyStatsFresh,
+  addDailySetMember, getDailySetSize, getDailySetSizeFresh, getDailySetMembers,
   sampleOnline, getOnlineSeries,
 };
