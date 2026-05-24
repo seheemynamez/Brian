@@ -9,7 +9,7 @@
 const { getStore } = require('../store');
 const {
   INITIAL_RATING, BOT_INITIAL_RATING,
-  computeDeltas, getTier, resultForBlack,
+  computeDeltas, getTier, resultForBlack, TIER_THRESHOLDS,
 } = require('../game/rating');
 const { BOT_NICKNAMES } = require('../game/bot');
 
@@ -222,12 +222,19 @@ const getMyRankEntry = (clientId) => {
 // 운영 통계 — /api/stats endpoint 용 (PR #95). 봇 user 는 제외 (사람 계정만).
 // total_human_users = recordGameResult 가 한 번이라도 호출된 사람 user 수.
 // active 는 server 가 lastPlayedAt 추적 안 해서 monitor.py 가 game_over 로그로 계산.
+//
+// tiers (PR — daily-summary 의 티어 분포 표 용): 각 티어 별 사람 user 수.
+// 발행 시점 (호출 시점) snapshot. 0명 티어도 키는 보존 (trend 일관성).
 const getUserStats = () => {
+  const tiers = Object.fromEntries(TIER_THRESHOLDS.map((t) => [t.name, 0]));
   let total = 0;
   for (const u of users.values()) {
-    if (u && !u.isBot) total++;
+    if (u && !u.isBot) {
+      total++;
+      tiers[getTier(u.rating)]++;
+    }
   }
-  return { total_human_users: total };
+  return { total_human_users: total, tiers };
 };
 
 module.exports = {

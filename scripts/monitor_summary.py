@@ -250,6 +250,9 @@ def run_daily_summary():
         'no_move': len(nm_logs),
         'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
         'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
+        # 티어 분포 — server /api/stats 의 tiers (PR — 발행 시점 snapshot).
+        # 본문 표 + 전일 Δ 비교 용. 0명 티어도 키 보존 (trend 일관성).
+        'tiers': (server_stats or {}).get('tiers') or {},
         # 2048
         'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
         'active_users_2048': len(active_nicks_2048),
@@ -371,6 +374,48 @@ def run_daily_summary():
     body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count}{_delta(pvp_count, "pvp_games")} / 봇 {bot_game_count}{_delta(bot_game_count, "bot_games")})')
     body.append(f'- 봇 착수 총 횟수: **{bot_total}건**{_delta(bot_total, "total_bot_moves")}')
     body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**{_delta(len(ws_conn_logs), "ws_connected")}\n')
+
+    # 티어 분포 (PR — server /api/stats 의 tiers + 전일 Δ).
+    # 발행 시점 snapshot — 0명 티어도 트렌드 일관성 위해 모두 표시 (Master→Iron).
+    tiers_now = (server_stats or {}).get('tiers') or {}
+    tiers_prev = (prev_stats or {}).get('tiers') or {}
+    if tiers_now:
+        TIER_ORDER = ['Master', 'Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Iron']
+        TIER_RANGE = {
+            'Master':   '2100+',
+            'Diamond':  '1900~2099',
+            'Platinum': '1700~1899',
+            'Gold':     '1500~1699',
+            'Silver':   '1300~1499',
+            'Bronze':   '1100~1299',
+            'Iron':     '~1099',
+        }
+        body.append('### 오목 티어 분포 _(발행시점)_\n')
+        body.append('| 티어 | rating 구간 | 인원 | 비중 | 전일 Δ |')
+        body.append('|---|---|---|---|---|')
+        total_now = sum(tiers_now.values()) or 1
+        for tier in TIER_ORDER:
+            cur = tiers_now.get(tier, 0)
+            pct = 100.0 * cur / total_now
+            if tiers_prev:
+                prev = tiers_prev.get(tier, 0)
+                if cur == prev:
+                    delta_str = '±0'
+                else:
+                    delta_str = f'{cur - prev:+d}'
+            else:
+                delta_str = ''   # 전일 entry 없음 (첫 발행 또는 30일 cutoff 후)
+            body.append(f'| {tier} | {TIER_RANGE[tier]} | {cur} | {pct:.1f}% | {delta_str} |')
+        # 합계 row (전일 entry 없으면 Δ cell 빈칸)
+        sum_now = sum(tiers_now.values())
+        if tiers_prev:
+            sum_prev = sum(tiers_prev.values())
+            sum_delta_cell = '**±0**' if sum_now == sum_prev else f'**{sum_now - sum_prev:+d}**'
+        else:
+            sum_delta_cell = ''
+        body.append(f'| **합계** |  | **{sum_now}** | 100% | {sum_delta_cell} |')
+        body.append('\n_각 사용자의 현재 rating 기준. 발행 시점 server `/api/stats` 응답. 전일 Δ = 직전 발행 entry 대비._')
+        body.append('')
 
     # 봇 운영 지표 (핵심) — (b) 승률 + 봇 rating Δ 추가.
     body.append('### 봇 운영 지표 (난이도 별)\n')
