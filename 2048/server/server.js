@@ -36,11 +36,24 @@ const sendJson = (res, status, payload) => {
   res.end(JSON.stringify(payload));
 };
 
+const { kstDate } = require('./infra/daily-counter');
 const statsHandler = (req, res) => {
   // active_ws — wss 가 아래에서 만들어지지만 statsHandler 가 실제 호출되는 시점엔
   // 이미 init. 아직 없으면 0.
   const activeWs = wss ? wss.clients.size : 0;
-  sendJson(res, 200, { ...getUserStats(), active_ws: activeWs, ts: new Date().toISOString() });
+  const stats = getUserStats();
+  // side-effect — today daily Hash 에 snapshot (omok 와 동일 패턴).
+  try {
+    const store = getStore();
+    if (store.snapshotDailyMeta) {
+      store.snapshotDailyMeta(kstDate(), {
+        total_users: stats.total_users || 0,
+        top_all_time: stats.top_all_time || 0,
+        top_daily: stats.top_daily || 0,
+      });
+    }
+  } catch {}
+  sendJson(res, 200, { ...stats, active_ws: activeWs, ts: new Date().toISOString() });
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -68,6 +81,10 @@ const dailyStatsHandler = async (req, res) => {
     ws_disconnected: c.ws_disconnected || 0,
     heartbeat_terminate: c.heartbeat_terminate || 0,
     active_users: await setSize('active_users'),
+    // snapshot fields (statsHandler 가 매 호출마다 갱신) — 7d trend 용
+    total_users: c.total_users != null ? Number(c.total_users) : null,
+    top_all_time: c.top_all_time != null ? Number(c.top_all_time) : null,
+    top_daily: c.top_daily != null ? Number(c.top_daily) : null,
     ts: new Date().toISOString(),
   });
 };

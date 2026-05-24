@@ -337,6 +337,19 @@ const createValkeyStore = () => {
       // TTL 갱신 — HINCRBY 자체는 TTL 안 건드림. 매 호출마다 EXPIRE 다시 걸어 90일 슬라이딩.
       fnf(client.expire(K.daily(date), DAILY_TTL_SEC));
     },
+    // snapshot 형 (counter 가 아닌 fixed 값) field 갱신 — total_human_users / tier_* 등.
+    // HSET (replace) — caller 가 매번 최신값 전달. 7일 trend 의 "계정/티어 분포" 컬럼이
+    // 과거 KST day 의 end-of-day snapshot 으로 표시되도록 monitor 5분 cron 이 자연 갱신.
+    snapshotDailyMeta(date, fields) {
+      if (!date || !fields || !Object.keys(fields).length) return;
+      const obj = dailyStats.get(date) || {};
+      for (const [k, v] of Object.entries(fields)) obj[k] = Number(v) || 0;
+      dailyStats.set(date, obj);
+      const stringified = {};
+      for (const [k, v] of Object.entries(fields)) stringified[k] = String(Number(v) || 0);
+      fnf(client.hset(K.daily(date), stringified));
+      fnf(client.expire(K.daily(date), DAILY_TTL_SEC));
+    },
     // 특정 date 의 카운터 dict 반환. 없으면 null.
     // 메모리 캐시 우선이지만 backfill / 외부 write 가 valkey 직접 build 한 경우
     // 캐시는 stale. authoritative 응답이 필요한 endpoint 는 getDailyStatsFresh 사용.

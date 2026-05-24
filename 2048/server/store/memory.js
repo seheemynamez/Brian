@@ -27,6 +27,12 @@ module.exports = {
     obj[field] = (obj[field] || 0) + n;
     dailyStats.set(date, obj);
   },
+  snapshotDailyMeta(date, fields) {
+    if (!date || !fields || !Object.keys(fields).length) return;
+    const obj = dailyStats.get(date) || {};
+    for (const [k, v] of Object.entries(fields)) obj[k] = Number(v) || 0;
+    dailyStats.set(date, obj);
+  },
   getDailyStats(date) {
     if (!date) return null;
     return dailyStats.get(date) || null;
