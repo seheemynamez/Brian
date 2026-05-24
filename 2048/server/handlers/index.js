@@ -21,6 +21,7 @@
 const send = require('./send');
 const users = require('../domain/users');
 const log = require('../infra/log');
+const { incrementToday, addTodaySetMember } = require('../infra/daily-counter');
 
 const RANKING_TOP_N = 10;
 
@@ -55,7 +56,10 @@ const handleMessage = (ws, msg) => {
       const nickActuallyChanged = prevPersistedNick !== null && prevPersistedNick !== user.nickname;
       if (hasScore && nickActuallyChanged) broadcastRanking();
       log.event('nickname_set', { client: log.mask(clientId), nick: user.nickname });
-      if (!before) log.event('user_created', { client: log.mask(clientId), nick: user.nickname, src: 'nickname' });
+      if (!before) {
+        log.event('user_created', { client: log.mask(clientId), nick: user.nickname, src: 'nickname' });
+        incrementToday('user_created');
+      }
       return;
     }
     case 'submit_score': {
@@ -83,13 +87,20 @@ const handleMessage = (ws, msg) => {
         client: log.mask(clientId), nick: r.user.nickname,
         score, allTime: r.allTimeUpdated, daily: r.dailyUpdated,
       });
-      if (!before) log.event('user_created', { client: log.mask(clientId), nick: r.user.nickname, src: 'score' });
+      // daily counter + active_users (제출한 사람의 nick).
+      incrementToday('submit_score');
+      if (r.user.nickname) addTodaySetMember('active_users', r.user.nickname);
+      if (!before) {
+        log.event('user_created', { client: log.mask(clientId), nick: r.user.nickname, src: 'score' });
+        incrementToday('user_created');
+      }
       if (r.allTimeUpdated || r.dailyUpdated) {
         broadcastRanking();   // best 변동 시만 broadcast — 노이즈 ↓
         log.event('score_best', {
           client: log.mask(clientId), nick: r.user.nickname,
           score, allTime: r.allTimeUpdated, daily: r.dailyUpdated,
         });
+        incrementToday('score_best');
       }
       return;
     }

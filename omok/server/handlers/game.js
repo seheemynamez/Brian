@@ -17,7 +17,9 @@ const { getSpectatorNames, sendSpectatorState } = require('./spectator');
 const {
   getBotColor, scheduleBotMove, afterSuccessfulMove,
 } = require('./bot');
-const { incrementToday } = require('../infra/daily-counter');
+const {
+  incrementToday, addTodaySetMember, pushTodayListItem,
+} = require('../infra/daily-counter');
 
 const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS) || 30000;
 
@@ -60,13 +62,32 @@ const gameOverFields = (room, entry, extra) => {
   };
 };
 
-// 일별 카운터 — 매 game_over (win/draw/abandon) 시점 호출. monitor 가
-// /api/daily-stats?date=… 로 읽어 authoritative source 로 사용.
-// pvp_games / bot_games 는 room.hasBot 에 따라 분기. fire-and-forget.
-const recordGameOverDailyCounter = (room) => {
+// 일별 카운터 + SET + LIST 갱신 — 매 game_over (win/draw/abandon) 시점 호출.
+// monitor 가 /api/daily-stats / /api/daily-games endpoint 로 읽어 server-domain
+// 데이터의 단일 source 로 사용 (Render log fetch 대체).
+//
+// 1) counter: pvp_games / bot_games (room.hasBot 분기)
+// 2) SET active_users: 사람 양 색의 nick (봇 nick 제외). 사람 unique 활성 count.
+// 3) LIST games: gameOverFields(...) 결과를 JSON 으로 push — game_over 로그를
+//    완전 대체. 같은 필드 셋이라 monitor parse 로직 그대로 사용 가능.
+const recordGameOver = (room, entry, extra) => {
   if (!room) return;
   incrementToday(room.hasBot ? 'bot_games' : 'pvp_games');
+  // active_users — 봇 slot 의 nick 은 제외 (사람 활성도만 측정).
+  const black = room.players?.black;
+  const white = room.players?.white;
+  if (black && black.type !== 'bot' && black.nickname) {
+    addTodaySetMember('active_users', black.nickname);
+  }
+  if (white && white.type !== 'bot' && white.nickname) {
+    addTodaySetMember('active_users', white.nickname);
+  }
+  // game record — gameOverFields 와 같은 필드 + ts. monitor 가 JSON 파싱.
+  const record = { ts: new Date().toISOString(), ...gameOverFields(room, entry, extra) };
+  pushTodayListItem('games', record);
 };
+// 후방 호환 — PR-4 의 export 이름 유지 (disconnect.js 가 require).
+const recordGameOverDailyCounter = (room, entry, extra) => recordGameOver(room, entry, extra);
 
 // ============================================================
 // 차례 타이머
@@ -289,7 +310,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', gameOverFields(room, entry, { winner: color, reason: 'five' }));
-    recordGameOverDailyCounter(room);
+    recordGameOver(room, entry, { winner: color, reason: 'five' });
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
@@ -306,7 +327,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', gameOverFields(room, entry, { winner: 'draw', reason: 'draw' }));
-    recordGameOverDailyCounter(room);
+    recordGameOver(room, entry, { winner: 'draw', reason: 'draw' });
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color, turn: room.turn });
@@ -326,5 +347,5 @@ module.exports = {
   onMove,
   startGame,
   gameOverFields,  // disconnect.js 의 game_over 로그도 같은 형식 사용
-  recordGameOverDailyCounter,  // disconnect.js (abandon 처리) 도 호출
+  recordGameOver,  // counter + active_users SET + games LIST
 };

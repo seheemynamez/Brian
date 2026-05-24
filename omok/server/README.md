@@ -166,7 +166,10 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 - `GET /` — 정적 파일 (omok 클라이언트). [omok/index.html](../index.html) 등.
 - `GET /i/{CODE}?n={NICK}` — 초대 링크. OG 메타 응답 후 canonical URL 로 redirect. [infra/share.js](infra/share.js).
 - `GET /api/stats` — 운영 통계 (monitor.py daily-summary 가 호출). `{ total_human_users, tiers, bots, ts }` JSON. 인증 없음, no-store cache.
-- `GET /api/daily-stats?date=YYYY-MM-DD` — KST 기준 일별 카운터 (PR — A). 응답: `{ date, pvp_games, bot_games, total_bot_moves, ts }`. valkey HINCRBY 로 누적 (TTL 90일). 잘못된 date 형식은 400. monitor 가 authoritative 소스로 우선 사용 (없으면 로그 폴백).
+- `GET /api/daily-stats?date=YYYY-MM-DD` — KST 기준 일별 카운터 + SET 크기. valkey HINCRBY / SCARD 로 누적 (TTL 90일). 응답: `{ date, pvp_games, bot_games, total_bot_moves, worker_timeout, no_move, bot_retry, bot_skip, heartbeat_terminate, ws_connected, ws_disconnected, active_users, bot_retry_rooms, bot_retry_clients, bot_skip_rooms, bot_skip_clients, ts }`. 잘못된 date 형식은 400.
+- `GET /api/daily-games?date=YYYY-MM-DD` — game_over 매 게임의 raw JSON 배열 (LPUSH 누적, 최신 머리). 응답: `{ date, count, items: [...], ts }`. items 각 entry: `gameOverFields` (code/gameId/bot/botDiff/blackNick/whiteNick/blackRating/whiteRating/blackDelta/whiteDelta/stones/humanTurnsMs/winner/reason/ts). monitor 의 bot_perf / player_acts / TOP / movers / thinking time / reason 계산 source.
+- `GET /api/daily-bot-moves?date=YYYY-MM-DD` — 매 봇 착수 raw JSON 배열. items 각 entry: `{ ts, diff, stones, cfgD, cfgTopK, reach, elap, room }`. monitor 의 cfgMax 도달율 / elapsed p50/p95 계산 source.
+- `GET /api/online-series?from=<epoch_ms>&to=<epoch_ms>` — 1분 sampler 의 online count 시계열 (ZSET). 응답: `{ from, to, count, items: [{ts, count}], ts }`. monitor 가 KST hour 별 avg/peak 계산.
 - `GET /ws` (upgrade) — WebSocket 진입. 모든 게임 / 매칭 / 봇 / 관전 통신.
 
 ### 보안

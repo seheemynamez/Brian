@@ -15,6 +15,7 @@ const { validateMessage, MAX_MESSAGE_BYTES } = require('./infra/validators');
 const { checkRateLimit, clearForConnection } = require('./infra/rate-limit');
 const { getStore } = require('./store');
 const log = require('./infra/log');
+const { incrementToday, sampleOnlineNow } = require('./infra/daily-counter');
 
 const PORT = Number(process.env.PORT) || 8080;
 // 좀비 ws 감지 주기 — 15s × 2 사이클 = 0-30s 안에 좀비 정리.
@@ -55,27 +56,9 @@ const statsHandler = (req, res) => {
   res.end(JSON.stringify(payload));
 };
 
-// 일별 카운터 endpoint — monitor 가 ?date=YYYY-MM-DD 로 KST 어제 (또는 임의 날짜)
-// 의 authoritative 카운트 (pvp_games / bot_games / total_bot_moves) 가져감.
-// fields 가 없으면 (해당 날짜 게임 없거나 TTL 만료) 0 으로 응답.
-// date 형식 검증 — 잘못된 입력은 400.
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const dailyStatsHandler = (req, res) => {
-  const url = new URL(req.url, 'http://x');
-  const date = url.searchParams.get('date') || '';
-  if (!DATE_RE.test(date)) {
-    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    return res.end(JSON.stringify({ error: 'date=YYYY-MM-DD required' }));
-  }
-  const stats = getStore().getDailyStats(date) || {};
-  const payload = {
-    date,
-    pvp_games: stats.pvp_games || 0,
-    bot_games: stats.bot_games || 0,
-    total_bot_moves: stats.total_bot_moves || 0,
-    ts: new Date().toISOString(),
-  };
-  res.writeHead(200, {
+// 공통 JSON 응답 헬퍼 — CORS '*', no-store. monitor 가 GitHub Actions runner 에서 호출.
+const sendJson = (res, status, payload) => {
+  res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-store',
@@ -83,10 +66,99 @@ const dailyStatsHandler = (req, res) => {
   res.end(JSON.stringify(payload));
 };
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// /api/daily-stats?date=YYYY-MM-DD — 카운터 + SET 크기 합성 응답.
+// monitor 의 daily-summary 가 이 단일 endpoint 로 server-domain 카운터 전부 수신.
+// fields 가 없으면 (해당 날짜 게임 없거나 TTL 만료) 0 으로 응답.
+// backfill 호환: SET 크기 = 0 이고 `{name}_backfill` 카운터가 있으면 그 값 fallback.
+// (옛 daily-stats.json 데이터를 valkey 로 옮긴 경우 — SET 멤버는 모르고 카운트만 옴.)
+const dailyStatsHandler = (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const date = url.searchParams.get('date') || '';
+  if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
+  const store = getStore();
+  const c = store.getDailyStats(date) || {};
+  const setSize = (name) => {
+    const live = store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+    if (live > 0) return live;
+    return Number(c[`${name}_backfill`]) || 0;
+  };
+  sendJson(res, 200, {
+    date,
+    // counters
+    pvp_games: c.pvp_games || 0,
+    bot_games: c.bot_games || 0,
+    total_bot_moves: c.total_bot_moves || 0,
+    worker_timeout: c.worker_timeout || 0,
+    no_move: c.no_move || 0,
+    bot_retry: c.bot_retry || 0,
+    bot_skip: c.bot_skip || 0,
+    heartbeat_terminate: c.heartbeat_terminate || 0,
+    ws_connected: c.ws_connected || 0,
+    ws_disconnected: c.ws_disconnected || 0,
+    // unique SET 크기 (없으면 backfill counter fallback)
+    active_users: setSize('active_users'),
+    bot_retry_rooms: setSize('bot_retry_rooms'),
+    bot_retry_clients: setSize('bot_retry_clients'),
+    bot_skip_rooms: setSize('bot_skip_rooms'),
+    bot_skip_clients: setSize('bot_skip_clients'),
+    ts: new Date().toISOString(),
+  });
+};
+
+// /api/daily-games?date=YYYY-MM-DD — game_over raw JSON 배열 (최신 머리).
+// game_over log fetch 완전 대체. monitor 가 bot_perf / player_acts / TOP / movers /
+// reason / thinking time 모두 이 응답 1건으로 계산.
+const dailyGamesHandler = async (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const date = url.searchParams.get('date') || '';
+  if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
+  try {
+    const store = getStore();
+    const items = await store.getDailyListRange(date, 'games', 0, -1);
+    sendJson(res, 200, { date, count: items.length, items, ts: new Date().toISOString() });
+  } catch (e) {
+    sendJson(res, 500, { error: e && e.message });
+  }
+};
+
+// /api/daily-bot-moves?date=YYYY-MM-DD — bot move raw JSON 배열.
+// move applied log fetch 완전 대체. cfgMax 도달율 / elapsed p50/p95 monitor 가 계산.
+const dailyBotMovesHandler = async (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const date = url.searchParams.get('date') || '';
+  if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
+  try {
+    const store = getStore();
+    const items = await store.getDailyListRange(date, 'bot_moves', 0, -1);
+    sendJson(res, 200, { date, count: items.length, items, ts: new Date().toISOString() });
+  } catch (e) {
+    sendJson(res, 500, { error: e && e.message });
+  }
+};
+
+// /api/online-series?from=epoch_ms&to=epoch_ms — online time-series sample 배열.
+// ws_connected/disconnected 로그 파싱 (`online=N`) 대체. monitor 가 KST hour 로 bucket.
+const onlineSeriesHandler = (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const from = Number(url.searchParams.get('from')) || 0;
+  const to = Number(url.searchParams.get('to')) || Date.now();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
+    return sendJson(res, 400, { error: 'from=<epoch_ms>&to=<epoch_ms> required (to > from)' });
+  }
+  const store = getStore();
+  const items = store.getOnlineSeries ? store.getOnlineSeries(from, to) : [];
+  sendJson(res, 200, { from, to, count: items.length, items, ts: new Date().toISOString() });
+};
+
 const httpServer = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
   if (urlPath === '/api/stats') return statsHandler(req, res);
   if (urlPath === '/api/daily-stats') return dailyStatsHandler(req, res);
+  if (urlPath === '/api/daily-games') return dailyGamesHandler(req, res);
+  if (urlPath === '/api/daily-bot-moves') return dailyBotMovesHandler(req, res);
+  if (urlPath === '/api/online-series') return onlineSeriesHandler(req, res);
   if (urlPath.startsWith('/i/')) return shareHandler(req, res);
   return staticHandler(req, res);
 });
@@ -134,6 +206,7 @@ wss.on('connection', (ws) => {
   incrementOnline();
   handlers.broadcastOnlineCount();
   log.event('ws_connected', { online: getOnline(), conn: ws.connectionId });
+  incrementToday('ws_connected');
 
   ws.on('message', (raw) => {
     // 너무 큰 payload 는 parse 자체를 건너뛴다 — 메모리·CPU 방어.
@@ -190,6 +263,7 @@ wss.on('connection', (ws) => {
     decrementOnline();
     handlers.broadcastOnlineCount();
     log.event('ws_disconnected', { online: getOnline(), client: log.mask(ws.clientId), nick: ws.nickname || undefined });
+    incrementToday('ws_disconnected');
   });
 });
 
@@ -200,6 +274,7 @@ const heartbeatTimer = setInterval(() => {
   for (const ws of wss.clients) {
     if (ws.isAlive === false) {
       log.event('heartbeat_terminate', { client: log.mask(ws.clientId), nick: ws.nickname || undefined });
+      incrementToday('heartbeat_terminate');
       try { ws.terminate(); } catch {}
       continue;
     }
@@ -209,6 +284,16 @@ const heartbeatTimer = setInterval(() => {
 }, HEARTBEAT_INTERVAL_MS);
 heartbeatTimer.unref?.();
 wss.on('close', () => clearInterval(heartbeatTimer));
+
+// Online time-series sampler — 1분마다 wss.clients.size sample 을 valkey ZSET 에 ZADD.
+// monitor 가 /api/online-series 로 읽어 시간대별 avg/peak 시각화. log 파싱 (ws_connected/
+// ws_disconnected 의 `online=N`) 대체. cleanup 은 sampleOnline 내부에서 cutoff.
+const ONLINE_SAMPLE_INTERVAL_MS = Number(process.env.ONLINE_SAMPLE_INTERVAL_MS) || 60 * 1000;
+const onlineSamplerTimer = setInterval(() => {
+  try { sampleOnlineNow(wss.clients.size); } catch {}
+}, ONLINE_SAMPLE_INTERVAL_MS);
+onlineSamplerTimer.unref?.();
+wss.on('close', () => clearInterval(onlineSamplerTimer));
 
 (async () => {
   // Store 초기화 — STORE_BACKEND=valkey 면 외부 연결 + hydrate.

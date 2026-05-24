@@ -304,15 +304,69 @@ def fetch_server_stats(service='omok'):
 
 def fetch_daily_stats(date, service='omok'):
     """GET /api/daily-stats?date=YYYY-MM-DD — server 가 valkey 에 누적한
-    authoritative 일별 카운터. 응답: {date, pvp_games, bot_games, total_bot_moves, ts}.
+    authoritative 일별 카운터 + active_users 등 SET 크기.
+
+    응답 (omok): {date, pvp_games, bot_games, total_bot_moves, worker_timeout,
+                  no_move, bot_retry, bot_skip, heartbeat_terminate, ws_connected,
+                  ws_disconnected, active_users, bot_retry_rooms, bot_retry_clients,
+                  bot_skip_rooms, bot_skip_clients, ts}
+    응답 (2048): {date, submit_score, user_created, score_best, ws_connected,
+                  ws_disconnected, heartbeat_terminate, active_users, ts}
 
     date 가 잘못된 형식이면 400, 해당 날짜 카운터가 없으면 모든 필드 0.
-    cold-start / down / 4xx → None (caller 가 log-based 폴백).
+    cold-start / down / 4xx → None.
     """
     try:
         return http_get(f'{_service_url(service)}/api/daily-stats?date={date}', timeout=10)
     except Exception as e:
         print(f'  [{service}] /api/daily-stats fetch 실패: {e}')
+        return None
+
+
+def fetch_daily_games(date, service='omok'):
+    """GET /api/daily-games?date=YYYY-MM-DD — game_over raw JSON 배열.
+
+    응답: {date, count, items: [...], ts}
+    items 각 entry: gameOverFields(...) 결과 (code/gameId/bot/botDiff/blackNick/
+    whiteNick/blackRating/whiteRating/blackDelta/whiteDelta/stones/humanTurnsMs/
+    winner/reason/ts).
+
+    game_over 로그 fetch 완전 대체.
+    """
+    try:
+        # 응답 크기 ~MB 수준 — timeout 넉넉히.
+        return http_get(f'{_service_url(service)}/api/daily-games?date={date}', timeout=30)
+    except Exception as e:
+        print(f'  [{service}] /api/daily-games fetch 실패: {e}')
+        return None
+
+
+def fetch_daily_bot_moves(date, service='omok'):
+    """GET /api/daily-bot-moves?date=YYYY-MM-DD — move applied raw JSON 배열.
+
+    응답: {date, count, items: [...], ts}
+    items 각 entry: {ts, diff, stones, cfgD, cfgTopK, reach, elap, room}.
+
+    move applied 로그 fetch 완전 대체.
+    """
+    try:
+        return http_get(f'{_service_url(service)}/api/daily-bot-moves?date={date}', timeout=30)
+    except Exception as e:
+        print(f'  [{service}] /api/daily-bot-moves fetch 실패: {e}')
+        return None
+
+
+def fetch_online_series(from_ms, to_ms, service='omok'):
+    """GET /api/online-series?from=<epoch_ms>&to=<epoch_ms> — 1분 sample.
+
+    응답: {from, to, count, items: [{ts: epoch_ms, count: int}], ts}.
+    ws_connected/disconnected 로그의 `online=N` 파싱 대체.
+    """
+    try:
+        url = f'{_service_url(service)}/api/online-series?from={int(from_ms)}&to={int(to_ms)}'
+        return http_get(url, timeout=15)
+    except Exception as e:
+        print(f'  [{service}] /api/online-series fetch 실패: {e}')
         return None
 
 

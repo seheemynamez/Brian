@@ -16,6 +16,7 @@ const { getUserStats } = require('./domain/users');
 const { makeShareHandler } = require('./infra/share');
 const handlers = require('./handlers');
 const log = require('./infra/log');
+const { incrementToday, sampleOnlineNow } = require('./infra/daily-counter');
 
 const PORT = Number(process.env.PORT) || 8081;
 const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 15000;
@@ -25,12 +26,9 @@ const CANONICAL_2048_URL = process.env.CANONICAL_2048_URL || null;
 
 const shareHandler = makeShareHandler({ canonical2048Url: CANONICAL_2048_URL });
 
-const statsHandler = (req, res) => {
-  // active_ws — wss 가 아래에서 만들어지지만 statsHandler 가 실제 호출되는 시점엔
-  // 이미 init. 아직 없으면 0.
-  const activeWs = wss ? wss.clients.size : 0;
-  const payload = { ...getUserStats(), active_ws: activeWs, ts: new Date().toISOString() };
-  res.writeHead(200, {
+// 공통 JSON 응답 헬퍼.
+const sendJson = (res, status, payload) => {
+  res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-store',
@@ -38,9 +36,59 @@ const statsHandler = (req, res) => {
   res.end(JSON.stringify(payload));
 };
 
+const statsHandler = (req, res) => {
+  // active_ws — wss 가 아래에서 만들어지지만 statsHandler 가 실제 호출되는 시점엔
+  // 이미 init. 아직 없으면 0.
+  const activeWs = wss ? wss.clients.size : 0;
+  sendJson(res, 200, { ...getUserStats(), active_ws: activeWs, ts: new Date().toISOString() });
+};
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// /api/daily-stats?date=YYYY-MM-DD — 일별 카운터 + active_users SET 크기.
+// monitor 가 server-domain 카운트를 이 단일 endpoint 로 수신 (Render log 대체).
+const dailyStatsHandler = (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const date = url.searchParams.get('date') || '';
+  if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
+  const store = getStore();
+  const c = store.getDailyStats ? (store.getDailyStats(date) || {}) : {};
+  // backfill 호환: SET 크기 0 이면 `{name}_backfill` counter fallback.
+  const setSize = (name) => {
+    const live = store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+    if (live > 0) return live;
+    return Number(c[`${name}_backfill`]) || 0;
+  };
+  sendJson(res, 200, {
+    date,
+    submit_score: c.submit_score || 0,
+    user_created: c.user_created || 0,
+    score_best: c.score_best || 0,
+    ws_connected: c.ws_connected || 0,
+    ws_disconnected: c.ws_disconnected || 0,
+    heartbeat_terminate: c.heartbeat_terminate || 0,
+    active_users: setSize('active_users'),
+    ts: new Date().toISOString(),
+  });
+};
+
+// /api/online-series?from=epoch_ms&to=epoch_ms — 1분 sample.
+const onlineSeriesHandler = (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const from = Number(url.searchParams.get('from')) || 0;
+  const to = Number(url.searchParams.get('to')) || Date.now();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
+    return sendJson(res, 400, { error: 'from=<epoch_ms>&to=<epoch_ms> required (to > from)' });
+  }
+  const store = getStore();
+  const items = store.getOnlineSeries ? store.getOnlineSeries(from, to) : [];
+  sendJson(res, 200, { from, to, count: items.length, items, ts: new Date().toISOString() });
+};
+
 const httpServer = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
   if (urlPath === '/api/stats') return statsHandler(req, res);
+  if (urlPath === '/api/daily-stats') return dailyStatsHandler(req, res);
+  if (urlPath === '/api/online-series') return onlineSeriesHandler(req, res);
   if (urlPath.startsWith('/i/2048')) return shareHandler(req, res);
   // FE 정적 파일은 GitHub Pages 에서 서빙 — 여기선 404.
   res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -65,6 +113,7 @@ wss.on('connection', (ws) => {
   // monitor 가 시간대별 동접/연결 burst 추적용. clientId/nick 은 connection
   // 시점엔 아직 모름 (set_nickname 도착 전) — close 시 mask 출력.
   log.event('ws_connected', { active: wss.clients.size });
+  incrementToday('ws_connected');
 
   ws.on('pong', () => { ws.isAlive = true; });
 
@@ -84,6 +133,7 @@ wss.on('connection', (ws) => {
       client: log.mask(ws.clientId), nick: ws.nickname || undefined,
       active: wss.clients.size,
     });
+    incrementToday('ws_disconnected');
     /* user 데이터는 valkey 에 영속 — 정리 필요 X */
   });
 });
@@ -93,6 +143,7 @@ const heartbeatTimer = setInterval(() => {
   for (const ws of wss.clients) {
     if (ws.isAlive === false) {
       log.event('heartbeat_terminate', { client: log.mask(ws.clientId), nick: ws.nickname || undefined });
+      incrementToday('heartbeat_terminate');
       try { ws.terminate(); } catch {}
       continue;
     }
@@ -102,6 +153,14 @@ const heartbeatTimer = setInterval(() => {
 }, HEARTBEAT_INTERVAL_MS);
 heartbeatTimer.unref?.();
 wss.on('close', () => clearInterval(heartbeatTimer));
+
+// Online time-series sampler — 1분마다 wss.clients.size sample.
+const ONLINE_SAMPLE_INTERVAL_MS = Number(process.env.ONLINE_SAMPLE_INTERVAL_MS) || 60 * 1000;
+const onlineSamplerTimer = setInterval(() => {
+  try { sampleOnlineNow(wss.clients.size); } catch {}
+}, ONLINE_SAMPLE_INTERVAL_MS);
+onlineSamplerTimer.unref?.();
+wss.on('close', () => clearInterval(onlineSamplerTimer));
 
 (async () => {
   const store = getStore();
