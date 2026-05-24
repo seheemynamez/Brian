@@ -223,6 +223,39 @@ def run_daily_summary():
             continue
         by_day[d].append(s)
     daily_stats = load_daily_stats()
+
+    # PR (race condition fix) — daily_stats[summary_date] 를 trend 계산 전에
+    # update. 옛 코드는 본문 만든 후 update 라 trend 표가 옛 (silent loss /
+    # 이전 발행) 값을 표시하는 race condition 있었음 (Issue #148: 본문은 PVP 62,
+    # trend 표는 PVP 0). 변수 정의도 같이 위로 이동.
+    bot_total = len(bot_moves)
+    total_games = len(game_started)
+    pvp_count = len(pvp_games)
+    bot_game_count = total_games - pvp_count
+    daily_stats[summary_date] = {
+        # omok
+        'pvp_games': pvp_count,
+        'bot_games': bot_game_count,
+        'total_bot_moves': bot_total,
+        'render_cpu_max_m': cpu_st.get('max') or 0,
+        'aiven_mem_max_pct': aiven_mem.get('max') or 0,
+        'active_users': active_users_24h,
+        'total_human_users': (server_stats or {}).get('total_human_users'),
+        'ws_connected': len(ws_conn_logs),
+        'worker_timeout': len(wt_logs),
+        'no_move': len(nm_logs),
+        'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
+        'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
+        # 2048
+        'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
+        'active_users_2048': len(active_nicks_2048),
+        'daily_submits_2048': daily_submits_2048,
+        'new_users_2048': new_users_2048,
+        'total_users_2048': stats_2048.get('total_users'),
+        'top_all_time_2048': stats_2048.get('top_all_time'),
+        'top_daily_2048': stats_2048.get('top_daily'),
+    }
+
     # PR — (a) 전일 비교: summary_date 직전 날 entry 가져옴. 첫날엔 {} (Δ 표시 안 함).
     prev_date = (win_start_kst - timedelta(days=1)).strftime('%Y-%m-%d')
     prev_stats = daily_stats.get(prev_date, {})
@@ -277,23 +310,23 @@ def run_daily_summary():
             aiven_trend_msg = f'주당 {per_week_pct:+.2f}%p (평탄)'
 
     # ====== Issue 본문 ======
-    bot_total = len(bot_moves)
-    total_games = len(game_started)
-    pvp_count = len(pvp_games)
-    bot_game_count = total_games - pvp_count
+    # bot_total / total_games / pvp_count / bot_game_count 는 위 trend 계산 전
+    # block 에서 이미 정의 (race condition fix).
 
     body = []
     body.append(f'## 일일 인프라 요약 — {summary_date} KST (00:00 ~ 익일 00:00)\n')
-    body.append(f'_시간 기준: 모두 KST. 측정 window: `{s_iso} ~ {e_iso}` (UTC)._\n')
+    body.append(f'_시간 기준: 모두 KST. 측정 window: `{s_iso} ~ {e_iso}` (UTC). '
+                f'일부 metric (Aiven valkey, Bandwidth 30d, 현재 사용자 / 동접) 은 **발행 시점 기준** — '
+                f'각 섹션에 명시. 발행 시점에 다시 실행하면 값이 달라질 수 있음._\n')
 
-    # 자원 사용율
+    # 자원 사용율 — Bandwidth 30d 와 Aiven 는 발행 시점 기준 (window 무관).
     body.append('### 자원 사용율 (한도 대비)\n')
     body.append(gauge_table([
         ('Render CPU peak',  cpu_st.get('max') or 0, RENDER_CPU_LIMIT_M, 'm'),
         ('Render Memory peak', mem_st.get('max') or 0, RENDER_MEM_LIMIT_MB, 'MB'),
-        ('Render Bandwidth 30d', bw_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
-        ('Aiven CPU max', aiven_cpu.get('max') or 0, 100, '%'),
-        ('Aiven Memory max', aiven_mem.get('max') or 0, 100, '%'),
+        ('Render Bandwidth 30d _(발행시점-30d)_', bw_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
+        ('Aiven CPU max _(발행시점-24h)_', aiven_cpu.get('max') or 0, 100, '%'),
+        ('Aiven Memory max _(발행시점-24h)_', aiven_mem.get('max') or 0, 100, '%'),
     ]))
     body.append('')
 
@@ -302,9 +335,9 @@ def run_daily_summary():
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU (m) | {cpu_st.get("avg",0):.1f} | {cpu_st.get("p50",0):.1f} | {cpu_st.get("p95",0):.1f} | {cpu_st.get("max",0):.1f} |')
     body.append(f'| Memory (MB) | {mem_st.get("avg",0):.1f} | {mem_st.get("p50",0):.1f} | {mem_st.get("p95",0):.1f} | {mem_st.get("max",0):.1f} |')
-    body.append(f'| Bandwidth 30d 누적 | {bw_30d:.1f}MB (한도 100GB) |  |  |  |')
+    body.append(f'| Bandwidth 30d 누적 _(발행시점-30d)_ | {bw_30d:.1f}MB (한도 100GB) |  |  |  |')
     body.append('')
-    body.append('### Aiven valkey 메트릭\n| 항목 | avg | p50 | p95 | max |')
+    body.append('### Aiven valkey 메트릭 _(period=day, 발행시점-24h — 측정 window 와 별도)_\n| 항목 | avg | p50 | p95 | max |')
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU % | {aiven_cpu.get("avg",0):.2f} | {aiven_cpu.get("p50",0):.2f} | {aiven_cpu.get("p95",0):.2f} | {aiven_cpu.get("max",0):.2f} |')
     body.append(f'| Memory % | {aiven_mem.get("avg",0):.2f} | {aiven_mem.get("p50",0):.2f} | {aiven_mem.get("p95",0):.2f} | {aiven_mem.get("max",0):.2f} |')
@@ -329,7 +362,7 @@ def run_daily_summary():
     total_human_users = server_stats.get('total_human_users') if server_stats else None
     user_count_str = f'**{total_human_users}**{_delta(total_human_users, "total_human_users") if total_human_users is not None else ""}' \
         if total_human_users is not None else '_(server /api/stats 응답 없음 — cold-start 가능성)_'
-    body.append(f'- 현재 사람 계정 수: {user_count_str}')
+    body.append(f'- 현재 사람 계정 수 _(발행시점)_: {user_count_str}')
     body.append(f'- **24h 활성 사용자**: **{active_users_24h}명**{_delta(active_users_24h, "active_users")} (게임 한 판 이상 둔 unique 닉네임)')
     body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count}{_delta(pvp_count, "pvp_games")} / 봇 {bot_game_count}{_delta(bot_game_count, "bot_games")})')
     body.append(f'- 봇 착수 총 횟수: **{bot_total}건**{_delta(bot_total, "total_bot_moves")}')
@@ -508,14 +541,14 @@ def run_daily_summary():
     body.append(gauge_table([
         ('Render CPU peak',  cpu_2048_st.get('max') or 0, RENDER_CPU_LIMIT_M, 'm'),
         ('Render Memory peak', mem_2048_st.get('max') or 0, RENDER_MEM_LIMIT_MB, 'MB'),
-        ('Render Bandwidth 30d', bw_2048_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
+        ('Render Bandwidth 30d _(발행시점-30d)_', bw_2048_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
     ]))
     body.append('')
     body.append('### 2048 Render 메트릭\n| 항목 | avg | p50 | p95 | max |')
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU (m) | {cpu_2048_st.get("avg",0):.1f} | {cpu_2048_st.get("p50",0):.1f} | {cpu_2048_st.get("p95",0):.1f} | {cpu_2048_st.get("max",0):.1f} |')
     body.append(f'| Memory (MB) | {mem_2048_st.get("avg",0):.1f} | {mem_2048_st.get("p50",0):.1f} | {mem_2048_st.get("p95",0):.1f} | {mem_2048_st.get("max",0):.1f} |')
-    body.append(f'| Bandwidth 30d 누적 | {bw_2048_30d:.1f}MB (한도 100GB) |  |  |  |')
+    body.append(f'| Bandwidth 30d 누적 _(발행시점-30d)_ | {bw_2048_30d:.1f}MB (한도 100GB) |  |  |  |')
     body.append('')
 
     body.append('### 2048 게임 활동 요약\n')
@@ -524,17 +557,17 @@ def run_daily_summary():
     top_daily_2048 = stats_2048.get('top_daily')
     active_ws_2048 = stats_2048.get('active_ws')
     count_str = f'**{total_users_2048}**{_delta(total_users_2048, "total_users_2048")}' if total_users_2048 is not None else '_(stats fetch 실패 — cold-start 가능성)_'
-    body.append(f'- 현재 사용자 계정 수: {count_str}')
+    body.append(f'- 현재 사용자 계정 수 _(발행시점)_: {count_str}')
     body.append(f'- **24h 활성 사용자**: **{len(active_nicks_2048)}명**{_delta(len(active_nicks_2048), "active_users_2048")} (점수 등록한 unique 닉)')
     body.append(f'- 24h 점수 등록: **{daily_submits_2048}건**{_delta(daily_submits_2048, "daily_submits_2048")}')
     body.append(f'- 24h 신규 사용자: **{new_users_2048}명**{_delta(new_users_2048, "new_users_2048")}')
     body.append(f'- 24h 새 ws 연결: 대략 **{len(ws_conn_logs_2048)}건**')
     if active_ws_2048 is not None:
-        body.append(f'- 현재 동접 (ws): **{active_ws_2048}명**')
+        body.append(f'- 현재 동접 (ws) _(발행시점)_: **{active_ws_2048}명**')
     if top_all is not None:
         body.append(f'- 전체 최고 점수: **{top_all}**')
-    if top_daily_2048 is not None:
-        body.append(f'- 오늘 최고 점수: **{top_daily_2048}**')
+    # 옛 "오늘 최고 점수" 는 발행 시점 KST date 의 best — 5/23 요약 본문에 5/24
+    # 점수가 들어가 혼동 유발. 제거 (전체 최고 와 trend 표로 충분).
     body.append(f'- 24h best 갱신 broadcast: **{len(score_best_logs_2048)}건**\n')
 
     # 2048 시간대별 활동
@@ -613,37 +646,9 @@ def run_daily_summary():
     body_text = '\n'.join(body)
     print(f'본문 길이: {len(body_text)} chars')
 
-    # 일별 stats 저장 (7일 trend 누적용)
-    # PR — workflow fix 와 같이 가야 실제 push 됨 (이전엔 collect 만 commit 해서
-    # daily-stats.json 가 절대 push 안 됐던 버그). PR #4(e) 의 7일 트렌드 빈 컬럼
-    # 원인.
+    # 일별 stats 저장 — daily_stats[summary_date] 는 trend 계산 전에 이미 갱신됨.
+    # 여기선 30일 cutoff + save 만 진행.
     if not DRY_RUN or os.environ.get('SAVE_METRICS') == '1':
-        daily_stats[summary_date] = {
-            # omok
-            'pvp_games': pvp_count,
-            'bot_games': bot_game_count,
-            'total_bot_moves': bot_total,
-            'render_cpu_max_m': cpu_st.get('max') or 0,
-            'aiven_mem_max_pct': aiven_mem.get('max') or 0,
-            'active_users': active_users_24h,
-            'total_human_users': (server_stats or {}).get('total_human_users'),
-            'ws_connected': len(ws_conn_logs),
-            # (d) worker_timeout 일별 누적 — 7일 트렌드에서 회귀 추적.
-            'worker_timeout': len(wt_logs),
-            'no_move': len(nm_logs),
-            # (c) hard/d6 cfgMax 도달율 — issue #122 의 d6 50% 목표 추적.
-            'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
-            'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
-            # 2048
-            'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
-            'active_users_2048': len(active_nicks_2048),
-            'daily_submits_2048': daily_submits_2048,
-            'new_users_2048': new_users_2048,
-            'total_users_2048': stats_2048.get('total_users'),
-            'top_all_time_2048': stats_2048.get('top_all_time'),
-            'top_daily_2048': stats_2048.get('top_daily'),
-        }
-        # 30일 이상 오래된 entry 정리 (win_end_kst = 오늘 KST 00:00 기준)
         cutoff = (win_end_kst - timedelta(days=30)).strftime('%Y-%m-%d')
         daily_stats = {k: v for k, v in daily_stats.items() if k >= cutoff}
         save_daily_stats(daily_stats)
