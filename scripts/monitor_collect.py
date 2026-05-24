@@ -216,16 +216,16 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
     if raw['slow_recoveries']:
         slow_recoveries = raw['slow_recoveries']
         samples = '\n'.join(
-            f'- `{kst_pretty(r["start_ts"])}` {r["kind"]} — downtime **{r["downtime_s"]:.1f}s** (60s grace 초과)'
+            f'- `{kst_pretty(r["start_ts"])}` {r["kind"]} — downtime **{r["downtime_s"]:.1f}s** ({THRESHOLD_DOWNTIME_S:.0f}s grace 초과)'
             for r in slow_recoveries[:5])
         max_dt = max(r['downtime_s'] for r in slow_recoveries)
         alerts.append((
             alert_key_for('server_slow_recovery', service),
             _title(service, f'[monitor] 서버 downtime {max_dt:.0f}s (> {THRESHOLD_DOWNTIME_S:.0f}s grace)'),
-            f'## 서버 downtime 이 grace 60s 초과 — {service}\n\n'
+            f'## 서버 downtime 이 grace {THRESHOLD_DOWNTIME_S:.0f}s 초과 — {service}\n\n'
             f'- 발생: **{len(slow_recoveries)}건** (최근 15분)\n'
             f'- 최대 downtime: **{max_dt:.1f}s**\n'
-            f'- 임계: > {THRESHOLD_DOWNTIME_S:.0f}s — DISCONNECT_GRACE_MS (60s) 안에 사용자 재연결 어려움 → '
+            f'- 임계: > {THRESHOLD_DOWNTIME_S:.0f}s — DISCONNECT_GRACE_MS ({THRESHOLD_DOWNTIME_S:.0f}s) 안에 사용자 재연결 어려움 → '
             f'진행 중 게임이 abandoned 처리될 위험.\n\n'
             f'### 측정\n'
             f'`server_failed` (또는 `deploy_started`) → `server_available` 간격.\n\n'
