@@ -25,10 +25,10 @@
     "bot_games": 200,
     "total_bot_moves": 1000,
     "render_cpu_max_m": 113.736615,
-    "aiven_mem_max_pct": 68.75911626795441,
+    "aiven_mem_max_pct": 69.48017701011133,
     "active_users": 46,
-    "total_human_users": 183,
-    "ws_connected": 400,
+    "total_human_users": 187,
+    "ws_connected": 0,
     "worker_timeout": 0,
     "no_move": 0,
     "hard_d6_pct": 26.3,
@@ -37,8 +37,8 @@
     "active_users_2048": 0,
     "daily_submits_2048": 0,
     "new_users_2048": 0,
-    "total_users_2048": 6,
+    "total_users_2048": 17,
     "top_all_time_2048": 26276,
-    "top_daily_2048": 0
+    "top_daily_2048": 16964
   }
 }
