@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "test:unit": "node --test __tests__/unit/*.test.js",
-    "test": "node --test __tests__/recovery.test.js",
+    "test": "STORE_BACKEND=memory HEARTBEAT_INTERVAL_MS=2000 PORT=18082 node server.js & SERVER_PID=$!; trap \"kill $SERVER_PID 2>/dev/null\" EXIT; sleep 1; node __tests__/recovery.test.js",
     "test:ci": "npm run test:unit && npm test"
   },
   "engines": {
