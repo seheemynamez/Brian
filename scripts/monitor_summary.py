@@ -254,18 +254,33 @@ def run_daily_summary():
     print(f'[daily-stats source=srv] pvp={pvp_count} bot={bot_game_count} moves={bot_total} active={active_users_authoritative}')
 
     # 발행 당일 (KST 어제) entry — 본문 내 직접 참조 + trend 표 fallback.
+    # total_human_users 는 summary_date 의 last snapshot 값 (= end-of-day 계정 수).
+    # 본문 "현재 사람 계정 수" 는 별도로 server_stats (current 시점) 사용 — 의미가 다름.
+    todays_snaps = by_day.get(summary_date, [])
+    snapshot_total_humans = None
+    snapshot_tiers = None
+    for _s in reversed(todays_snaps):
+        v = _s.get('services', {}).get('omok', {}).get('stats', {}).get('total_human_users')
+        if v is not None and snapshot_total_humans is None:
+            snapshot_total_humans = v
+        t = _s.get('services', {}).get('omok', {}).get('stats', {}).get('tiers')
+        if t and snapshot_tiers is None:
+            snapshot_tiers = t
+        if snapshot_total_humans is not None and snapshot_tiers is not None:
+            break
     daily_stats[summary_date] = {
         'pvp_games': pvp_count, 'bot_games': bot_game_count, 'total_bot_moves': bot_total,
         'render_cpu_max_m': cpu_st.get('max') or 0,
         'aiven_mem_max_pct': aiven_mem.get('max') or 0,
         'active_users': active_users_24h,
-        'total_human_users': (server_stats or {}).get('total_human_users'),
+        # snapshot last value (end-of-day). 5/22 등 옛 snapshot 에 stats 가 없는 날은 None.
+        'total_human_users': snapshot_total_humans,
         'ws_connected': ws_conn_count,
         'worker_timeout': wt_count,
         'no_move': nm_count,
         'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
         'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
-        'tiers': (server_stats or {}).get('tiers') or {},
+        'tiers': snapshot_tiers or (server_stats or {}).get('tiers') or {},
         'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
         'active_users_2048': int(daily_2048.get('active_users') or 0),
         'daily_submits_2048': daily_submits_2048,
@@ -287,6 +302,11 @@ def run_daily_summary():
             'total_bot_moves': int(omok_r.get('total_bot_moves') or 0),
             'active_users': int(omok_r.get('active_users') or 0),
             'worker_timeout': int(omok_r.get('worker_timeout') or 0),
+            # snapshot fields (server 의 statsHandler 부수효과로 KST day Hash 에 누적)
+            'total_human_users': omok_r.get('total_human_users'),  # int or None
+            'tiers': omok_r.get('tiers'),                          # dict or None
+            'hard_d6_pct': omok_r.get('hard_d6_pct'),
+            'hard_d6_n': omok_r.get('hard_d6_n'),
             'active_users_2048': int(r2048_r.get('active_users') or 0),
             'daily_submits_2048': int(r2048_r.get('submit_score') or 0),
         }

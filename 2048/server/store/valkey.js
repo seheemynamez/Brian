@@ -181,6 +181,20 @@ const incrementDailyCounter = (date, field, n = 1) => {
   fnf('hincrby', redis.hincrby(dailyKey(date), field, n));
   fnf('expire', redis.expire(dailyKey(date), DAILY_TTL_SEC));
 };
+// snapshot field (counter 가 아닌 fixed 값) 갱신 — total_users / top_all_time / top_daily 등.
+// statsHandler 가 매 호출마다 갱신 → daily-summary 7일 trend 가 과거 day end-of-day
+// snapshot 으로 표시 (옛 daily-stats.json 의 _2048 fields 대체).
+const snapshotDailyMeta = (date, fields) => {
+  if (!date || !fields || !Object.keys(fields).length) return;
+  const obj = dailyStats.get(date) || {};
+  for (const [k, v] of Object.entries(fields)) obj[k] = Number(v) || 0;
+  dailyStats.set(date, obj);
+  if (!redis) return;
+  const stringified = {};
+  for (const [k, v] of Object.entries(fields)) stringified[k] = String(Number(v) || 0);
+  fnf('hset', redis.hset(dailyKey(date), stringified));
+  fnf('expire', redis.expire(dailyKey(date), DAILY_TTL_SEC));
+};
 const getDailyStats = (date) => {
   if (!date) return null;
   return dailyStats.get(date) || null;
@@ -259,7 +273,7 @@ module.exports = {
   users, dailyStats, dailySets, onlineSamples,
   connect, hydrate, disconnect,
   persistUser, removeUser,
-  incrementDailyCounter, getDailyStats, getDailyStatsFresh,
+  incrementDailyCounter, snapshotDailyMeta, getDailyStats, getDailyStatsFresh,
   addDailySetMember, getDailySetSize, getDailySetSizeFresh, getDailySetMembers,
   sampleOnline, getOnlineSeries,
 };

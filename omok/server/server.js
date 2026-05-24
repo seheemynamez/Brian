@@ -45,9 +45,23 @@ const shareHandler  = makeShareHandler({ canonicalOmokUrl: CANONICAL_OMOK_URL })
 // 운영 통계 endpoint — monitor.py daily-summary 가 호출해 계정 수 가져감.
 // 민감 정보 X (단순 카운트). CORS 는 GitHub Actions runner 에서만 호출하므로
 // allow-origin '*' OK. 사용자 인증 안 함.
+// side-effect: 호출 시점에 today 의 daily Hash 에 total_human_users + tier_* 스냅샷.
+// monitor 가 5분마다 호출하므로 자연스럽게 KST day 별 스냅샷 자동 유지 → 7일 trend 가
+// 과거 day 의 계정 수 / 티어 분포 조회 가능 (옛 daily-stats.json 파일 대체).
 const { getUserStats } = require('./domain/users');
+const { kstDate } = require('./infra/daily-counter');
 const statsHandler = (req, res) => {
-  const payload = { ...getUserStats(), ts: new Date().toISOString() };
+  const userStats = getUserStats();
+  const payload = { ...userStats, ts: new Date().toISOString() };
+  try {
+    const store = getStore();
+    if (store.snapshotDailyMeta) {
+      const meta = { total_human_users: userStats.total_human_users || 0 };
+      const tiers = userStats.tiers || {};
+      for (const [tier, n] of Object.entries(tiers)) meta[`tier_${tier}`] = Number(n) || 0;
+      store.snapshotDailyMeta(kstDate(), meta);
+    }
+  } catch {}
   res.writeHead(200, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
@@ -78,7 +92,6 @@ const dailyStatsHandler = async (req, res) => {
   const date = url.searchParams.get('date') || '';
   if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
   const store = getStore();
-  // fresh 우선 — valkey HGETALL. memory backend 는 캐시가 SoT 이므로 같은 값.
   const c = (store.getDailyStatsFresh ? await store.getDailyStatsFresh(date) : store.getDailyStats(date)) || {};
   const setSize = async (name) => {
     const live = store.getDailySetSizeFresh
@@ -87,6 +100,27 @@ const dailyStatsHandler = async (req, res) => {
     if (live > 0) return live;
     return Number(c[`${name}_backfill`]) || 0;
   };
+  // tiers — Hash 의 tier_* prefix field 를 dict 로. snapshotDailyMeta 가 statsHandler
+  // 의 부수효과로 갱신. 7일 trend 표가 과거 day 의 티어 분포 표시할 때 사용.
+  const TIER_NAMES = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master'];
+  const tiers = {};
+  for (const t of TIER_NAMES) tiers[t] = Number(c[`tier_${t}`]) || 0;
+  const tiersTotal = Object.values(tiers).reduce((a, b) => a + b, 0);
+  // hard_d6 도달율 — bot_moves LIST 에서 hard diff + cfgD=6 항목 비율. 7일 trend 표에
+  // 표시되는 봇 튜닝 지표. 매 endpoint 호출마다 계산 (10-50ms, 저빈도라 OK).
+  let hard_d6_pct = null;
+  let hard_d6_n = null;
+  try {
+    if (store.getDailyListRange) {
+      const items = await store.getDailyListRange(date, 'bot_moves', 0, -1);
+      const d6 = items.filter((it) => it && it.diff === 'hard' && Number(it.cfgD) === 6);
+      hard_d6_n = d6.length;
+      if (hard_d6_n) {
+        const reached = d6.filter((it) => Number(it.reach) === 6).length;
+        hard_d6_pct = Math.round(100 * reached / hard_d6_n * 10) / 10;
+      }
+    }
+  } catch {}
   sendJson(res, 200, {
     date,
     // counters
@@ -100,12 +134,18 @@ const dailyStatsHandler = async (req, res) => {
     heartbeat_terminate: c.heartbeat_terminate || 0,
     ws_connected: c.ws_connected || 0,
     ws_disconnected: c.ws_disconnected || 0,
-    // unique SET 크기 (fresh SCARD, 없으면 backfill counter fallback)
+    // SET 크기 (fresh SCARD, 없으면 backfill counter fallback)
     active_users: await setSize('active_users'),
     bot_retry_rooms: await setSize('bot_retry_rooms'),
     bot_retry_clients: await setSize('bot_retry_clients'),
     bot_skip_rooms: await setSize('bot_skip_rooms'),
     bot_skip_clients: await setSize('bot_skip_clients'),
+    // 일별 snapshot (statsHandler 가 매 호출마다 갱신)
+    total_human_users: tiersTotal > 0 ? (Number(c.total_human_users) || 0) : null,
+    tiers: tiersTotal > 0 ? tiers : null,
+    // 봇 튜닝 지표 (bot_moves LIST 에서 derive)
+    hard_d6_pct,
+    hard_d6_n,
     ts: new Date().toISOString(),
   });
 };
