@@ -85,21 +85,16 @@ describe('Bot ID — getDynamicConfig 자기 돌 수 별 매핑', () => {
       { maxDepth: 2, topK: 2, timeoutMs: 1000 });
   });
 
-  test('medium: 2단계 통합 — 자기<5 → d3×t10×2s / 자기 5+ → d4×t6×4s', () => {
-    // 자기 < 5
-    assert.deepEqual(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'medium'),
-      { maxDepth: 3, topK: 10, timeoutMs: 2000 });
-    assert.deepEqual(getDynamicConfig(boardWithMyStones(4, 'black'), 'black', 'medium'),
-      { maxDepth: 3, topK: 10, timeoutMs: 2000 });
-    // 자기 5+ 통합 (PR — t8→6, d4 도달율 38→60%+ 목표)
-    assert.deepEqual(getDynamicConfig(boardWithMyStones(5, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
-    assert.deepEqual(getDynamicConfig(boardWithMyStones(14, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
-    assert.deepEqual(getDynamicConfig(boardWithMyStones(15, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
-    assert.deepEqual(getDynamicConfig(boardWithMyStones(30, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
+  test('medium: 단계 분기 제거 — 모든 stones 에서 d3×t8×2s (PR v5 — 약화 통합)', () => {
+    // 의도: Bronze 상위 + Silver 5:5. v4 (5+ d4×t6) 가 Bronze 95%/Silver 74% 봇승률로 너무 강함.
+    const expected = { maxDepth: 3, topK: 8, timeoutMs: 2000 };
+    for (const stones of [0, 4, 5, 14, 15, 30]) {
+      assert.deepEqual(
+        getDynamicConfig(boardWithMyStones(stones, 'black'), 'black', 'medium'),
+        expected,
+        `stones=${stones} 에서 단일 cfg 기대`
+      );
+    }
   });
 
   test('hard: 자기<5 → d4×t10×10s / 5-14 → d5×t7×15s / 15+ → d6×t5×20s (PR v4 — 강화)', () => {
@@ -130,13 +125,12 @@ describe('Bot ID — getDynamicConfig 자기 돌 수 별 매핑', () => {
     assert.equal(getDynamicConfig(b, 'white', 'hard').timeoutMs, 20000);   // PR v4: 18→20s
   });
 
-  test('topK 정책 — cfgMax 도달율 50%+ 목표로 cfg 별 차등 (PR v4 — hard 강화)', () => {
+  test('topK 정책 — cfgMax 도달율 50%+ 목표로 cfg 별 차등 (PR v5 — medium 약화)', () => {
     // easy = 2
     assert.equal(getDynamicConfig(empty(), 'black', 'easy').topK, 2);
-    // medium d3 (초반) = 10
-    assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'medium').topK, 10);
-    // medium d4 (자기 5+) = 6
-    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'medium').topK, 6);
+    // medium = 8 (PR v5 — 단계 분기 제거, 모든 stones 에서 동일)
+    assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'medium').topK, 8);
+    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'medium').topK, 8);
     // hard d4 (초반) = **10** (PR v4 — t8→10, 강화)
     assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'hard').topK, 10);
     // hard d5 (자기 5-14) = **7** (PR v4 — t6→7, 강화)
