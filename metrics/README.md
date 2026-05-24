@@ -86,6 +86,22 @@ PR — 2048 통합으로 service 별 분리:
 
 임계 도달 시 GitHub Issue 자동 생성 (label: `monitor`, severity, `service-{omok|2048}`). 같은 alert key 는 **2시간 cooldown** (이전 6시간 — cron 5분에 맞춰 단축). alert key 는 `{base}:{service}` 형태로 service 별 cooldown 분리 (omok 의 CPU peak 와 2048 의 CPU peak 가 동시 발사 가능). 봇 관련 alert (`worker_timeout` / `no_move` / `bot_retry_burst` / `bot_skip_burst`) 는 `has_bot_logs=true` 인 omok 만 평가.
 
+## Daily-summary 본문 — 시점 정책
+
+| 영역 | 시점 |
+|---|---|
+| 측정 window (게임 활동 / 봇 / TOP / 안정성 / 시간대별) | **KST 어제 00:00 ~ 24:00** (s_iso ~ e_iso, UTC 변환 후 호출) |
+| Render CPU / Memory (avg/p50/p95/max) | window 24h 직접 호출 (KST 어제) |
+| **Aiven valkey 메트릭** (CPU/Mem/Disk/Load) | **발행 시점 -24h** (`period='day'` API — startTime 지원 X). 본문 캡션에 명시. |
+| **Bandwidth 30d 누적** | **발행 시점 -30d** (직접 호출). 본문 캡션에 명시. |
+| **현재 사람/사용자 계정 수, 동접** | **발행 시점** (`/api/stats` 단일 값). 본문 캡션에 명시. |
+| 7일 trend 표 | snapshot KST day 합산 (Render CPU/Aiven Mem) + `daily-stats.json` (PVP/봇/활성/worker_timeout/hard_d6) |
+| **`daily-stats[summary_date]` 갱신** | **trend 계산 직전** (race condition fix — Issue #148: 본문은 새 fetch 결과 / trend 표는 옛 stale daily-stats 결과 모순). 같은 발행 안에서 trend 가 본문 데이터와 일관성. |
+
+같은 KST day 의 daily-summary 를 여러 번 발행해도 (cron-job.org primary, manual trigger, retry 등) **시계열 데이터의 값은 안정** — 단 위 표의 "발행 시점 -X" 항목만 발행 시각에 따라 약간 변동.
+
+발행 본문에 `⚠️ Fetch 실패 endpoint` 섹션이 있으면 해당 endpoint 의 metric 은 fetch 못 한 silent loss 상태. 연속 3회 도달 시 fetch_fail Issue (collect cron 에서 발사).
+
 ## Fetch 정책
 
 | 항목 | 정책 |
