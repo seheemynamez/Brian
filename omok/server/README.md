@@ -7,7 +7,7 @@ Korean Gomoku WebSocket server. 정적 파일 호스팅 (omok/ 디렉토리) + `
 ```bash
 npm install
 npm start             # 기본 — memory backend, port 8080
-npm run test:unit     # 단위 테스트 (renju / rating / game-logic / parity / bot / ranking-sort 등 — 138 케이스)
+npm run test:unit     # 단위 테스트 (renju / rating / game-logic / parity / bot / ranking-sort / queue-bot-offer / rooms-visibility 등 — 140 케이스)
 npm test              # E2E 회귀 (recovery / reconnect / spectator / bot lifecycle — 79 시나리오, memory backend)
 npm run test:ci       # 둘 다 (CI 와 동일)
 npm run test:valkey   # E2E 를 valkey backend 로 (.env 의 VALKEY_URL 사용, prefix omok:test 자동격리)
@@ -120,7 +120,7 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 - `{ type: "ping" }` (app-level heartbeat)
 - `{ type: "create_bot_game", difficulty, first, nickname }`
 - `{ type: "bot_offer_accept", difficulty, first, nickname }` / `{ type: "bot_offer_decline" }`
-- `{ type: "request_rooms_list" }` / `{ type: "request_online_list" }`
+- `{ type: "request_rooms_list" }` / `{ type: "request_online_list" }` / `{ type: "request_ranking" }` / `{ type: "request_recent_games" }`
 
 서버 → 클라이언트:
 - `{ type: "room_created", code, sessionId }`
@@ -135,12 +135,14 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 - `{ type: "opponent_left" }` / `{ type: "opponent_abandoned", color }`
 - `{ type: "spectator_list", spectators }` / `{ type: "spectator_replaced" }`
 - `{ type: "online_count", n }` / `{ type: "online_list", nicknames }` / `{ type: "rooms_list", rooms }`
+- `{ type: "ranking_list", entries, me? }` / `{ type: "recent_games_list", entries }`
 - `{ type: "matched", code }` / `{ type: "queue_waiting" }` / `{ type: "queue_canceled", reason }`
 - `{ type: "bot_offer" }`
 - `{ type: "player_replaced" }`
 - `{ type: "emote", from, key, emoji, text }`
 - `{ type: "error", message, reason? }`
 - `{ type: "pong" }`
+- `{ type: "server_restarting" }` (graceful shutdown — 클라이언트가 reconnect 안내 표시)
 
 ## 운영 노트
 

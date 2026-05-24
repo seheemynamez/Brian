@@ -2,8 +2,8 @@
 
 브라우저에서 바로 즐기는 미니 게임 모음 + 멀티플레이 오목 서버 + 인프라 모니터링.
 
-- 🌐 라이브: https://seheemynamez.github.io/Brian/
-- 🧩 게임:
+- 🌐 사이트 진입: https://seheemynamez.github.io/ — 게임 카드 페이지 (별도 레포 [seheemynamez/seheemynamez.github.io](https://github.com/seheemynamez/seheemynamez.github.io) 에서 운영). `https://seheemynamez.github.io/Brian/` 자체는 디렉토리 인덱스가 없어 404.
+- 🧩 게임 직접 URL:
   - [2048](https://seheemynamez.github.io/Brian/2048/) — 클래식 슬라이드 퍼즐 (싱글 플레이 + 전체/오늘 랭킹)
   - [오목대전](https://seheemynamez.github.io/Brian/omok/) — 실시간 멀티플레이 오목 (방 코드 / 랜덤 매칭 / 봇 대전 / 관전 / 랭킹)
 
@@ -94,14 +94,14 @@ Brian/
 - 매칭: `queue_join` / `queue_leave`
 - 게임: `move` / `resume_session`
 - 봇 게임: `create_bot_game` / `bot_offer_accept` / `bot_offer_decline`
-- 이모트·로비: `emote` / `set_nickname` / `request_rooms_list` / `request_online_list`
+- 이모트·로비: `emote` / `set_nickname` / `request_rooms_list` / `request_online_list` / `request_ranking` / `request_recent_games`
 - 연결: `ping`
 
 **서버 → 클라이언트**
 - 매칭/시작: `room_created` / `matched` / `game_start` / `spectate_success` / `queue_waiting` / `queue_canceled` / `bot_offer`
 - 진행/종료: `move` / `turn_started` / `turn_skipped` / `game_over` / `rematch_pending`
 - 끊김/복귀: `opponent_disconnected` / `opponent_reconnected` / `opponent_left` / `opponent_abandoned` / `player_replaced` / `resume_success` / `resume_failed`
-- 로비/관전: `online_count` / `online_list` / `rooms_list` / `spectator_list` / `spectator_replaced`
+- 로비/관전: `online_count` / `online_list` / `rooms_list` / `ranking_list` / `recent_games_list` / `spectator_list` / `spectator_replaced`
 - 기타: `emote` / `error` / `pong` / `server_restarting`
 
 ---
