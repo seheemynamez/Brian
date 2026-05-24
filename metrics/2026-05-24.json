@@ -13,15 +13,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 176,
@@ -71,15 +63,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 180,
@@ -129,15 +113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 182,
@@ -187,15 +163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 182,
@@ -245,15 +213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 182,
@@ -303,15 +263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 182,
@@ -361,15 +313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -419,15 +363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -477,15 +413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -535,15 +463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -593,15 +513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -651,15 +563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -709,15 +613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -767,15 +663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -825,15 +713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -883,15 +763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -941,15 +813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -999,15 +863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1057,15 +913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1115,15 +963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1173,15 +1013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1231,15 +1063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1289,15 +1113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1347,15 +1163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1405,15 +1213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1463,15 +1263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1521,15 +1313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1579,15 +1363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1637,15 +1413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1695,15 +1463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1753,15 +1513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1811,15 +1563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1869,15 +1613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1927,15 +1663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -1985,15 +1713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2043,15 +1763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2101,15 +1813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2159,15 +1863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2217,15 +1913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2275,15 +1963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2333,15 +2013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2391,15 +2063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2449,15 +2113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2507,15 +2163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2565,15 +2213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2623,15 +2263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2681,15 +2313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2739,15 +2363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2797,15 +2413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2855,15 +2463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2913,15 +2513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -2971,15 +2563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3029,15 +2613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3087,15 +2663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3145,15 +2713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3203,15 +2763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3261,15 +2813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3319,15 +2863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3377,15 +2913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3435,15 +2963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3493,15 +3013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3551,15 +3063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3609,15 +3113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3667,15 +3163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3725,15 +3213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3783,15 +3263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3841,15 +3313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3899,15 +3363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -3957,15 +3413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4015,15 +3463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4073,15 +3513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4131,15 +3563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4189,15 +3613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4247,15 +3663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4305,15 +3713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4363,15 +3763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4421,15 +3813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4479,15 +3863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4537,15 +3913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4595,15 +3963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4653,15 +4013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4711,15 +4063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4769,15 +4113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4827,15 +4163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4885,15 +4213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -4943,15 +4263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5001,15 +4313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5059,15 +4363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5117,15 +4413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5175,15 +4463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5233,15 +4513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5291,15 +4563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5349,15 +4613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5407,15 +4663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5465,15 +4713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5523,15 +4763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5581,15 +4813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5639,15 +4863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5697,15 +4913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5755,15 +4963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5813,15 +5013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5871,15 +5063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5929,15 +5113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -5987,15 +5163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6045,15 +5213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6103,15 +5263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6161,15 +5313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6219,15 +5363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6277,15 +5413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6335,15 +5463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6393,15 +5513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6451,15 +5563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6509,15 +5613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6567,15 +5663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6625,15 +5713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6683,15 +5763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6741,15 +5813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6799,15 +5863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6857,15 +5913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6915,15 +5963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -6973,15 +6013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7031,15 +6063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7089,15 +6113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7147,15 +6163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7205,15 +6213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7263,15 +6263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7321,15 +6313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7379,15 +6363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7437,15 +6413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7495,15 +6463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7553,15 +6513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 183,
@@ -7611,15 +6563,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 185,
@@ -7669,15 +6613,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 186,
@@ -7727,15 +6663,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 4,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 186,
@@ -7785,15 +6713,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 4,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -7843,15 +6763,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 3,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -7901,15 +6813,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -7959,15 +6863,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8017,15 +6913,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8075,15 +6963,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8133,15 +7013,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8191,15 +7063,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8249,15 +7113,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8307,15 +7163,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8365,15 +7213,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8423,15 +7263,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8481,15 +7313,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8539,15 +7363,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8597,15 +7413,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8655,15 +7463,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8713,15 +7513,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {}
       },
@@ -8768,15 +7560,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8826,15 +7610,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8884,15 +7660,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -8942,15 +7710,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9000,15 +7760,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9058,15 +7810,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9116,15 +7860,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9174,15 +7910,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9232,15 +7960,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9290,15 +8010,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9348,15 +8060,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9406,15 +8110,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9464,15 +8160,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9522,15 +8210,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9580,15 +8260,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9638,15 +8310,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9696,15 +8360,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9754,15 +8410,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9812,15 +8460,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9870,15 +8510,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9928,15 +8560,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -9986,15 +8610,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10044,15 +8660,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10102,15 +8710,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10160,15 +8760,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10218,15 +8810,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10276,15 +8860,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10334,15 +8910,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10392,15 +8960,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 187,
@@ -10450,15 +9010,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 188,
@@ -10508,15 +9060,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -10566,15 +9110,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -10624,15 +9160,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -10682,15 +9210,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -10740,15 +9260,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 2,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 2,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -10798,15 +9310,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 136.43146,
-          "slow_recovery_count": 1,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 12,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 2,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 1
         },
         "stats": {
           "total_human_users": 190,
@@ -10856,15 +9360,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 136.43146,
-          "slow_recovery_count": 1,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 20,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 2,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 1
         },
         "stats": {
           "total_human_users": 190,
@@ -10914,15 +9410,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 18,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -10972,15 +9460,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 7,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11030,15 +9510,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 6,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11088,15 +9560,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 54.394985,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 6,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11146,15 +9610,7 @@
           "server_crash_count": 0,
           "downtime_count": 2,
           "downtime_max_s": 54.394985,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 12,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11204,15 +9660,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 49.467877,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 21,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11262,15 +9710,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 20,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11320,15 +9760,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 10,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11378,15 +9810,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 7,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11436,15 +9860,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 8,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11494,15 +9910,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 54.137957,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 9,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 2,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11552,15 +9960,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 54.137957,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 3,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11610,15 +10010,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 2,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 190,
@@ -11668,15 +10060,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 192,
@@ -11726,15 +10110,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 192,
@@ -11784,15 +10160,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 3,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 192,
@@ -11842,15 +10210,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 46.573719,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 3,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 193,
@@ -11900,15 +10260,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 46.573719,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 3,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 193,
@@ -11958,15 +10310,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 46.573719,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 193,
@@ -12016,15 +10360,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 196,
@@ -12074,15 +10410,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 1,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 1,
-          "bot_retry_clients": 1,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 199,
@@ -12132,15 +10460,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 199,
@@ -12190,15 +10510,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 200,
@@ -12248,15 +10560,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 200,
@@ -12306,15 +10610,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 200,
@@ -12364,15 +10660,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 200,
@@ -12422,15 +10710,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 53.379287,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 200,
@@ -12489,15 +10769,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 53.379287,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12556,15 +10828,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12623,15 +10887,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12690,15 +10946,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12757,15 +11005,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12824,15 +11064,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12891,15 +11123,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -12958,15 +11182,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 48.312748,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -13045,15 +11261,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 48.312748,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 201,
@@ -13132,15 +11340,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 48.312748,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13219,15 +11419,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13306,15 +11498,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13393,15 +11577,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 44.570338,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13480,15 +11656,7 @@
           "server_crash_count": 0,
           "downtime_count": 2,
           "downtime_max_s": 49.728286,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13567,15 +11735,7 @@
           "server_crash_count": 0,
           "downtime_count": 2,
           "downtime_max_s": 49.728286,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13654,15 +11814,7 @@
           "server_crash_count": 0,
           "downtime_count": 1,
           "downtime_max_s": 49.728286,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13741,15 +11893,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13828,15 +11972,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -13915,15 +12051,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14002,15 +12130,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14089,15 +12209,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14176,15 +12288,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14263,15 +12367,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14350,15 +12446,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14437,15 +12525,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14524,15 +12604,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14611,15 +12683,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14698,15 +12762,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14785,15 +12841,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14872,15 +12920,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,
@@ -14959,15 +12999,7 @@
           "server_crash_count": 0,
           "downtime_count": 0,
           "downtime_max_s": null,
-          "slow_recovery_count": 0,
-          "worker_timeout_count": 0,
-          "no_move_count": 0,
-          "bot_retry_count": 0,
-          "bot_skip_count": 0,
-          "bot_retry_rooms": 0,
-          "bot_retry_clients": 0,
-          "bot_skip_rooms": 0,
-          "bot_skip_clients": 0
+          "slow_recovery_count": 0
         },
         "stats": {
           "total_human_users": 203,

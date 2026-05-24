@@ -139,13 +139,16 @@ const dailyBotMovesHandler = async (req, res) => {
 };
 
 // /api/online-series?from=epoch_ms&to=epoch_ms — online time-series sample 배열.
-// ws_connected/disconnected 로그 파싱 (`online=N`) 대체. monitor 가 KST hour 로 bucket.
+// from/to 둘 다 필수. to 안 주면 now 로 default. from=0 같은 무한 윈도우 거절.
 const onlineSeriesHandler = (req, res) => {
   const url = new URL(req.url, 'http://x');
-  const from = Number(url.searchParams.get('from')) || 0;
-  const to = Number(url.searchParams.get('to')) || Date.now();
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
-    return sendJson(res, 400, { error: 'from=<epoch_ms>&to=<epoch_ms> required (to > from)' });
+  const fromRaw = url.searchParams.get('from');
+  const toRaw = url.searchParams.get('to');
+  if (!fromRaw) return sendJson(res, 400, { error: 'from=<epoch_ms> required' });
+  const from = Number(fromRaw);
+  const to = toRaw ? Number(toRaw) : Date.now();
+  if (!Number.isFinite(from) || from <= 0 || !Number.isFinite(to) || to <= from) {
+    return sendJson(res, 400, { error: 'from must be positive epoch_ms, to > from' });
   }
   const store = getStore();
   const items = store.getOnlineSeries ? store.getOnlineSeries(from, to) : [];

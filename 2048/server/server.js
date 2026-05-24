@@ -71,13 +71,16 @@ const dailyStatsHandler = (req, res) => {
   });
 };
 
-// /api/online-series?from=epoch_ms&to=epoch_ms — 1분 sample.
+// /api/online-series?from=epoch_ms&to=epoch_ms — 1분 sample. from 필수.
 const onlineSeriesHandler = (req, res) => {
   const url = new URL(req.url, 'http://x');
-  const from = Number(url.searchParams.get('from')) || 0;
-  const to = Number(url.searchParams.get('to')) || Date.now();
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
-    return sendJson(res, 400, { error: 'from=<epoch_ms>&to=<epoch_ms> required (to > from)' });
+  const fromRaw = url.searchParams.get('from');
+  const toRaw = url.searchParams.get('to');
+  if (!fromRaw) return sendJson(res, 400, { error: 'from=<epoch_ms> required' });
+  const from = Number(fromRaw);
+  const to = toRaw ? Number(toRaw) : Date.now();
+  if (!Number.isFinite(from) || from <= 0 || !Number.isFinite(to) || to <= from) {
+    return sendJson(res, 400, { error: 'from must be positive epoch_ms, to > from' });
   }
   const store = getStore();
   const items = store.getOnlineSeries ? store.getOnlineSeries(from, to) : [];
