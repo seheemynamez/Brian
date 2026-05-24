@@ -90,7 +90,7 @@ const dailyStatsHandler = async (req, res) => {
 };
 
 // /api/online-series?from=epoch_ms&to=epoch_ms — 1분 sample. from 필수.
-const onlineSeriesHandler = (req, res) => {
+const onlineSeriesHandler = async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const fromRaw = url.searchParams.get('from');
   const toRaw = url.searchParams.get('to');
@@ -101,7 +101,9 @@ const onlineSeriesHandler = (req, res) => {
     return sendJson(res, 400, { error: 'from must be positive epoch_ms, to > from' });
   }
   const store = getStore();
-  const items = store.getOnlineSeries ? store.getOnlineSeries(from, to) : [];
+  const items = store.getOnlineSeriesFresh
+    ? await store.getOnlineSeriesFresh(from, to)
+    : (store.getOnlineSeries ? store.getOnlineSeries(from, to) : []);
   sendJson(res, 200, { from, to, count: items.length, items, ts: new Date().toISOString() });
 };
 

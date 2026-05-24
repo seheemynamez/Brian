@@ -467,6 +467,34 @@ const createValkeyStore = () => {
       const to = Number(toTs) || Date.now();
       return onlineSamples.filter((s) => s.ts >= from && s.ts <= to);
     },
+    // valkey ZRANGEBYSCORE 직접 조회 — backfill / 외부 ZADD 데이터까지 반영.
+    // endpoint 가 backfill 또는 disaster-recovery 로 직접 valkey ZADD 된 sample 까지 응답.
+    async getOnlineSeriesFresh(fromTs, toTs) {
+      const from = Number(fromTs) || 0;
+      const to = Number(toTs) || Date.now();
+      try {
+        const raw = await client.zrangebyscore(K.online, from, to, 'WITHSCORES');
+        const out = [];
+        for (let i = 0; i < raw.length; i += 2) {
+          const member = raw[i];
+          const score = Number(raw[i + 1]);
+          const colon = member.lastIndexOf(':');
+          // member format: `${ts}:${count}` 또는 `${ts}:${count}:bf` (backfill)
+          let countStr = member.slice(colon + 1);
+          if (countStr === 'bf') {
+            // backfill 형식: ${ts}:${count}:bf — count 는 두번째 colon 앞.
+            const mid = member.lastIndexOf(':', colon - 1);
+            countStr = member.slice(mid + 1, colon);
+          }
+          const count = Number(countStr);
+          if (Number.isFinite(score) && Number.isFinite(count)) out.push({ ts: score, count });
+        }
+        return out;
+      } catch (e) {
+        log.error('valkey_online_fresh_fail', { err: e && e.message });
+        return this.getOnlineSeries(fromTs, toTs);
+      }
+    },
   };
   return api;
 };

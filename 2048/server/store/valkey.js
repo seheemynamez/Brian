@@ -267,6 +267,31 @@ const getOnlineSeries = (fromTs, toTs) => {
   const to = Number(toTs) || Date.now();
   return onlineSamples.filter((s) => s.ts >= from && s.ts <= to);
 };
+const getOnlineSeriesFresh = async (fromTs, toTs) => {
+  const from = Number(fromTs) || 0;
+  const to = Number(toTs) || Date.now();
+  if (!redis) return getOnlineSeries(fromTs, toTs);
+  try {
+    const raw = await redis.zrangebyscore(onlineKey, from, to, 'WITHSCORES');
+    const out = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      const member = raw[i];
+      const score = Number(raw[i + 1]);
+      const colon = member.lastIndexOf(':');
+      let countStr = member.slice(colon + 1);
+      if (countStr === 'bf') {
+        const mid = member.lastIndexOf(':', colon - 1);
+        countStr = member.slice(mid + 1, colon);
+      }
+      const count = Number(countStr);
+      if (Number.isFinite(score) && Number.isFinite(count)) out.push({ ts: score, count });
+    }
+    return out;
+  } catch (e) {
+    log.event('valkey_online_fresh_fail', { err: String(e && e.message).slice(0, 200) });
+    return getOnlineSeries(fromTs, toTs);
+  }
+};
 
 module.exports = {
   backend: 'valkey',
@@ -275,5 +300,5 @@ module.exports = {
   persistUser, removeUser,
   incrementDailyCounter, snapshotDailyMeta, getDailyStats, getDailyStatsFresh,
   addDailySetMember, getDailySetSize, getDailySetSizeFresh, getDailySetMembers,
-  sampleOnline, getOnlineSeries,
+  sampleOnline, getOnlineSeries, getOnlineSeriesFresh,
 };

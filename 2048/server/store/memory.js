@@ -71,4 +71,5 @@ module.exports = {
     const to = Number(toTs) || Date.now();
     return onlineSamples.filter((s) => s.ts >= from && s.ts <= to);
   },
+  async getOnlineSeriesFresh(fromTs, toTs) { return this.getOnlineSeries(fromTs, toTs); },
 };
