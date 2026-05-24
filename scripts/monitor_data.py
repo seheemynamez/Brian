@@ -2,27 +2,78 @@
 
 순수 함수 + 파일 IO (외부 API 호출 없음). monitor_apis 에서 가져온 raw 데이터
 를 가공해서 collect/summary 에 넘김.
+
+Timezone 정책:
+  - 외부 API (Render / Aiven) 가 UTC ISO 로 응답 → `parse_iso` 가 그대로 datetime.
+  - **이 모듈에서 가공해 반환하는 모든 ts 필드는 KST ISO** (`+09:00`).
+    호출자 (collect / summary) 는 KST 일관 사용 가정 가능.
+  - 파일 IO / 7일 trend / day key 모두 KST 기준 (`monitor_config.KST_TODAY`).
+  - API 호출 직전엔 `to_utc_iso` 로 변환 (API 는 표준 UTC).
 """
 from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from monitor_config import (
     COOLDOWN_HOURS, DAILY_STATS_FILE, KST, METRICS_DIR, NOW, STATE_FILE,
 )
 
 # ============================================================
-# ISO 타임스탬프 파싱 — Render 가 ns precision 으로 보낼 때 microsecond 까지만 자름.
+# ISO 타임스탬프 파싱 + Timezone 변환 helper
 # ============================================================
+# Render 가 ns precision 으로 보낼 때 microsecond 까지만 자름.
 _TS_TRUNC_RE = re.compile(r'(\.\d{6})\d+')
 
 
 def parse_iso(ts):
+    """ISO ts (UTC or any tz) → tz-aware datetime. 빈 string 은 ValueError."""
     s = ts.replace('Z', '+00:00')
     s = _TS_TRUNC_RE.sub(r'\1', s)
     return datetime.fromisoformat(s)
+
+
+def parse_iso_kst(ts):
+    """ISO ts → KST-aware datetime. parse 실패 시 ValueError 전파."""
+    return parse_iso(ts).astimezone(KST)
+
+
+def to_kst_iso(ts):
+    """ISO ts (UTC or any tz) → KST ISO string (`+09:00`).
+    빈 string / parse 실패 시 원본 그대로 반환 (graceful — 옛 로그 호환)."""
+    if not ts:
+        return ''
+    try:
+        return parse_iso(ts).astimezone(KST).isoformat()
+    except Exception:
+        return ts
+
+
+def to_utc_iso(dt):
+    """tz-aware datetime → UTC ISO string (`...Z`, Render/Aiven API 입력 표준).
+    naive datetime 입력은 UTC 로 가정."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def kst_pretty(ts):
+    """사람 가독성용 — `2026-05-24 09:05:14 KST`. alert 본문 / 표 등.
+    parse 실패 / 빈 ts → 원본 앞 19글자."""
+    if not ts:
+        return ''
+    try:
+        return parse_iso(ts).astimezone(KST).strftime('%Y-%m-%d %H:%M:%S') + ' KST'
+    except Exception:
+        return ts[:19]
+
+
+def kst_window(days):
+    """KST 기준 캘린더 day window. days=1 → 어제 00:00 ~ 오늘 00:00 (KST).
+    반환: (start_kst, end_kst) — 둘 다 KST tz-aware datetime."""
+    kst_today_00 = NOW.astimezone(KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    return kst_today_00 - timedelta(days=days), kst_today_00
 
 
 # ============================================================
@@ -70,10 +121,16 @@ def save_daily_stats(d):
 
 
 def load_recent_metrics(days=7):
-    """metrics/YYYY-MM-DD.json 최근 N 일 로드."""
+    """metrics/YYYY-MM-DD.json 최근 N 일 로드. **KST 기준 파일명** (PR — KST 일관화).
+
+    매일 KST 09:00 daily-summary 실행 시점에 NOW = UTC 00:00, KST 09:00.
+    KST 어제 (= summary_date) 기준으로 N 일치 파일 로드:
+      days=7 → KST 어제 ~ 6일 전 (총 7개 KST day)
+    """
     out = []
+    kst_today = NOW.astimezone(KST).date()
     for i in range(days):
-        d = (NOW - timedelta(days=i)).strftime('%Y-%m-%d')
+        d = (kst_today - timedelta(days=i)).strftime('%Y-%m-%d')
         f = METRICS_DIR / f'{d}.json'
         if f.exists():
             try:
@@ -104,7 +161,7 @@ def parse_bot_logs(logs):
         m = _BOT_LOG_RE.search(L.get('message', ''))
         if not m: continue
         out.append({
-            'ts':     L.get('timestamp', ''),
+            'ts':     to_kst_iso(L.get('timestamp', '')),
             'bot':    m.group('bot'),
             'stones': int(m.group('stones')),
             'room':   m.group('room'),
@@ -135,7 +192,7 @@ def summarize_bot_logs(parsed):
 # Server failure / recovery 파싱 — events API 결과 기반
 # ============================================================
 def parse_server_failures(events):
-    """events → [{ts, instance, evicted, nonZeroExit, oom}]"""
+    """events → [{ts (KST ISO), instance, evicted, nonZeroExit, oom}]"""
     out = []
     for e in events:
         ev = e.get('event', {})
@@ -143,7 +200,7 @@ def parse_server_failures(events):
         det = ev.get('details', {})
         reason = det.get('reason', {})
         out.append({
-            'ts': ev.get('timestamp', ''),
+            'ts': to_kst_iso(ev.get('timestamp', '')),
             'instance': det.get('instanceID', ''),
             'evicted': bool(reason.get('evicted')),
             'nonZeroExit': reason.get('nonZeroExit'),
@@ -192,8 +249,8 @@ def compute_recovery_times(events):
         reason = det.get('reason', {}) or {}
         out.append({
             'kind': 'crash' if t == 'server_failed' else 'deploy',
-            'start_ts': start_ts,
-            'end_ts': end_ts,
+            'start_ts': to_kst_iso(start_ts),
+            'end_ts': to_kst_iso(end_ts),
             'downtime_s': downtime_s,
             'within_grace': downtime_s <= 60.0,
             'evicted': bool(reason.get('evicted')),
@@ -278,7 +335,7 @@ def parse_bot_moves(logs):
         if m:
             diff, stones, nth, cfgD, cfgT, reach, elap = m.groups()
             rows.append({
-                'ts': L['timestamp'],
+                'ts': to_kst_iso(L.get('timestamp', '')),
                 'diff': diff, 'stones': int(stones), 'nth': int(nth),
                 'cfgD': int(cfgD), 'cfgT': int(cfgT), 'reach': int(reach), 'elap': int(elap),
             })
@@ -331,7 +388,7 @@ def parse_game_over(logs):
         if '[game_over]' not in msg:
             continue
         f = parse_log_fields(msg)
-        f['ts'] = L.get('timestamp', '')
+        f['ts'] = to_kst_iso(L.get('timestamp', ''))
         out.append(f)
     return out
 
@@ -343,7 +400,7 @@ def parse_game_started(logs):
         if '[game_started]' not in msg:
             continue
         f = parse_log_fields(msg)
-        f['ts'] = L.get('timestamp', '')
+        f['ts'] = to_kst_iso(L.get('timestamp', ''))
         out.append(f)
     return out
 
