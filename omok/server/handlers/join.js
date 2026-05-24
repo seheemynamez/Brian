@@ -59,7 +59,8 @@ const reclaimPlayerSlot = (ws, room, color, nicknameOverride) => {
     // SANITY — 봇 slot 의 nickname 을 사람 입력으로 덮어쓰는 path 는 존재하면 안 됨.
     // findPlayerColorByClientId 가 slot.type==='human' 만 매치하지만 방어용 로깅.
     if (slot.type === 'bot') {
-      console.error('[BOT_NICKNAME_WARN] reclaim tried to mutate bot slot', {
+      log.warn('bot_nickname_warn', {
+        src: 'reclaim',
         code: room.code, color, botClientId: slot.clientId,
         wsClientId: ws.clientId, attemptedNickname: n,
       });

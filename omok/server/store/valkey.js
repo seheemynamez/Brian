@@ -25,6 +25,7 @@
 
 const Redis = require('ioredis');
 const { serializeRoom, deserializeRoom } = require('./serialize');
+const log = require('../infra/log');
 
 const PREFIX = process.env.VALKEY_KEY_PREFIX || 'omok';
 const RECENT_GAMES_CAP = Number(process.env.RECENT_GAMES_CAP) || 100;
@@ -52,11 +53,11 @@ const createValkeyStore = () => {
     retryStrategy: (times) => Math.min(times * 200, 5000),
     enableOfflineQueue: true,       // 연결 끊긴 동안의 명령은 큐에 쌓임
   });
-  client.on('error', (e) => console.error('[valkey] error:', e && e.message));
-  client.on('connect', () => console.log('[valkey] connecting...'));
-  client.on('ready', () => console.log('[valkey] ready'));
-  client.on('reconnecting', (delay) => console.log('[valkey] reconnecting in', delay, 'ms'));
-  client.on('close', () => console.log('[valkey] connection closed'));
+  client.on('error', (e) => log.error('valkey_error', { err: e && e.message }));
+  client.on('connect', () => log.event('valkey_connecting'));
+  client.on('ready', () => log.event('valkey_ready'));
+  client.on('reconnecting', (delay) => log.event('valkey_reconnecting', { delay_ms: delay }));
+  client.on('close', () => log.event('valkey_connection_closed'));
 
   // 메모리 cache. backend === 'valkey' 에서도 read 는 메모리 우선.
   const rooms = new Map();
@@ -66,7 +67,7 @@ const createValkeyStore = () => {
   const users = new Map();         // clientId → user JSON
   const recentGames = [];          // 최신 먼저 (unshift). hydrate 시 valkey 의 LRANGE 0 N-1 을 그대로.
 
-  const fnf = (p) => Promise.resolve(p).catch((e) => console.error('[valkey] cmd fail:', e && e.message));
+  const fnf = (p) => Promise.resolve(p).catch((e) => log.error('valkey_cmd_fail', { err: e && e.message }));
 
   const api = {
     backend: 'valkey',
@@ -92,7 +93,7 @@ const createValkeyStore = () => {
             rooms.set(code, room);
             roomHydrated++;
           } catch (e) {
-            console.error('[valkey] room hydrate fail', code, e && e.message);
+            log.error('valkey_room_hydrate_fail', { code, err: e && e.message });
             await client.del(K.room(code)).catch(() => {});
             await client.srem(K.rooms, code).catch(() => {});
           }
@@ -108,7 +109,7 @@ const createValkeyStore = () => {
             sessions.set(sid, JSON.parse(json));
             sessionHydrated++;
           } catch (e) {
-            console.error('[valkey] session hydrate fail', sid, e && e.message);
+            log.error('valkey_session_hydrate_fail', { sid, err: e && e.message });
           }
         }
       }
@@ -120,7 +121,7 @@ const createValkeyStore = () => {
           queue.length = 0;
           for (const e of arr) queue.push(e);
         } catch (e) {
-          console.error('[valkey] queue hydrate fail', e && e.message);
+          log.error('valkey_queue_hydrate_fail', { err: e && e.message });
         }
       }
       // Bot offer history (EX TTL 로 만료된 건 자동 제외됨, 남은 key 들 scan)
@@ -149,7 +150,7 @@ const createValkeyStore = () => {
             users.set(cid, JSON.parse(json));
             userHydrated++;
           } catch (e) {
-            console.error('[valkey] user hydrate fail', cid, e && e.message);
+            log.error('valkey_user_hydrate_fail', { cid, err: e && e.message });
           }
         }
       }
@@ -159,7 +160,11 @@ const createValkeyStore = () => {
       for (const j of gamesJson) {
         try { recentGames.push(JSON.parse(j)); } catch {}
       }
-      console.log(`[valkey] hydrated (prefix=${PREFIX}): rooms=${roomHydrated} sessions=${sessionHydrated} queue=${queue.length} botOffer=${botOfferHydrated} users=${userHydrated} recentGames=${recentGames.length}`);
+      log.event('valkey_hydrated', {
+        prefix: PREFIX, rooms: roomHydrated, sessions: sessionHydrated,
+        queue: queue.length, botOffer: botOfferHydrated,
+        users: userHydrated, recentGames: recentGames.length,
+      });
     },
 
     async close() {

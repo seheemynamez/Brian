@@ -143,7 +143,7 @@ wss.on('connection', (ws) => {
     try {
       handlers.handleMessage(ws, msg);
     } catch (e) {
-      console.error('handler error:', e);
+      log.error('handler_error', { err: e && e.message, msg_type: msg && msg.type });
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: '서버 처리 중 오류' }));
       }
@@ -192,7 +192,7 @@ wss.on('close', () => clearInterval(heartbeatTimer));
     handlers.rehydrateTimers();
     log.event('store_ready', { backend: store.backend });
   } catch (e) {
-    console.error('[store] init 실패:', e && e.message);
+    log.error('store_init_fail', { err: e && e.message });
     // valkey 가 죽어도 서버는 메모리만으로 동작 (지속성 보장 안 됨).
   }
 
@@ -235,7 +235,7 @@ const gracefulShutdown = async (signal) => {
     const s = require('./store').getStore();
     if (typeof s.close === 'function') await s.close();
   } catch (e) {
-    console.error('[shutdown] store.close 실패:', e && e.message);
+    log.error('shutdown_store_close_fail', { err: e && e.message });
   }
   try { httpServer.close(); } catch {}
   process.exit(0);

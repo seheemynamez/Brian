@@ -12,6 +12,7 @@ const {
   computeDeltas, getTier, resultForBlack, TIER_THRESHOLDS,
 } = require('../game/rating');
 const { BOT_NICKNAMES } = require('../game/bot');
+const log = require('../infra/log');
 
 // 봇 clientId 식별 — recordGameResult 의 nickname 덮어쓰기 추적용.
 const isBotClientId = (cid) => typeof cid === 'string' && cid.startsWith('_bot_');
@@ -119,7 +120,8 @@ const recordGameResult = (room, { winnerColor, reason, bothDisconnected = false 
     if (isBotClientId(slot.clientId)) {
       const expected = expectedBotNickname(slot.clientId);
       if (slot.nickname && expected && slot.nickname !== expected) {
-        console.error('[BOT_NICKNAME_WARN] recordGameResult', {
+        log.warn('bot_nickname_warn', {
+          src: 'recordGameResult',
           code: room.code, gameId: room.gameId, color,
           botClientId: slot.clientId, expected, gotSlotNickname: slot.nickname,
           oppColor: color === 'black' ? 'white' : 'black',
@@ -225,16 +227,31 @@ const getMyRankEntry = (clientId) => {
 //
 // tiers (PR — daily-summary 의 티어 분포 표 용): 각 티어 별 사람 user 수.
 // 발행 시점 (호출 시점) snapshot. 0명 티어도 키는 보존 (trend 일관성).
+//
+// bots (PR — monitor 의 봇 rating 정확성 향상): 봇 user 의 현재 누적값.
+// 옛 코드는 봇 제외 → monitor 가 24h game_over 로그의 마지막 botRating 추정
+// (24h 외 봇 게임 후 stale). 이제 직접 노출. clientId 형식 `_bot_{difficulty}`
+// 에서 difficulty 만 키로.
 const getUserStats = () => {
   const tiers = Object.fromEntries(TIER_THRESHOLDS.map((t) => [t.name, 0]));
+  const bots = {};
   let total = 0;
   for (const u of users.values()) {
-    if (u && !u.isBot) {
+    if (!u) continue;
+    if (!u.isBot) {
       total++;
       tiers[getTier(u.rating)]++;
+    } else if (typeof u.clientId === 'string' && u.clientId.startsWith('_bot_')) {
+      const diff = u.clientId.slice('_bot_'.length);
+      bots[diff] = {
+        rating: u.rating,
+        wins: u.wins || 0,
+        losses: u.losses || 0,
+        draws: u.draws || 0,
+      };
     }
   }
-  return { total_human_users: total, tiers };
+  return { total_human_users: total, tiers, bots };
 };
 
 module.exports = {
