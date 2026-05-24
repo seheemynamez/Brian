@@ -472,5 +472,84 @@
       "mem_pct_avg": 67.11461082572505,
       "mem_pct_max": 68.34914173169948
     }
+  },
+  {
+    "ts": "2026-05-24T15:30:18.769290+00:00",
+    "services": {
+      "omok": {
+        "render": {
+          "cpu_peak_m": 75.92022,
+          "cpu_avg_m": 34.7661446875,
+          "mem_peak_mb": 98.96484375,
+          "deploy_status": "live",
+          "server_failed_count": 0,
+          "server_oom_count": 0,
+          "server_crash_count": 0,
+          "downtime_count": 0,
+          "downtime_max_s": null,
+          "slow_recovery_count": 0
+        },
+        "stats": {
+          "total_human_users": 211,
+          "tiers": {
+            "Iron": 5,
+            "Bronze": 198,
+            "Silver": 7,
+            "Gold": 1,
+            "Platinum": 0,
+            "Diamond": 0,
+            "Master": 0
+          },
+          "bots": {
+            "hard": {
+              "rating": 1457,
+              "wins": 152,
+              "losses": 70,
+              "draws": 0
+            },
+            "easy": {
+              "rating": 1214,
+              "wins": 115,
+              "losses": 85,
+              "draws": 0
+            },
+            "medium": {
+              "rating": 1485,
+              "wins": 188,
+              "losses": 99,
+              "draws": 0
+            }
+          },
+          "ts": "2026-05-24T15:30:28.238Z"
+        }
+      },
+      "2048": {
+        "render": {
+          "cpu_peak_m": 0.5616333,
+          "cpu_avg_m": 0.47046666125,
+          "mem_peak_mb": 48.30078125,
+          "deploy_status": "live",
+          "server_failed_count": 0,
+          "server_oom_count": 0,
+          "server_crash_count": 0,
+          "downtime_count": 0,
+          "downtime_max_s": null,
+          "slow_recovery_count": 0
+        },
+        "stats": {
+          "total_users": 24,
+          "top_all_time": 26276,
+          "top_daily": 0,
+          "active_ws": 3,
+          "ts": "2026-05-24T15:30:30.022Z"
+        }
+      }
+    },
+    "aiven": {
+      "cpu_pct_avg": 8.737403488660064,
+      "cpu_pct_max": 13.96183330622749,
+      "mem_pct_avg": 67.07975132717742,
+      "mem_pct_max": 68.34914173169948
+    }
   }
 ]
