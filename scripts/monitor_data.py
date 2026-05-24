@@ -472,6 +472,48 @@ def bot_stats_by_cfg(moves):
     return out
 
 
+def human_turn_stats(game_overs, split_by_bot=False):
+    """game_over 의 humanTurnsMs CSV → 사람 thinking time 분포 (avg/p50/p95).
+
+    server 가 game_over 로그에 매 차례 elapsed 를 CSV (humanTurnsMs="1234,5678,...")
+    로 출력. 봇 차례는 제외 (search timeout 으로 별도 측정).
+
+    split_by_bot=False (default): 전체 game_over 통합 → 단일 dict 반환.
+    split_by_bot=True: {'pvp': {...}, 'bot': {...}} 로 봇 게임 vs PVP 분리.
+    bot 게임의 사람 (= 봇 상대) 과 PVP 의 사람은 행동 패턴이 다를 수 있어 분리 옵션.
+    """
+    def _agg(items):
+        all_ms = []
+        games_with = 0
+        for g in items:
+            csv = g.get('humanTurnsMs')
+            if not csv: continue
+            had = False
+            for s in csv.split(','):
+                try:
+                    all_ms.append(int(s))
+                    had = True
+                except (ValueError, TypeError):
+                    continue
+            if had: games_with += 1
+        if not all_ms: return None
+        s = sorted(all_ms)
+        n = len(s)
+        return {
+            'n': n,
+            'games': games_with,
+            'avg_ms': sum(s) // n,
+            'p50_ms': s[n // 2],
+            'p95_ms': s[int(n * 0.95)] if n > 1 else s[0],
+            'max_ms': s[-1],
+        }
+    if not split_by_bot:
+        return _agg(game_overs)
+    pvp = [g for g in game_overs if g.get('bot') != 'true']
+    bot = [g for g in game_overs if g.get('bot') == 'true']
+    return {'pvp': _agg(pvp), 'bot': _agg(bot)}
+
+
 # ============================================================
 # game_started / game_over 로그 파싱 (PR #86 보강된 필드)
 # 새 game_over 로그 형식: key=value pairs (value 가 공백 / "..." 으로 인용)
