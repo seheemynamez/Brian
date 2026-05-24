@@ -21,12 +21,12 @@
     "top_daily_2048": 0
   },
   "2026-05-23": {
-    "pvp_games": 0,
-    "bot_games": 0,
-    "total_bot_moves": 2400,
+    "pvp_games": 62,
+    "bot_games": 200,
+    "total_bot_moves": 2661,
     "render_cpu_max_m": 113.736615,
-    "aiven_mem_max_pct": 69.48017701011133,
-    "active_users": 0,
+    "aiven_mem_max_pct": 69.6528195535192,
+    "active_users": 46,
     "total_human_users": 187,
     "ws_connected": 625,
     "worker_timeout": 26,
