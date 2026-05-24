@@ -28,8 +28,9 @@ const POOL_SIZE = Math.max(1, Number(process.env.BOT_WORKER_POOL_SIZE) || 3);
 const WORKER_PATH = path.resolve(__dirname, 'bot-worker.js');
 // Worker 가 hang 또는 너무 느린 경우 응답 cap — 이 시간 후 reject + worker 재시작.
 // turn timeout (30s) 보다 여유있게 작게 설정해서 fallback 처리 시간 확보.
-// 22s = turn 30s - fallback 처리 여유 ~8s. 25s 까지 늘려도 OK 지만 margin 보수.
-const WORKER_TIMEOUT_MS = Number(process.env.BOT_WORKER_TIMEOUT_MS) || 22000;
+// PR v4: hard 봇 강화로 cfg deadline 최대 20s (hard 15+). margin 5s = 25s.
+// turn 30s 대비 fallback 5s — bot self-abort 정확하므로 OK.
+const WORKER_TIMEOUT_MS = Number(process.env.BOT_WORKER_TIMEOUT_MS) || 25000;
 
 let nextId = 1;
 // id → { resolve, reject, workerIndex }

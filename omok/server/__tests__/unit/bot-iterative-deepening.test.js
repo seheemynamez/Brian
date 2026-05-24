@@ -102,54 +102,54 @@ describe('Bot ID — getDynamicConfig 자기 돌 수 별 매핑', () => {
       { maxDepth: 4, topK: 6, timeoutMs: 4000 });
   });
 
-  test('hard: 자기<5 → d4×t8×5s / 5-14 → d5×t6×12s / 15+ → d6×t5×18s (PR — topK 축소)', () => {
-    // 자기 < 5: d4 × t8 × 5s (초반 도달율 74% 안정 — 그대로)
+  test('hard: 자기<5 → d4×t10×10s / 5-14 → d5×t7×15s / 15+ → d6×t5×20s (PR v4 — 강화)', () => {
+    // 자기 < 5: d4 × t10 × 10s (강화 — 트리 2.4x, 시간 2x → 도달율 ~70%)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(0, 'white'), 'white', 'hard'),
-      { maxDepth: 4, topK: 8, timeoutMs: 5000 });
+      { maxDepth: 4, topK: 10, timeoutMs: 10000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(4, 'white'), 'white', 'hard'),
-      { maxDepth: 4, topK: 8, timeoutMs: 5000 });
-    // 자기 5-14: d5 × t6 × 12s (PR — t8→6, 도달율 60→75%+ 목표)
+      { maxDepth: 4, topK: 10, timeoutMs: 10000 });
+    // 자기 5-14: d5 × t7 × 15s (강화 — 트리 2.2x, 시간 1.25x → 도달율 ~60-65%)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(5, 'white'), 'white', 'hard'),
-      { maxDepth: 5, topK: 6, timeoutMs: 12000 });
+      { maxDepth: 5, topK: 7, timeoutMs: 15000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(14, 'white'), 'white', 'hard'),
-      { maxDepth: 5, topK: 6, timeoutMs: 12000 });
-    // 자기 15+: d6 × t5 × 18s (PR — t7→5, 도달율 26→50%+ 목표)
+      { maxDepth: 5, topK: 7, timeoutMs: 15000 });
+    // 자기 15+: d6 × t5 × 20s (시간만 18→20s, topK 유지 → 도달율 ~65-70%)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(15, 'white'), 'white', 'hard'),
-      { maxDepth: 6, topK: 5, timeoutMs: 18000 });
+      { maxDepth: 6, topK: 5, timeoutMs: 20000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(20, 'white'), 'white', 'hard'),
-      { maxDepth: 6, topK: 5, timeoutMs: 18000 });
+      { maxDepth: 6, topK: 5, timeoutMs: 20000 });
   });
 
   test('상대 돌은 분기에 영향 X — 자기 black 0개 + 상대 white 20개 → 초반 cfg', () => {
     const b = boardWithMyStones(20, 'white');  // white 만 20개
     // black 입장에선 자기 돌 0 → 초반 cfg
     assert.equal(getDynamicConfig(b, 'black', 'hard').maxDepth, 4);
-    assert.equal(getDynamicConfig(b, 'black', 'hard').timeoutMs, 5000);
+    assert.equal(getDynamicConfig(b, 'black', 'hard').timeoutMs, 10000);   // PR v4: 5→10s
     // white 입장에선 자기 돌 20 → 후반 cfg
     assert.equal(getDynamicConfig(b, 'white', 'hard').maxDepth, 6);
-    assert.equal(getDynamicConfig(b, 'white', 'hard').timeoutMs, 18000);
+    assert.equal(getDynamicConfig(b, 'white', 'hard').timeoutMs, 20000);   // PR v4: 18→20s
   });
 
-  test('topK 정책 — cfgMax 도달율 50%+ 목표로 cfg 별 차등 (PR — v3 운영 데이터 튜닝)', () => {
-    // easy = 2 (PR — 승률 76% 약화 위해 t3→2, depth 유지)
+  test('topK 정책 — cfgMax 도달율 50%+ 목표로 cfg 별 차등 (PR v4 — hard 강화)', () => {
+    // easy = 2
     assert.equal(getDynamicConfig(empty(), 'black', 'easy').topK, 2);
-    // medium d3 (초반) = 10 (timeout 여유, 도달율 99%+)
+    // medium d3 (초반) = 10
     assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'medium').topK, 10);
-    // medium d4 (자기 5+) = 6 (PR — t8→6, 도달율 38→60%+ 목표)
+    // medium d4 (자기 5+) = 6
     assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'medium').topK, 6);
-    // hard d4 (초반) = 8 (도달율 74% 안정)
-    assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'hard').topK, 8);
-    // hard d5 (자기 5-14) = 6 (PR — t8→6, 도달율 60→75%+ 목표)
-    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'hard').topK, 6);
-    // hard d6 (자기 15+) = 5 (PR — t7→5, 도달율 26→50%+ 목표)
+    // hard d4 (초반) = **10** (PR v4 — t8→10, 강화)
+    assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'hard').topK, 10);
+    // hard d5 (자기 5-14) = **7** (PR v4 — t6→7, 강화)
+    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'hard').topK, 7);
+    // hard d6 (자기 15+) = 5 (PR v3 그대로, 시간만 18→20s)
     assert.equal(getDynamicConfig(boardWithMyStones(20, 'black'), 'black', 'hard').topK, 5);
   });
 
-  test('worker_timeout 22s 안전 margin — 모든 cfg 의 timeoutMs ≤ 18s (margin ≥ 4s)', () => {
+  test('worker_timeout 25s 안전 margin — 모든 cfg 의 timeoutMs ≤ 20s (margin ≥ 5s) (PR v4)', () => {
     for (const diff of ['easy', 'medium', 'hard']) {
       for (const s of [0, 4, 5, 14, 15, 30]) {
         const cfg = getDynamicConfig(boardWithMyStones(s, 'black'), 'black', diff);
-        assert.ok(cfg.timeoutMs <= 18000, `${diff} 자기${s}수 timeoutMs=${cfg.timeoutMs} > 18s`);
+        assert.ok(cfg.timeoutMs <= 20000, `${diff} 자기${s}수 timeoutMs=${cfg.timeoutMs} > 20s`);
       }
     }
   });
