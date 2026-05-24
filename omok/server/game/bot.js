@@ -608,8 +608,12 @@ const getDynamicConfig = (board, color, difficulty) => {
   }
   const myStones = countMyStones(board, color);
   if (difficulty === 'medium') {
-    if (myStones < 5)  return { maxDepth: 3, topK: 10, timeoutMs: 2000 };   // 초반 도달 99%+
-    return                    { maxDepth: 4, topK: 6,  timeoutMs: 4000 };   // 도달 60%+
+    // v5: 단계 분기 제거, 단일 d3×t8×2s 로 통합 약화.
+    // 의도: Bronze 상위 + Silver 5:5 (재미). 직전 v4 (5+ d4×t6) 가 Bronze 95% / Silver 74%
+    // 봇승률로 너무 강함 (PR — 운영 데이터 5/22~25). depth 한 단계 ↓ + topK 약간 ↑ 로 search
+    // 폭은 늘려 단조로움 ↓ 효과 노림. iterative deepening 으로 d3 안정 도달, timeout 2s 라
+    // d4 시도는 거의 없음 (강도 안정).
+    return { maxDepth: 3, topK: 8, timeoutMs: 2000 };
   }
   if (difficulty === 'hard') {
     if (myStones < 5)  return { maxDepth: 4, topK: 10, timeoutMs: 10000 };  // v4: t8→10, 5→10s (강화)
