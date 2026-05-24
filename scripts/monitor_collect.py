@@ -345,9 +345,7 @@ def run_collect():
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
 
-    # snapshot — services.{omok,2048} 구조. monitor_summary 의 snap_omok_render /
-    # snap_2048_render helper 가 옛 평탄 구조 (`render`) 와 새 구조 둘 다 호환하므로
-    # 평탄 사본 불필요. 옛 metrics/*.json 도 자연 expire (7일 트렌드 window).
+    # snapshot 표준 구조 — services.{omok,2048}.{render,stats} + aiven (공유).
     snapshot = {
         'ts': NOW.isoformat(),
         'services': services_snapshot,

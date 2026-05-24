@@ -564,33 +564,21 @@ def player_activity(game_overs):
 
 
 # ============================================================
-# Snapshot 구조 normalize — 옛 평탄 (render: {...omok}) 과 새 (services.{omok,2048})
-# 둘 다 호환. 7일 트렌드는 metrics/*.json 의 옛 데이터도 읽음.
+# Snapshot 구조 helper — None-safe deep access.
+# snapshot 표준: { ts, services: { omok: {render, stats}, 2048: {...} }, aiven }
 # ============================================================
 def snap_omok_render(snap):
-    """snapshot 에서 omok render 부분 추출 (옛/새 구조 모두 지원)."""
-    if 'services' in snap:
-        return (snap.get('services', {}) or {}).get('omok', {}).get('render', {}) or {}
-    return snap.get('render', {}) or {}
+    """snapshot 에서 omok render 부분 추출."""
+    return (snap.get('services', {}) or {}).get('omok', {}).get('render', {}) or {}
 
 
 def snap_2048_render(snap):
-    """snapshot 에서 2048 render 부분 추출 (새 구조에서만 존재)."""
+    """snapshot 에서 2048 render 부분 추출."""
     return (snap.get('services', {}) or {}).get('2048', {}).get('render', {}) or {}
 
 
-def snap_omok_stats(snap):
-    """omok stats — 새 구조에만 보존. 옛 구조는 collect 시점에 fetch 만 하고
-    snapshot 엔 안 들어갔음 → 옛 데이터는 None."""
-    return (snap.get('services', {}) or {}).get('omok', {}).get('stats', {}) or {}
-
-
-def snap_2048_stats(snap):
-    return (snap.get('services', {}) or {}).get('2048', {}).get('stats', {}) or {}
-
-
 def snap_aiven(snap):
-    """Aiven 은 옛/새 둘 다 평탄."""
+    """snapshot 에서 aiven 부분 추출 (top-level — omok/2048 공유)."""
     return snap.get('aiven', {}) or {}
 
 

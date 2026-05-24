@@ -1,15 +1,24 @@
 [
   {
     "ts": "2026-05-21T06:18:57.929731+00:00",
-    "render": {
-      "cpu_peak_m": 105.40707,
-      "cpu_avg_m": 49.83072517806452,
-      "mem_peak_mb": 102.47655868530273,
-      "deploy_status": "live",
-      "worker_timeout_count": 0,
-      "no_move_count": 0,
-      "bot_retry_count": 0,
-      "bot_skip_count": 0
+    "services": {
+      "omok": {
+        "render": {
+          "cpu_peak_m": 105.40707,
+          "cpu_avg_m": 49.83072517806452,
+          "mem_peak_mb": 102.47655868530273,
+          "deploy_status": "live",
+          "worker_timeout_count": 0,
+          "no_move_count": 0,
+          "bot_retry_count": 0,
+          "bot_skip_count": 0
+        },
+        "stats": {}
+      },
+      "2048": {
+        "render": {},
+        "stats": {}
+      }
     },
     "aiven": {
       "cpu_pct_avg": 7.532731073866905,

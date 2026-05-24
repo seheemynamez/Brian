@@ -64,8 +64,6 @@ PR — 2048 통합으로 service 별 분리:
 }
 ```
 
-옛 metrics/*.json (`render: {...}` 평탄) 도 `snap_omok_render` helper 가 fallback 으로 처리 — 7일 트렌드 window 안에서 자연 expire.
-
 - Aiven 은 omok / 2048 공유 (같은 인스턴스, prefix 격리) — `aiven` 한 번만 수집.
 - 봇 관련 필드 (`worker_timeout_count` 등) 는 `has_bot_logs=true` 인 service (omok) 에만.
 - 2048 stats fetch 가 cold-start 시 timeout → 다음 cycle 부터 alive (monitor 호출이 sleep 방지 역할).
