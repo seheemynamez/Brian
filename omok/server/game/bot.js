@@ -573,42 +573,48 @@ const countMyStones = (board, color) => {
 // 정책 변경 이력:
 //   v1 (PR #81): 자기 돌 3단계 (<5 / 5-14 / 15+) — 정적 d6×t10 → 동적 매핑.
 //   v2 (PR #83): cfgMax 도달율 50%+ 목표 — topK 를 조절해 search 트리 크기 ↓.
-//   v3 (PR — 본 commit): 5/22~5/23 운영 데이터 + CPU peak alerts (#114, #123,
-//       #134, #135, #137) 기반 추가 튜닝:
-//       - medium d4 도달율 38.6% (목표 50% 미달) — t8→6
-//       - hard d5 도달율 59.7% (목표 도달 but 트리 더 줄여 CPU 절약) — t8→6
-//       - hard d6 도달율 26.0% (목표 50% 미달) — t7→5
-//       - CPU peak 110~144m (한도 100m 초과 빈번) — topK 축소로 ~30% 트리 ↓
-//       - medium 봇 승률 44.6% (너무 약함) — d4 실제 도달율 ↑ 로 자연 회복 기대
-//       - easy 봇 승률 76.4% (너무 강함) — t3→2 로 적당히 약화
+//   v3 (PR #153): 5/22~5/23 운영 데이터 + CPU peak alerts 기반 추가 튜닝:
+//       - medium d4 도달율 38.6% / hard d6 도달율 26.0% → topK 축소로 도달율 ↑
+//       - easy 승률 76.4% (너무 강함) → t3→2 약화
+//   v4 (PR — 본 commit): hard 봇 강도 대폭 상향 (사용자 결정 — "hard 가 강한
+//       게 의도된 설계"). depth 유지, timeout + topK 모두 늘려 강도 ↑.
+//       - hard <5:   t8→t10, 5s→10s     (트리 2.4x, 시간 2x → 도달율 ~70% 추정)
+//       - hard 5-14: t6→t7, 12s→15s    (트리 2.2x, 시간 1.25x → 도달율 ~60-65%)
+//       - hard 15+:  t5 유지, 18s→20s  (시간만 ↑ → 도달율 ~65-70% 안정)
+//       - worker_timeout 22s→25s (margin 5s 유지)
+//       - 사용자 대기: hard <5 첫 수 10s (강한 봇 우선). turn timer 30s 안.
 //
 // 변경 의도:
-//   search 트리 노드 수 ~topK^depth. topK 줄이면 같은 timeout 안에 더 깊이 도달.
-//   αβ + 평가 함수가 잘 만들어져 있어 topK 5-6 도 강도 유지 (top moves 가 보통
-//   상위 5위 안에 정답).
+//   search 트리 노드 수 ~topK^depth. αβ + 평가 함수가 잘 만들어져 있어 topK
+//   2-3 증가도 강도 의미 있게 ↑. 시간 늘림으로 도달율 ↓ 완화.
 //
-// 매핑 (cfgMax 도달율 50%+ 목표):
-//   easy: d2 × t2 × 1.0s     (t3→2 로 적당히 약화, depth 유지)
-//   medium 자기<5: d3 × t10 × 2.0s   (도달율 99%+ — 그대로)
-//   medium 자기 5+: d4 × t6  × 4.0s  (t8→6, 트리 (6/8)⁴=32% — d4 도달율 38→60%+ 목표)
-//   hard 자기<5:   d4 × t8 × 5.0s    (도달율 74% — 그대로)
-//   hard 자기 5-14: d5 × t6 × 12.0s  (t8→6, 트리 (6/8)⁵=24% — d5 도달율 60→75%+ 목표)
-//   hard 자기 15+:  d6 × t5 × 18.0s  (t7→5, 트리 (5/7)⁶=13% — d6 도달율 26→50%+ 목표)
+// CPU 우려:
+//   본 변경으로 hard 봇 당 CPU 점유 ↑. 동시 hard 게임 다수 시 free plan CPU
+//   100m 초과 alert 빈도 ↑ 예상. 사용자 결정: free plan 유지 + monitor alert
+//   보면서 조정. 필요 시 Hobby plan ($7/월) upgrade.
 //
-// worker_timeout 22s 안전 margin: hard 자기 15+ 18s → margin 4s. self-abort 정확하므로 OK.
+// 매핑:
+//   easy: d2 × t2 × 1.0s
+//   medium 자기<5: d3 × t10 × 2.0s   (도달율 99%+)
+//   medium 자기 5+: d4 × t6  × 4.0s  (도달율 60%+)
+//   hard 자기<5:   d4 × t10 × 10.0s  (강화 — 도달율 ~70%)
+//   hard 자기 5-14: d5 × t7 × 15.0s  (강화 — 도달율 ~60-65%)
+//   hard 자기 15+:  d6 × t5 × 20.0s  (시간 ↑, topK 유지 — 도달율 ~65-70%)
+//
+// worker_timeout 25s 안전 margin: hard 자기 15+ 20s → margin 5s. self-abort 정확하므로 OK.
 const getDynamicConfig = (board, color, difficulty) => {
   if (difficulty === 'easy') {
-    return { maxDepth: 2, topK: 2, timeoutMs: 1000 };   // t3→2 (승률 76→55%+ 목표)
+    return { maxDepth: 2, topK: 2, timeoutMs: 1000 };
   }
   const myStones = countMyStones(board, color);
   if (difficulty === 'medium') {
     if (myStones < 5)  return { maxDepth: 3, topK: 10, timeoutMs: 2000 };   // 초반 도달 99%+
-    return                    { maxDepth: 4, topK: 6,  timeoutMs: 4000 };   // t8→6 (도달 38→60%+)
+    return                    { maxDepth: 4, topK: 6,  timeoutMs: 4000 };   // 도달 60%+
   }
   if (difficulty === 'hard') {
-    if (myStones < 5)  return { maxDepth: 4, topK: 8, timeoutMs: 5000 };    // 초반 d4 도달 74%
-    if (myStones < 15) return { maxDepth: 5, topK: 6, timeoutMs: 12000 };   // t8→6 (도달 60→75%+)
-    return                    { maxDepth: 6, topK: 5, timeoutMs: 18000 };   // t7→5 (도달 26→50%+)
+    if (myStones < 5)  return { maxDepth: 4, topK: 10, timeoutMs: 10000 };  // v4: t8→10, 5→10s (강화)
+    if (myStones < 15) return { maxDepth: 5, topK: 7,  timeoutMs: 15000 };  // v4: t6→7, 12→15s (강화)
+    return                    { maxDepth: 6, topK: 5,  timeoutMs: 20000 };  // v4: t5 유지, 18→20s (시간 ↑)
   }
   return { maxDepth: 4, topK: 6, timeoutMs: 3000 };
 };
