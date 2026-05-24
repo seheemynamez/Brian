@@ -112,7 +112,7 @@ FETCH_FAIL_THRESHOLD = 3
 REPO_ROOT = Path(__file__).resolve().parent.parent
 METRICS_DIR = REPO_ROOT / 'metrics'
 STATE_FILE = METRICS_DIR / 'state.json'
-DAILY_STATS_FILE = METRICS_DIR / 'daily-stats.json'
+# 옛 DAILY_STATS_FILE 제거 (PR #168) — 일별 aggregate 는 server /api/daily-stats (valkey 90d) 가 SoT.
 
 NOW = datetime.now(timezone.utc)
 KST = timezone(timedelta(hours=9))

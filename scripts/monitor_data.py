@@ -17,7 +17,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 from monitor_config import (
-    COOLDOWN_HOURS, DAILY_STATS_FILE, KST, METRICS_DIR, NOW, STATE_FILE,
+    COOLDOWN_HOURS, KST, METRICS_DIR, NOW, STATE_FILE,
     THRESHOLD_DOWNTIME_S,
 )
 
@@ -148,19 +148,10 @@ def fail_streaks_over(state, threshold):
 
 
 # ============================================================
-# daily-stats / 일별 snapshot IO (7일 trend 용)
+# 5-min collect snapshot IO (7일 trend 의 Render CPU / Aiven Mem 일별 max 용)
 # ============================================================
-def load_daily_stats():
-    if DAILY_STATS_FILE.exists():
-        try: return json.loads(DAILY_STATS_FILE.read_text())
-        except Exception: pass
-    return {}
-
-
-def save_daily_stats(d):
-    METRICS_DIR.mkdir(exist_ok=True)
-    DAILY_STATS_FILE.write_text(json.dumps(d, indent=2, ensure_ascii=False))
-
+# 옛 load_daily_stats / save_daily_stats 는 PR #168 valkey-first 전환 후 제거 —
+# 일별 aggregate 는 server /api/daily-stats endpoint (valkey 90d TTL) 가 SoT.
 
 def load_recent_metrics(days=7):
     """metrics/YYYY-MM-DD.json 최근 N 일 로드. **KST 기준 파일명** (PR — KST 일관화).
