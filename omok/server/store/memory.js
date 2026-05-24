@@ -54,6 +54,8 @@ const createInMemoryStore = () => ({
     if (!date) return null;
     return this.dailyStats.get(date) || null;
   },
+  // memory backend 는 캐시가 SoT — fresh 와 동일.
+  async getDailyStatsFresh(date) { return this.getDailyStats(date); },
   // ---- daily SET ----
   addDailySetMember(date, name, member) {
     if (!date || !name || !member) return;
@@ -69,6 +71,7 @@ const createInMemoryStore = () => ({
     const s = perDate.get(name);
     return s ? s.size : 0;
   },
+  async getDailySetSizeFresh(date, name) { return this.getDailySetSize(date, name); },
   getDailySetMembers(date, name) {
     const perDate = this.dailySets.get(date);
     if (!perDate) return [];

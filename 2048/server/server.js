@@ -45,16 +45,17 @@ const statsHandler = (req, res) => {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // /api/daily-stats?date=YYYY-MM-DD — 일별 카운터 + active_users SET 크기.
-// monitor 가 server-domain 카운트를 이 단일 endpoint 로 수신 (Render log 대체).
-const dailyStatsHandler = (req, res) => {
+// valkey 직접 조회 (backfill / 외부 HSET 까지 반영). memory cache stale 우회.
+const dailyStatsHandler = async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const date = url.searchParams.get('date') || '';
   if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
   const store = getStore();
-  const c = store.getDailyStats ? (store.getDailyStats(date) || {}) : {};
-  // backfill 호환: SET 크기 0 이면 `{name}_backfill` counter fallback.
-  const setSize = (name) => {
-    const live = store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+  const c = (store.getDailyStatsFresh ? await store.getDailyStatsFresh(date) : store.getDailyStats(date)) || {};
+  const setSize = async (name) => {
+    const live = store.getDailySetSizeFresh
+      ? await store.getDailySetSizeFresh(date, name)
+      : (store.getDailySetSize ? store.getDailySetSize(date, name) : 0);
     if (live > 0) return live;
     return Number(c[`${name}_backfill`]) || 0;
   };
@@ -66,7 +67,7 @@ const dailyStatsHandler = (req, res) => {
     ws_connected: c.ws_connected || 0,
     ws_disconnected: c.ws_disconnected || 0,
     heartbeat_terminate: c.heartbeat_terminate || 0,
-    active_users: setSize('active_users'),
+    active_users: await setSize('active_users'),
     ts: new Date().toISOString(),
   });
 };
