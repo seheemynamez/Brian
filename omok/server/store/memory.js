@@ -10,6 +10,8 @@
 
 const RECENT_GAMES_CAP = Number(process.env.RECENT_GAMES_CAP) || 100;
 
+const ONLINE_TTL_MS = 90 * 86400 * 1000;
+
 const createInMemoryStore = () => ({
   backend: 'memory',
   rooms: new Map(),
@@ -18,7 +20,10 @@ const createInMemoryStore = () => ({
   botOffer: new Map(),
   users: new Map(),        // clientId → user JSON
   recentGames: [],         // [{ ..., endedAt }]  최신 먼저 (unshift)
-  dailyStats: new Map(),   // date(YYYY-MM-DD) → { pvp_games, bot_games, total_bot_moves }
+  dailyStats: new Map(),   // date → { fieldName: number, ... }
+  dailySets: new Map(),    // date → Map<setName, Set<string>>
+  dailyLists: new Map(),   // date → Map<listName, Array<object>>  (head=최신)
+  onlineSamples: [],       // [{ts, count}]  ts ascending
   // lifecycle no-op (메모리만 사용)
   async connect() {},
   async hydrate() {},
@@ -48,6 +53,62 @@ const createInMemoryStore = () => ({
   getDailyStats(date) {
     if (!date) return null;
     return this.dailyStats.get(date) || null;
+  },
+  // ---- daily SET ----
+  addDailySetMember(date, name, member) {
+    if (!date || !name || !member) return;
+    let perDate = this.dailySets.get(date);
+    if (!perDate) { perDate = new Map(); this.dailySets.set(date, perDate); }
+    let s = perDate.get(name);
+    if (!s) { s = new Set(); perDate.set(name, s); }
+    s.add(String(member));
+  },
+  getDailySetSize(date, name) {
+    const perDate = this.dailySets.get(date);
+    if (!perDate) return 0;
+    const s = perDate.get(name);
+    return s ? s.size : 0;
+  },
+  getDailySetMembers(date, name) {
+    const perDate = this.dailySets.get(date);
+    if (!perDate) return [];
+    const s = perDate.get(name);
+    return s ? Array.from(s) : [];
+  },
+  // ---- daily LIST ----
+  pushDailyListItem(date, name, item) {
+    if (!date || !name || !item) return;
+    let perDate = this.dailyLists.get(date);
+    if (!perDate) { perDate = new Map(); this.dailyLists.set(date, perDate); }
+    let arr = perDate.get(name);
+    if (!arr) { arr = []; perDate.set(name, arr); }
+    arr.unshift(item);  // 최신 머리 (valkey LPUSH 와 동일)
+  },
+  async getDailyListRange(date, name, start = 0, stop = -1) {
+    const perDate = this.dailyLists.get(date);
+    if (!perDate) return [];
+    const arr = perDate.get(name) || [];
+    const end = stop === -1 ? arr.length : Math.min(stop + 1, arr.length);
+    return arr.slice(start, end);
+  },
+  async getDailyListLength(date, name) {
+    const perDate = this.dailyLists.get(date);
+    if (!perDate) return 0;
+    const arr = perDate.get(name);
+    return arr ? arr.length : 0;
+  },
+  // ---- online time-series ----
+  sampleOnline(ts, count) {
+    const now = Number(ts) || Date.now();
+    const c = Number(count) || 0;
+    this.onlineSamples.push({ ts: now, count: c });
+    const cutoff = now - ONLINE_TTL_MS;
+    while (this.onlineSamples.length && this.onlineSamples[0].ts < cutoff) this.onlineSamples.shift();
+  },
+  getOnlineSeries(fromTs, toTs) {
+    const from = Number(fromTs) || 0;
+    const to = Number(toTs) || Date.now();
+    return this.onlineSamples.filter((s) => s.ts >= from && s.ts <= to);
   },
 });
 

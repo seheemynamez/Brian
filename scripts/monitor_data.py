@@ -451,6 +451,31 @@ def parse_bot_moves(logs):
     return rows
 
 
+def bot_moves_from_endpoint(items):
+    """server /api/daily-bot-moves items → parse_bot_moves 와 동일 row 형식.
+
+    endpoint item 키: ts (UTC ISO), diff, stones, cfgD, cfgTopK, reach, elap, room
+    parse_bot_moves 호환: ts (KST ISO), diff, stones, nth, cfgD, cfgT, reach, elap
+    """
+    rows = []
+    for it in items or []:
+        if not isinstance(it, dict): continue
+        try:
+            rows.append({
+                'ts': to_kst_iso(it.get('ts', '')),
+                'diff': it.get('diff'),
+                'stones': int(it.get('stones', 0)),
+                'nth': int(it.get('stones', 0)) + 1,
+                'cfgD': int(it.get('cfgD', 0)),
+                'cfgT': int(it.get('cfgTopK', 0)),
+                'reach': int(it.get('reach', 0)),
+                'elap': int(it.get('elap', 0)),
+            })
+        except (TypeError, ValueError):
+            continue
+    return rows
+
+
 def bot_stats_by_cfg(moves):
     """cfg 별 cfgMax 도달율 + elapsed 통계."""
     by = defaultdict(lambda: defaultdict(list))
@@ -542,6 +567,72 @@ def parse_game_over(logs):
         f['ts'] = to_kst_iso(L.get('timestamp', ''))
         out.append(f)
     return out
+
+
+def games_from_endpoint(items):
+    """server /api/daily-games items → parse_game_over 와 동일 row 형식.
+
+    endpoint item 은 gameOverFields(...) 결과 + ts. JSON 자체 타입 (bool, int)
+    이라 downstream (bot_perf_stats / human_turn_stats / player_activity) 와
+    호환되도록 normalize:
+      - bot: bool true/false → str 'true'/'false' (downstream 의 `== 'true'` 비교)
+      - rating/delta: 숫자 → 그대로 (downstream 이 int() cast 함)
+      - ts: UTC ISO → KST ISO
+    """
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict): continue
+        d = dict(it)
+        # bot bool → 'true'/'false' 문자열
+        b = d.get('bot')
+        d['bot'] = 'true' if b is True else ('false' if b is False else str(b)) if b is not None else 'false'
+        # delta 는 downstream 에서 `.replace('+', '')` 호출. 숫자면 str 로.
+        for k in ('blackDelta', 'whiteDelta', 'blackRating', 'whiteRating', 'stones'):
+            v = d.get(k)
+            if v is not None and not isinstance(v, str):
+                d[k] = str(v)
+        # ts KST 정규화
+        d['ts'] = to_kst_iso(d.get('ts', ''))
+        out.append(d)
+    return out
+
+
+def online_series_from_endpoint(items):
+    """server /api/online-series items → ts/online 쌍 정렬.
+
+    item: {ts: epoch_ms, count: int}. 호출자는 KST hour bucket 으로 그룹.
+    """
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict): continue
+        try:
+            out.append({'ts_ms': int(it['ts']), 'count': int(it.get('count', 0))})
+        except (KeyError, TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: x['ts_ms'])
+    return out
+
+
+def hourly_online_from_series(series):
+    """[{ts_ms, count}] → (avg_by_hour, peak_by_hour) — KST hour 별 dict.
+
+    1분 sample 가정. peak 는 그 시간대 max count. avg 는 mean (sample-weighted).
+    """
+    from collections import defaultdict
+    buckets = defaultdict(list)
+    for s in series:
+        try:
+            dt = datetime.fromtimestamp(s['ts_ms'] / 1000, tz=timezone.utc).astimezone(KST)
+            buckets[dt.hour].append(s['count'])
+        except Exception:
+            continue
+    avg = {}
+    peak = {}
+    for h, vals in buckets.items():
+        if vals:
+            avg[h] = sum(vals) / len(vals)
+            peak[h] = max(vals)
+    return avg, peak
 
 
 def parse_game_started(logs):

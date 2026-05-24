@@ -84,22 +84,20 @@ def _collect_render(service, s_iso, e_iso):
     }
 
     if SERVICES[service]['has_bot_logs']:
+        # 봇 burst alert (worker_timeout / no_move / RETRY / SKIP) 는 15분 window
+        # 단위 정밀도가 alert 정책상 핵심 — server 의 daily counter (today total) 로는
+        # window-by-window 정확도 어려움. snapshot 에서는 제거하지만 alert 로직은
+        # log fetch 유지. 추후 server 측 rolling-window endpoint 추가 시 교체 검토.
+        # snapshot 에서 worker_timeout_count / no_move_count / bot_retry_count /
+        # bot_skip_count / bot_retry_rooms / bot_retry_clients / bot_skip_rooms /
+        # bot_skip_clients 제거 — server-domain 은 valkey + endpoint 가 SoT.
+        # daily-summary 가 /api/daily-stats 로 일별 누적치 가져감.
         wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=10, service=service)
         nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=10, service=service)
         retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=50, service=service)
         skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=30, service=service)
         retry_parsed = parse_bot_logs(retry_logs)
         skip_parsed = parse_bot_logs(skip_logs)
-        snap.update({
-            'worker_timeout_count': len(wt_logs),
-            'no_move_count': len(nm_logs),
-            'bot_retry_count': len(retry_logs),
-            'bot_skip_count':  len(skip_logs),
-            'bot_retry_rooms':   len({p['room'] for p in retry_parsed}),
-            'bot_retry_clients': len({p['client'] for p in retry_parsed if p['client']}),
-            'bot_skip_rooms':    len({p['room'] for p in skip_parsed}),
-            'bot_skip_clients':  len({p['client'] for p in skip_parsed if p['client']}),
-        })
         raw.update({
             'wt_logs': wt_logs, 'nm_logs': nm_logs,
             'retry_logs': retry_logs, 'skip_logs': skip_logs,

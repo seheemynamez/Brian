@@ -18,6 +18,9 @@ const {
 const { generateMoveAsync } = require('../game/bot-pool');
 const { send } = require('./send');
 const { tryBotEmote } = require('./emote');
+const {
+  incrementToday, addTodaySetMember, pushTodayListItem,
+} = require('../infra/daily-counter');
 
 const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 
@@ -66,8 +69,13 @@ const scheduleBotMove = (room) => {
     // 같은 false positive 차단). log.mask 로 앞 8자만 (PII 보호).
     const { mask } = require('../infra/log');
     const humanColor = botColor === 'black' ? 'white' : 'black';
-    const humanCid = mask(room.players[humanColor]?.clientId);
+    const humanCidFull = room.players[humanColor]?.clientId;
+    const humanCid = mask(humanCidFull);
     console.error(`[bot] schedule RETRY (사람 잠시 offline/zombie, ${BOT_ZOMBIE_RETRY_MS}ms 후 재시도): bot=${bot.difficulty} stones=${countStones(room.board)} room=${room.code} color=${botColor} client=${humanCid}`);
+    // daily counter + SET (monitor 가 log fetch 없이 알 수 있게).
+    incrementToday('bot_retry');
+    addTodaySetMember('bot_retry_rooms', room.code);
+    if (humanCidFull) addTodaySetMember('bot_retry_clients', humanCidFull);
     roomRuntime.setTimer(room.code, 'botMoveTimer', setTimeout(() => {
       roomRuntime.clearTimer(room.code, 'botMoveTimer');
       scheduleBotMove(room);
@@ -90,6 +98,7 @@ const scheduleBotMove = (room) => {
       const elapsed = result?.elapsedMs ?? 0;
       if (!move) {
         console.error(`[bot] search returned no move: bot=${bot.difficulty} stones=${stonesAtStart} cfg=d${cfgMax}×t${cfgTopK} reached=d${reached} elapsed=${elapsed}ms room=${code}`);
+        incrementToday('no_move');
         return;
       }
       const current = getRoom(code);
@@ -102,11 +111,24 @@ const scheduleBotMove = (room) => {
       applyMove(room, botColor, move[0], move[1], { actor: 'bot' });
       // 매 봇 수 — 성능 / 판단 / 시간 적절성 검토. cfg=상한 reached=실제도달 깊이.
       console.error(`[bot] move applied: bot=${bot.difficulty} stones=${stonesAtStart} (${stonesAtStart+1}번째 수) cfg=d${cfgMax}×t${cfgTopK} reached=d${reached} elapsed=${elapsed}ms move=[${move[0]},${move[1]}] room=${code}`);
+      // raw move LIST push — monitor 가 cfgMax 도달율 / elapsed p50/p95 계산.
+      // 로그 파싱 대체 (move applied log fetch 제거 가능).
+      pushTodayListItem('bot_moves', {
+        ts: new Date().toISOString(),
+        diff: bot.difficulty,
+        stones: stonesAtStart,
+        cfgD: typeof cfgMax === 'number' ? cfgMax : null,
+        cfgTopK: typeof cfgTopK === 'number' ? cfgTopK : null,
+        reach: typeof reached === 'number' ? reached : null,
+        elap: typeof elapsed === 'number' ? elapsed : null,
+        room: code,
+      });
     }).catch((err) => {
       // worker_timeout 또는 worker crash. ID + AbortController 가 정상 동작하면 매우 드뭄
       // (ID self-abort 가 worker timeout 22s 보다 빠르게 발동). 발생 시 봇 turn 진행 안 됨 —
       // turn timeout (30s) 자연 발동으로 다음 차례 토글. 사용자 명시: easy fallback 제거.
       console.error(`[bot] worker failed: ${err && err.message} | bot=${bot.difficulty} stones=${stonesAtStart} (${stonesAtStart+1}번째 수) room=${code} color=${botColor}`);
+      incrementToday('worker_timeout');
     });
   }, delay));
 };

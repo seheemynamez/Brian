@@ -9,17 +9,19 @@ from monitor_config import (
     RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, THRESHOLD_DOWNTIME_S,
 )
 from monitor_apis import (
-    aiven_metrics, close_issue, create_issue, fetch_daily_stats,
-    fetch_server_stats, list_issues_by_label, render_events, render_metric,
-    render_search_logs,
+    aiven_metrics, close_issue, create_issue,
+    fetch_daily_bot_moves, fetch_daily_games, fetch_daily_stats,
+    fetch_online_series, fetch_server_stats, list_issues_by_label,
+    render_events, render_metric, render_search_logs,
 )
 from monitor_data import (
-    aiven_stats, bot_perf_stats, bot_stats_by_cfg, compute_recovery_times,
-    hourly_bucket_by_ts, human_turn_stats, kst_window, load_daily_stats,
-    load_recent_metrics, load_state, parse_bot_logs, parse_bot_moves,
-    parse_deploys, parse_game_over, parse_game_started, parse_iso,
-    parse_online_count_series, parse_server_failures, player_activity,
-    render_bw_sum_mb, render_cpu_stats, render_mem_stats, save_daily_stats,
+    aiven_stats, bot_moves_from_endpoint, bot_perf_stats, bot_stats_by_cfg,
+    compute_recovery_times, games_from_endpoint, hourly_bucket_by_ts,
+    hourly_online_from_series, human_turn_stats, kst_window,
+    load_recent_metrics, load_state, online_series_from_endpoint, parse_bot_logs,
+    parse_bot_moves, parse_deploys, parse_game_over, parse_game_started,
+    parse_iso, parse_online_count_series, parse_server_failures, player_activity,
+    render_bw_sum_mb, render_cpu_stats, render_mem_stats,
     save_state, snap_2048_render, snap_aiven, snap_omok_render, to_utc_iso,
 )
 
@@ -84,40 +86,58 @@ def run_daily_summary():
     aiven_disk = aiven_stats(aiven, 'disk_usage') or {}
     aiven_load = aiven_stats(aiven, 'load_average') or {}
 
-    # 2) omok 로그 fetch — 모두 fail_streak tracking.
-    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, service='omok',
-                                  track_state=state, track_key='logs:omok:move_applied')
-    bot_moves = parse_bot_moves(bot_logs)
+    # 2) omok server-domain 데이터 — valkey-first endpoint 호출.
+    # 모든 server-domain 메트릭 (game_over / bot_moves / 카운터 / SET 크기 / online
+    # series) 을 server 의 4종 endpoint 로 가져옴. Render log fetch 는 완전 제거.
+    # endpoint 실패 시 monitor_summary 는 해당 영역 0/"-" 로 채우고 진행 (fault
+    # tolerance 결정: valkey 장애 시 server fire-and-forget, monitor 그래도 발행).
+
+    # 일별 카운터 + SET 크기 — 단일 endpoint 호출로 모든 종류 카운트 수신.
+    daily_omok = fetch_daily_stats(summary_date, service='omok') or {}
+
+    # game_over raw — LIST endpoint. parse_game_over 와 동일 row 포맷으로 normalize.
+    auth_games = fetch_daily_games(summary_date, service='omok')
+    game_overs = games_from_endpoint(auth_games.get('items') if auth_games else [])
+
+    # bot moves raw — LIST endpoint. parse_bot_moves 동일 row 포맷.
+    auth_moves = fetch_daily_bot_moves(summary_date, service='omok')
+    bot_moves = bot_moves_from_endpoint(auth_moves.get('items') if auth_moves else [])
     bot_by_cfg = bot_stats_by_cfg(bot_moves)
     bot_moves_by_hour = hourly_bucket_by_ts(bot_moves, 'ts')
-    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, service='omok',
-                                          track_state=state, track_key='logs:omok:game_started')
-    game_started = parse_game_started(game_started_raw)
-    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, service='omok',
-                                       track_state=state, track_key='logs:omok:game_over')
-    game_overs = parse_game_over(game_over_raw)
-    skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50, service='omok',
-                                   track_state=state, track_key='logs:omok:schedule_skip')
-    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, service='omok',
-                                    track_state=state, track_key='logs:omok:schedule_retry')
-    # 영향 unique rooms/clients — alert 본문에는 있지만 daily-summary 표엔 단순
-    # 카운트만 있었음. burst 가 1-2 게임 집중 vs 다수 사용자 패턴인지 판단용.
-    retry_parsed = parse_bot_logs(retry_logs)
-    skip_parsed = parse_bot_logs(skip_logs)
-    retry_rooms = len({p['room'] for p in retry_parsed})
-    retry_clients = len({p['client'] for p in retry_parsed if p['client']})
-    skip_rooms = len({p['room'] for p in skip_parsed})
-    skip_clients = len({p['client'] for p in skip_parsed if p['client']})
-    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, service='omok',
-                                 track_state=state, track_key='logs:omok:heartbeat')
-    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, service='omok',
-                                      track_state=state, track_key='logs:omok:ws_connected')
-    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, service='omok',
-                                      track_state=state, track_key='logs:omok:ws_disconnected')
-    wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, service='omok',
-                                 track_state=state, track_key='logs:omok:worker_timeout')
-    nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, service='omok',
-                                 track_state=state, track_key='logs:omok:no_move')
+
+    # game_started 는 더 이상 fetch 안 함 — pvp_games + bot_games 카운터로 대체.
+    # 시간대별 분포 (games_by_hour) 는 game_overs 에서 ts 기준 bucket.
+    game_started = []  # 옛 호환 placeholder (downstream 더 이상 직접 사용 안 함)
+
+    # 봇 영향 unique rooms/clients — daily SET 크기 endpoint 응답에서 직접.
+    retry_rooms = int(daily_omok.get('bot_retry_rooms') or 0)
+    retry_clients = int(daily_omok.get('bot_retry_clients') or 0)
+    skip_rooms = int(daily_omok.get('bot_skip_rooms') or 0)
+    skip_clients = int(daily_omok.get('bot_skip_clients') or 0)
+    # 옛 parse 결과 placeholder — 일부 alert / 본문 코드가 참조 (점진적 제거 예정).
+    retry_logs = []; skip_logs = []
+    retry_parsed = []; skip_parsed = []
+    # 카운트는 daily-stats endpoint 의 카운터.
+    hb_count = int(daily_omok.get('heartbeat_terminate') or 0)
+    ws_conn_count = int(daily_omok.get('ws_connected') or 0)
+    ws_disc_count = int(daily_omok.get('ws_disconnected') or 0)
+    wt_count = int(daily_omok.get('worker_timeout') or 0)
+    nm_count = int(daily_omok.get('no_move') or 0)
+    retry_count_total = int(daily_omok.get('bot_retry') or 0)
+    skip_count_total = int(daily_omok.get('bot_skip') or 0)
+    # downstream `len(hb_logs)` 호환 placeholder.
+    hb_logs = [None] * hb_count
+    ws_conn_logs = []  # online_avg/peak 는 online-series endpoint 로
+    ws_disc_logs = []
+    wt_logs = [None] * wt_count
+    nm_logs = [None] * nm_count
+
+    # online time-series — server 1분 sampler (epoch_ms ZSET). 윈도우 = KST 어제.
+    win_from_ms = int(win_start_kst.timestamp() * 1000)
+    win_to_ms = int(win_end_kst.timestamp() * 1000)
+    online_resp = fetch_online_series(win_from_ms, win_to_ms, service='omok')
+    online_series = online_series_from_endpoint(online_resp.get('items') if online_resp else [])
+    online_avg_by_hour, online_peak_by_hour = hourly_online_from_series(online_series)
     # omok 인프라 이벤트 — server_failed (OOM / crash), deploy 등.
     # limit max = 100 (Render API 제약). 200 으로 호출하면 400 "invalid limit:
     # too large" 반환 + render_events 가 HTTPError catch 해서 빈 list 반환 →
@@ -135,19 +155,22 @@ def run_daily_summary():
     # 배포 이력 별도 추출 (시각/소요/commit) — '배포 이력 (24h)' 표 용.
     deploys = parse_deploys(events)
 
-    # 2-b) 2048 로그 fetch — 봇 없는 서비스, 활성/일일/동접 위주.
-    submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, service='2048',
-                                          track_state=state, track_key='logs:2048:submit_score')
-    user_created_logs_2048 = render_search_logs('[user_created]', s_iso, e_iso, limit=100, service='2048',
-                                                track_state=state, track_key='logs:2048:user_created')
-    ws_conn_logs_2048 = render_search_logs('[ws_connected]', s_iso, e_iso, limit=100, service='2048',
-                                           track_state=state, track_key='logs:2048:ws_connected')
-    ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, service='2048',
-                                           track_state=state, track_key='logs:2048:ws_disconnected')
-    hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, service='2048',
-                                      track_state=state, track_key='logs:2048:heartbeat')
-    score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, service='2048',
-                                              track_state=state, track_key='logs:2048:score_best')
+    # 2-b) 2048 server-domain 카운터 — daily-stats endpoint 단일 호출.
+    # submit_score / user_created / score_best / ws_connected/disconnected /
+    # heartbeat_terminate / active_users 모두 valkey 누적치 수신.
+    daily_2048 = fetch_daily_stats(summary_date, service='2048') or {}
+    # 2048 online series — server 1분 sampler.
+    online_resp_2048 = fetch_online_series(win_from_ms, win_to_ms, service='2048')
+    online_series_2048 = online_series_from_endpoint(online_resp_2048.get('items') if online_resp_2048 else [])
+    online_2048_avg_by_hour, online_2048_peak_by_hour = hourly_online_from_series(online_series_2048)
+    # 옛 log placeholder — downstream 코드가 len() 등으로 참조 (점진 제거).
+    submit_logs_2048 = [None] * int(daily_2048.get('submit_score') or 0)
+    user_created_logs_2048 = [None] * int(daily_2048.get('user_created') or 0)
+    score_best_logs_2048 = [None] * int(daily_2048.get('score_best') or 0)
+    hb_logs_2048 = [None] * int(daily_2048.get('heartbeat_terminate') or 0)
+    ws_conn_logs_2048 = []  # online series 로 대체
+    ws_disc_logs_2048 = []
+    # 2048 infra events — Render API 직접 (server domain 아님).
     events_2048 = render_events(s_iso, e_iso, limit=100, service='2048',
                                 track_state=state, track_key='events:2048')
     failures_2048 = parse_server_failures(events_2048)
@@ -155,11 +178,13 @@ def run_daily_summary():
     recoveries_2048 = compute_recovery_times(events_2048)
     deploys_2048 = parse_deploys(events_2048)
 
-    # 3) 시간대별 분포 (KST hour bucket)
-    games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
-    pvp_games = [g for g in game_started if g.get('bot') == 'false']
-    pvp_games_by_hour = hourly_bucket_by_ts(pvp_games, 'ts')
-    online_avg_by_hour, online_peak_by_hour = parse_online_count_series(ws_conn_logs + ws_disc_logs)
+    # 3) 시간대별 분포 (KST hour bucket) — game_overs 의 ts 기반.
+    # online_avg/peak_by_hour 는 위에서 online-series endpoint 로 이미 계산됨.
+    games_by_hour = hourly_bucket_by_ts(game_overs, 'ts')
+    pvp_game_overs = [g for g in game_overs if g.get('bot') != 'true']
+    pvp_games_by_hour = hourly_bucket_by_ts(pvp_game_overs, 'ts')
+    # 호환 placeholder — 일부 body 코드가 pvp_games 직접 참조.
+    pvp_games = pvp_game_overs
 
     # 4) 봇 운영 지표 (봇별 승패 + 상대 rating 분포)
     bot_perf = bot_perf_stats(game_overs)
@@ -174,28 +199,28 @@ def run_daily_summary():
                            key=lambda kv: -kv[1]['delta_sum'])[:5]
     top_movers_dn = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] < 0],
                            key=lambda kv: kv[1]['delta_sum'])[:5]
-    # 활성 사용자 24h — game_over 에 등장한 unique 사람 nickname.
-    active_user_nicks = set(player_acts.keys())
-    active_users_24h = len(active_user_nicks)
+    # 활성 사용자 24h — server 의 daily-set:active_users SCARD 가 authoritative.
+    # game_overs 의 player_acts 키 (사람 nick) 와 일치해야 하지만 valkey 가 SoT
+    # (game_over LIST 와 같은 시점에 SADD 됨).
+    active_user_nicks = set(player_acts.keys())   # body 의 TOP / movers 용
+    active_users_24h = int(daily_omok.get('active_users') or len(active_user_nicks))
 
     # 5-b) server /api/stats — 현재 사람 계정 수 (PR #95).
     server_stats = fetch_server_stats(service='omok')
     # 2048 stats — total_users / top_all_time / top_daily / active_ws (PR — 2048 통합).
     stats_2048 = fetch_server_stats(service='2048') or {}
 
-    # 5-c) 2048 활성 / 일일 / 신규 사용자 — submit_score / user_created 로그 파싱.
-    from monitor_data import parse_log_fields
-    active_nicks_2048 = set()
-    daily_submits_2048 = 0
-    for L in submit_logs_2048:
-        f = parse_log_fields(L.get('message', ''))
-        if 'nick' in f:
-            active_nicks_2048.add(f['nick'])
-            daily_submits_2048 += 1
-    new_users_2048 = len(user_created_logs_2048)
-    # 시간대별 (KST) — submit_score 이벤트 분포.
-    submits_2048_by_hour = hourly_bucket_by_ts(
-        [{'ts': L['timestamp']} for L in submit_logs_2048], 'ts')
+    # 5-c) 2048 활성 / 일일 / 신규 사용자 — daily-stats endpoint 의 카운터/SET.
+    # active_users SET size = unique nick. submit_score / user_created 카운터 직접.
+    active_users_2048_count = int(daily_2048.get('active_users') or 0)
+    daily_submits_2048 = int(daily_2048.get('submit_score') or 0)
+    new_users_2048 = int(daily_2048.get('user_created') or 0)
+    # 시간대별 submit 분포 — daily-stats endpoint 가 시간 분포 안 가짐. 7일 trend 표는
+    # 일별 단위 합이라 영향 없음. 시간대별 표는 omok 만 사용 (2048 는 본문에 시간대별
+    # 표 없음). 추후 필요 시 server 가 hourly bucket Hash 추가 검토.
+    submits_2048_by_hour = {}
+    # 호환 placeholder — body 가 `len(active_nicks_2048)` 등 참조.
+    active_nicks_2048 = set([f'_synthetic_{i}' for i in range(active_users_2048_count)])
 
     # 6) reason 카운트
     reason_counts = defaultdict(int)
@@ -230,58 +255,36 @@ def run_daily_summary():
         except Exception:
             continue
         by_day[d].append(s)
-    daily_stats = load_daily_stats()
 
-    # PR (race condition fix) — daily_stats[summary_date] 를 trend 계산 전에
-    # update. 옛 코드는 본문 만든 후 update 라 trend 표가 옛 (silent loss /
-    # 이전 발행) 값을 표시하는 race condition 있었음 (Issue #148: 본문은 PVP 62,
-    # trend 표는 PVP 0). 변수 정의도 같이 위로 이동.
-    bot_total = len(bot_moves)
-    total_games = len(game_started)
-    pvp_count = len(pvp_games)
-    bot_game_count = total_games - pvp_count
+    # daily-stats.json 제거됨 (valkey-first 전환) — 7d trend lookup 은 valkey
+    # endpoint 직접 호출. 메모리 dict 는 임시 cache 용도.
+    daily_stats = {}
 
-    # Authoritative source: server /api/daily-stats?date=YYYY-MM-DD (PR — A).
-    # Server 가 valkey HINCRBY 로 정확히 누적한 게임/봇 착수 카운터. 로그 fetch
-    # 의 silent loss / pagination cap / 24h 경계 mismatch 영향 없음.
-    #
-    # 결정 규칙:
-    #   - 응답이 None (cold-start/down) 또는 모든 값 0 → 로그 기반 그대로 사용
-    #   - 응답 값 중 하나라도 > 0 → 그 필드는 server 우선 (per-field override)
-    # → 첫 배포 직후 (서버 카운터 아직 비어 있음) 도 로그 기반 자동 폴백 동작.
-    # → 서버가 정상 누적 시작하면 각 필드별로 자연스럽게 authoritative 로 전환.
-    auth = fetch_daily_stats(summary_date, service='omok')
-    src_pvp = src_bot = src_mv = 'log'
-    if auth:
-        if auth.get('pvp_games', 0) > 0:
-            pvp_count = auth['pvp_games']; src_pvp = 'srv'
-        if auth.get('bot_games', 0) > 0:
-            bot_game_count = auth['bot_games']; src_bot = 'srv'
-        if auth.get('total_bot_moves', 0) > 0:
-            bot_total = auth['total_bot_moves']; src_mv = 'srv'
+    # Server-domain 카운트 — valkey HINCRBY 누적 (daily_omok endpoint 응답).
+    # game_overs / bot_moves LIST 와 daily_omok counter 는 같은 valkey 에서 동기 누적되므로
+    # 이론상 항상 일치. 0 이면 그날 실제로 게임 없거나 valkey 장애 (해당 시 fail_streak alert).
+    pvp_count = int(daily_omok.get('pvp_games') or 0)
+    bot_game_count = int(daily_omok.get('bot_games') or 0)
+    bot_total = int(daily_omok.get('total_bot_moves') or 0)
     total_games = pvp_count + bot_game_count
-    print(f'[daily-stats source] pvp={src_pvp}({pvp_count}) bot={src_bot}({bot_game_count}) moves={src_mv}({bot_total})')
+    active_users_authoritative = int(daily_omok.get('active_users') or 0)
+    print(f'[daily-stats source=srv] pvp={pvp_count} bot={bot_game_count} moves={bot_total} active={active_users_authoritative}')
 
+    # 발행 당일 (KST 어제) entry — 본문 내 직접 참조 + trend 표 fallback.
     daily_stats[summary_date] = {
-        # omok
-        'pvp_games': pvp_count,
-        'bot_games': bot_game_count,
-        'total_bot_moves': bot_total,
+        'pvp_games': pvp_count, 'bot_games': bot_game_count, 'total_bot_moves': bot_total,
         'render_cpu_max_m': cpu_st.get('max') or 0,
         'aiven_mem_max_pct': aiven_mem.get('max') or 0,
         'active_users': active_users_24h,
         'total_human_users': (server_stats or {}).get('total_human_users'),
-        'ws_connected': len(ws_conn_logs),
-        'worker_timeout': len(wt_logs),
-        'no_move': len(nm_logs),
+        'ws_connected': ws_conn_count,
+        'worker_timeout': wt_count,
+        'no_move': nm_count,
         'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
         'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
-        # 티어 분포 — server /api/stats 의 tiers (PR — 발행 시점 snapshot).
-        # 본문 표 + 전일 Δ 비교 용. 0명 티어도 키 보존 (trend 일관성).
         'tiers': (server_stats or {}).get('tiers') or {},
-        # 2048
         'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
-        'active_users_2048': len(active_nicks_2048),
+        'active_users_2048': int(daily_2048.get('active_users') or 0),
         'daily_submits_2048': daily_submits_2048,
         'new_users_2048': new_users_2048,
         'total_users_2048': stats_2048.get('total_users'),
@@ -289,14 +292,29 @@ def run_daily_summary():
         'top_daily_2048': stats_2048.get('top_daily'),
     }
 
-    # PR — (a) 전일 비교: summary_date 직전 날 entry 가져옴. 첫날엔 {} (Δ 표시 안 함).
+    # 전일 + 7d trend lookup — 모두 valkey /api/daily-stats endpoint 직접 호출.
+    # backfill 으로 PR 머지 전 옛 데이터까지 valkey 에 들어와 있어야 정상 출력.
+    # endpoint 응답 None → 0 fallback (그 날 데이터 없음).
+    def _fetch_day(d_str):
+        omok_r = fetch_daily_stats(d_str, service='omok') or {}
+        r2048_r = fetch_daily_stats(d_str, service='2048') or {}
+        return {
+            'pvp_games': int(omok_r.get('pvp_games') or 0),
+            'bot_games': int(omok_r.get('bot_games') or 0),
+            'total_bot_moves': int(omok_r.get('total_bot_moves') or 0),
+            'active_users': int(omok_r.get('active_users') or 0),
+            'worker_timeout': int(omok_r.get('worker_timeout') or 0),
+            'active_users_2048': int(r2048_r.get('active_users') or 0),
+            'daily_submits_2048': int(r2048_r.get('submit_score') or 0),
+        }
+
     prev_date = (win_start_kst - timedelta(days=1)).strftime('%Y-%m-%d')
-    prev_stats = daily_stats.get(prev_date, {})
-    # snapshot 만 있는 날 + daily_stats 만 있는 날 모두 표시 (union).
-    # Cutoff: summary_date (= 어제 KST) 까지만 포함. 발행 당일 부분 snapshot 제외.
-    all_days = sorted(set(by_day.keys()) | set(daily_stats.keys()))
-    all_days = [d for d in all_days if d <= summary_date]
-    all_days = all_days[-7:]
+    prev_stats = _fetch_day(prev_date)
+    # 7일 lookback: summary_date 부터 6일 전까지 → 7개 endpoint 호출.
+    all_days = sorted({(win_end_kst - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, 8)})
+    for d in all_days:
+        if d not in daily_stats:
+            daily_stats[d] = _fetch_day(d)
     for d in all_days:
         snaps = by_day.get(d, [])
         omok_renders = [snap_omok_render(s) for s in snaps]
@@ -824,13 +842,8 @@ def run_daily_summary():
     body_text = '\n'.join(body)
     print(f'본문 길이: {len(body_text)} chars')
 
-    # 일별 stats 저장 — daily_stats[summary_date] 는 trend 계산 전에 이미 갱신됨.
-    # 여기선 30일 cutoff + save 만 진행.
-    if not DRY_RUN or os.environ.get('SAVE_METRICS') == '1':
-        cutoff = (win_end_kst - timedelta(days=30)).strftime('%Y-%m-%d')
-        daily_stats = {k: v for k, v in daily_stats.items() if k >= cutoff}
-        save_daily_stats(daily_stats)
-        print(f'  saved: daily-stats.json ({len(daily_stats)} entries)')
+    # daily-stats.json 저장 제거 — valkey 가 단일 source. 메모리 dict (daily_stats) 는
+    # 본문/trend 계산 중 in-process cache 로만 사용, 파일 시스템 영속화 안 함.
 
     # fetch_fail_streak 추적 결과 state.json 에 저장 — collect 의 fail_streak alert
     # 정책과 통합. daily 발행 시 streak +1, 정상 fetch 면 reset.

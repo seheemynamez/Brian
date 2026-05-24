@@ -29,9 +29,13 @@ const log = require('../infra/log');
 
 const PREFIX = process.env.VALKEY_KEY_PREFIX || 'omok';
 const RECENT_GAMES_CAP = Number(process.env.RECENT_GAMES_CAP) || 100;
-// daily counter TTL — 90일 보존. monitor 의 7d trend / 30d daily-stats.json 보다
-// 길게 잡아 lookback 안정. 더 길게 잡으면 valkey 메모리 부담 (각 key ~50바이트 × 일수).
+// daily 데이터 (counter / SET / LIST) TTL — 90일 보존. monitor 의 7d trend 대비 충분.
+// 더 길게 잡으면 valkey 메모리 부담 (실제 24h 분량: counter Hash 수십B, active_users SET
+// ~수십KB, game/bot_move LIST ~ MB 단위).
 const DAILY_TTL_SEC = 90 * 86400;
+// online time-series ZSET — 1분마다 sample. 90d × 1440/day = 130K entries × 30B = ~4MB.
+// cleanup 은 매 sampleOnline 시 ZREMRANGEBYSCORE 로 만료 score 자동 정리.
+const ONLINE_TTL_SEC = 90 * 86400;
 const K = {
   room: (code) => `${PREFIX}:room:${code}`,
   rooms: `${PREFIX}:rooms`,
@@ -43,10 +47,24 @@ const K = {
   user: (cid) => `${PREFIX}:user:${cid}`,
   users: `${PREFIX}:users`,
   recentGames: `${PREFIX}:recent_games`,
-  // 일별 카운터 — Hash (HINCRBY 로 atomic 증가). fields: pvp_games, bot_games, total_bot_moves
+  // 일별 카운터 — Hash (HINCRBY 로 atomic 증가).
+  // fields: pvp_games / bot_games / total_bot_moves / worker_timeout / no_move /
+  //         bot_retry / bot_skip / heartbeat_terminate / ws_connected / ws_disconnected
   // key 는 KST YYYY-MM-DD 기준 (server 가 KST date 로 호출).
   daily: (date) => `${PREFIX}:daily:${date}`,
   dailyMatch: `${PREFIX}:daily:*`,
+  // 일별 SET — unique 멤버 집계 (active_users / bot_retry_rooms / bot_retry_clients /
+  // bot_skip_rooms / bot_skip_clients). key prefix 가 'daily-set' 으로 별도라
+  // `${PREFIX}:daily:*` SCAN 과 충돌 X.
+  dailySet: (date, name) => `${PREFIX}:daily-set:${date}:${name}`,
+  dailySetMatch: `${PREFIX}:daily-set:*`,
+  // 일별 LIST — raw event JSON 누적 (games / bot_moves). LPUSH (최신 머리). monitor
+  // 가 LRANGE 0 -1 로 그 날 전체 읽음. game_over log / move applied log 대체.
+  dailyList: (date, name) => `${PREFIX}:daily-list:${date}:${name}`,
+  dailyListMatch: `${PREFIX}:daily-list:*`,
+  // online time-series — 단일 ZSET. score=epoch_ms, member=`${ts}:${count}` (unique).
+  // 1분 sampler 가 ZADD + 주기 ZREMRANGEBYSCORE (만료 score 제거).
+  online: `${PREFIX}:online`,
 };
 
 const createValkeyStore = () => {
@@ -73,15 +91,24 @@ const createValkeyStore = () => {
   const botOffer = new Map();
   const users = new Map();         // clientId → user JSON
   const recentGames = [];          // 최신 먼저 (unshift). hydrate 시 valkey 의 LRANGE 0 N-1 을 그대로.
-  // 일별 카운터 — date(YYYY-MM-DD) → { pvp_games, bot_games, total_bot_moves }.
+  // 일별 카운터 — date(YYYY-MM-DD) → { fieldName: number, ... }.
   // 서버 in-process atomic 보장 (Node.js single-thread). valkey 도 HINCRBY 로 atomic.
   const dailyStats = new Map();
+  // 일별 SET — date → Map<setName, Set<string>>. SCARD 결과 빠르게 응답.
+  // active_users / bot_retry_rooms 등 unique count 캐싱.
+  const dailySets = new Map();
+  // LIST 는 메모리 캐시 X — 1일치 수천-수만 entry 라 메모리 부담. 읽기는 endpoint
+  // 호출 시 valkey LRANGE 로 직접. write 는 fire-and-forget LPUSH.
+  // online time-series — 메모리 sorted array (ts ascending). 90d × 1440/day × 30B ≈ 4MB.
+  // 읽기 빈도 높고 endpoint 응답에서도 직접 쓰여 캐싱 유지.
+  const onlineSamples = [];
 
   const fnf = (p) => Promise.resolve(p).catch((e) => log.error('valkey_cmd_fail', { err: e && e.message }));
 
   const api = {
     backend: 'valkey',
-    rooms, sessions, queue, botOffer, users, recentGames, dailyStats,
+    rooms, sessions, queue, botOffer, users, recentGames,
+    dailyStats, dailySets, onlineSamples,
     client,
 
     async connect() {
@@ -192,11 +219,56 @@ const createValkeyStore = () => {
           }
         }
       } while (dCursor !== '0');
+      // Daily SET — `{PREFIX}:daily-set:{date}:{name}` → in-memory Map<date, Map<name, Set>>.
+      // SCARD 값을 매 endpoint 호출 시 valkey 가 아닌 메모리에서 응답.
+      let dailySetHydrated = 0;
+      const dailySetPrefix = `${PREFIX}:daily-set:`;
+      let dsCursor = '0';
+      do {
+        const [next, keys] = await client.scan(dsCursor, 'MATCH', K.dailySetMatch, 'COUNT', 200);
+        dsCursor = next;
+        for (const k of keys) {
+          // key 형식: PREFIX:daily-set:YYYY-MM-DD:setName
+          const tail = k.slice(dailySetPrefix.length);
+          const idx = tail.indexOf(':');
+          if (idx < 0) continue;
+          const date = tail.slice(0, idx);
+          const name = tail.slice(idx + 1);
+          try {
+            const members = await client.smembers(k);
+            if (!dailySets.has(date)) dailySets.set(date, new Map());
+            dailySets.get(date).set(name, new Set(members));
+            dailySetHydrated++;
+          } catch (e) {
+            log.error('valkey_daily_set_hydrate_fail', { date, name, err: e && e.message });
+          }
+        }
+      } while (dsCursor !== '0');
+      // Online time-series ZSET — 메모리 sorted array 로 캐싱. ZRANGEBYSCORE 로 전체 읽고
+      // member 형식 `{ts}:{count}` 파싱. sample 호출 시점에 cutoff (90d 이전) 제거.
+      try {
+        const cutoff = Date.now() - ONLINE_TTL_SEC * 1000;
+        await client.zremrangebyscore(K.online, '-inf', cutoff);
+        const raw = await client.zrange(K.online, 0, -1, 'WITHSCORES');
+        onlineSamples.length = 0;
+        for (let i = 0; i < raw.length; i += 2) {
+          const member = raw[i];
+          const score = Number(raw[i + 1]);
+          // member = `${ts}:${count}` 또는 fallback (member 가 score 만)
+          const colon = member.lastIndexOf(':');
+          const count = colon > 0 ? Number(member.slice(colon + 1)) : 0;
+          if (Number.isFinite(score) && Number.isFinite(count)) {
+            onlineSamples.push({ ts: score, count });
+          }
+        }
+      } catch (e) {
+        log.error('valkey_online_hydrate_fail', { err: e && e.message });
+      }
       log.event('valkey_hydrated', {
         prefix: PREFIX, rooms: roomHydrated, sessions: sessionHydrated,
         queue: queue.length, botOffer: botOfferHydrated,
         users: userHydrated, recentGames: recentGames.length,
-        daily: dailyHydrated,
+        daily: dailyHydrated, dailySet: dailySetHydrated, online: onlineSamples.length,
       });
     },
 
@@ -269,6 +341,87 @@ const createValkeyStore = () => {
     getDailyStats(date) {
       if (!date) return null;
       return dailyStats.get(date) || null;
+    },
+
+    // ---- 일별 SET (unique 멤버) ----
+    // active_users (게임 종료 시 양 사람 nick), bot_retry_rooms / bot_retry_clients /
+    // bot_skip_rooms / bot_skip_clients 등. SADD 는 멤버 중복 자동 dedup.
+    addDailySetMember(date, name, member) {
+      if (!date || !name || !member) return;
+      let perDate = dailySets.get(date);
+      if (!perDate) { perDate = new Map(); dailySets.set(date, perDate); }
+      let s = perDate.get(name);
+      if (!s) { s = new Set(); perDate.set(name, s); }
+      s.add(String(member));
+      fnf(client.sadd(K.dailySet(date, name), String(member)));
+      fnf(client.expire(K.dailySet(date, name), DAILY_TTL_SEC));
+    },
+    // SET 크기 (SCARD) — endpoint 가 자주 부르므로 메모리에서 즉답.
+    getDailySetSize(date, name) {
+      if (!date || !name) return 0;
+      const perDate = dailySets.get(date);
+      if (!perDate) return 0;
+      const s = perDate.get(name);
+      return s ? s.size : 0;
+    },
+    // 멤버 전체 (active_users 의 unique nick 목록 등). 큰 SET 도 그대로 array 반환.
+    getDailySetMembers(date, name) {
+      if (!date || !name) return [];
+      const perDate = dailySets.get(date);
+      if (!perDate) return [];
+      const s = perDate.get(name);
+      return s ? Array.from(s) : [];
+    },
+
+    // ---- 일별 LIST (raw event JSON 누적) ----
+    // games (game_over JSON), bot_moves (move applied JSON). LPUSH 로 최신 머리.
+    // 메모리 캐시 X — 대용량이라 endpoint 호출 시 valkey 직접 LRANGE.
+    pushDailyListItem(date, name, item) {
+      if (!date || !name || !item) return;
+      let json;
+      try { json = JSON.stringify(item); } catch { return; }
+      fnf(client.lpush(K.dailyList(date, name), json));
+      fnf(client.expire(K.dailyList(date, name), DAILY_TTL_SEC));
+    },
+    async getDailyListRange(date, name, start = 0, stop = -1) {
+      if (!date || !name) return [];
+      try {
+        const raw = await client.lrange(K.dailyList(date, name), start, stop);
+        const out = [];
+        for (const j of raw) {
+          try { out.push(JSON.parse(j)); } catch {}
+        }
+        return out;
+      } catch (e) {
+        log.error('valkey_daily_list_read_fail', { date, name, err: e && e.message });
+        return [];
+      }
+    },
+    async getDailyListLength(date, name) {
+      if (!date || !name) return 0;
+      try { return await client.llen(K.dailyList(date, name)); }
+      catch { return 0; }
+    },
+
+    // ---- online time-series (ZSET, 1분 sample) ----
+    // member 형식 `${ts}:${count}` (unique 보장 — 같은 ms 같은 count 충돌 위험 거의 0).
+    // ZREMRANGEBYSCORE 로 cutoff 이전 자동 정리.
+    sampleOnline(ts, count) {
+      const now = Number(ts) || Date.now();
+      const c = Number(count) || 0;
+      onlineSamples.push({ ts: now, count: c });
+      // 메모리도 cutoff 정리 — 90d 이전 제거.
+      const cutoff = now - ONLINE_TTL_SEC * 1000;
+      while (onlineSamples.length && onlineSamples[0].ts < cutoff) onlineSamples.shift();
+      const member = `${now}:${c}`;
+      fnf(client.zadd(K.online, now, member));
+      fnf(client.zremrangebyscore(K.online, '-inf', cutoff));
+    },
+    // 시간 범위 (fromTs ~ toTs, epoch ms) 의 sample 배열 반환. 메모리에서 즉답.
+    getOnlineSeries(fromTs, toTs) {
+      const from = Number(fromTs) || 0;
+      const to = Number(toTs) || Date.now();
+      return onlineSamples.filter((s) => s.ts >= from && s.ts <= to);
     },
   };
   return api;
