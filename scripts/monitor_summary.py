@@ -12,7 +12,7 @@ from monitor_apis import (
     aiven_metrics, close_issue, create_issue,
     fetch_daily_bot_moves, fetch_daily_games, fetch_daily_stats,
     fetch_online_series, fetch_server_stats, list_issues_by_label,
-    render_events, render_metric, render_search_logs,
+    render_events, render_metric,
 )
 from monitor_data import (
     aiven_stats, bot_moves_from_endpoint, bot_perf_stats, bot_stats_by_cfg,
