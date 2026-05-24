@@ -15,7 +15,7 @@ from monitor_apis import (
 from monitor_data import (
     aiven_stats, bot_perf_stats, bot_stats_by_cfg, compute_recovery_times,
     hourly_bucket_by_ts, kst_window, load_daily_stats, load_recent_metrics,
-    load_state, parse_bot_logs, parse_bot_moves, parse_game_over,
+    load_state, parse_bot_logs, parse_bot_moves, parse_deploys, parse_game_over,
     parse_game_started, parse_iso, parse_online_count_series,
     parse_server_failures, player_activity, render_bw_sum_mb, render_cpu_stats,
     render_mem_stats, save_daily_stats, save_state, snap_2048_render,
@@ -128,8 +128,11 @@ def run_daily_summary():
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
     deploy_count = sum(1 for e in events if e.get('event', {}).get('type') == 'deploy_ended')
-    # downtime 계산 (PR #97) — server_failed/deploy_started → server_available 매칭
+    # downtime 계산 — crash 의 server_failed → server_available, deploy 의
+    # deploy_started → server_available/deploy_ended (둘 중 빠른 쪽).
     recoveries = compute_recovery_times(events)
+    # 배포 이력 별도 추출 (시각/소요/commit) — '배포 이력 (24h)' 표 용.
+    deploys = parse_deploys(events)
 
     # 2-b) 2048 로그 fetch — 봇 없는 서비스, 활성/일일/동접 위주.
     submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, service='2048',
@@ -149,6 +152,7 @@ def run_daily_summary():
     failures_2048 = parse_server_failures(events_2048)
     deploy_count_2048 = sum(1 for e in events_2048 if e.get('event', {}).get('type') == 'deploy_ended')
     recoveries_2048 = compute_recovery_times(events_2048)
+    deploys_2048 = parse_deploys(events_2048)
 
     # 3) 시간대별 분포 (KST hour bucket)
     games_by_hour = hourly_bucket_by_ts(game_started, 'ts')
@@ -475,6 +479,23 @@ def run_daily_summary():
     body.append(f'| deploy 횟수 | {deploy_count} |')
     body.append('')
 
+    # 배포 이력 (24h) — deploy_started → deploy_ended 매칭 결과 (오목).
+    # 정상 동작이라 alert 대상 아님, 본문 참조 용.
+    if deploys:
+        body.append('### 배포 이력 (24h, 오목)\n')
+        body.append('| 시각 (KST) | 소요 | commit | trigger |')
+        body.append('|---|---|---|---|')
+        for d in deploys:
+            try:
+                kst_ts = parse_iso(d['start_ts']).astimezone(KST).strftime('%H:%M:%S')
+            except Exception:
+                kst_ts = d['start_ts'][:19]
+            commit = f'`{d["commit_sha"]}`' if d.get('commit_sha') else '_(none)_'
+            flags = d.get('flags') or []
+            trigger = ', '.join(flags) if flags else 'auto'
+            body.append(f'| {kst_ts} | **{d["duration_s"]:.0f}s** | {commit} | {trigger} |')
+        body.append('')
+
     # 서버 장애 + downtime 상세 (server_failed/deploy_started → server_available 매칭)
     if recoveries:
         body.append('### 서버 장애 / 배포 downtime (24h)\n')
@@ -598,6 +619,21 @@ def run_daily_summary():
         slow_2048 = [r for r in recoveries_2048 if not r['within_grace']]
         dts = sorted(x['downtime_s'] for x in recoveries_2048)
         body.append(f'- recovery {len(recoveries_2048)}건 (median {dts[len(dts)//2]:.1f}s · max {max(dts):.1f}s · 60s 초과 {len(slow_2048)}건)\n')
+    # 배포 이력 (24h, 2048).
+    if deploys_2048:
+        body.append('### 배포 이력 (24h, 2048)\n')
+        body.append('| 시각 (KST) | 소요 | commit | trigger |')
+        body.append('|---|---|---|---|')
+        for d in deploys_2048:
+            try:
+                kst_ts = parse_iso(d['start_ts']).astimezone(KST).strftime('%H:%M:%S')
+            except Exception:
+                kst_ts = d['start_ts'][:19]
+            commit = f'`{d["commit_sha"]}`' if d.get('commit_sha') else '_(none)_'
+            flags = d.get('flags') or []
+            trigger = ', '.join(flags) if flags else 'auto'
+            body.append(f'| {kst_ts} | **{d["duration_s"]:.0f}s** | {commit} | {trigger} |')
+        body.append('')
     body.append('')
 
     # 7일 trend — omok / 2048 분리. PVP/봇/활성 컬럼은 daily-stats.json 누적이 어제

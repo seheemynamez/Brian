@@ -216,6 +216,64 @@ def summarize_bot_logs(parsed):
 # ============================================================
 # Server failure / recovery 파싱 — events API 결과 기반
 # ============================================================
+def parse_deploys(events):
+    """deploy_started → deploy_ended 매칭 → 배포 이력.
+
+    deploy 자체는 정상 동작이라 alert 대상 아님. daily-summary 본문의
+    `### 배포 이력 (24h)` 표에 시각/소요/commit 표시 용.
+
+    반환: [{start_ts (KST ISO), end_ts (KST ISO), duration_s, commit_msg, instance}]
+    """
+    by_time = sorted(events, key=lambda e: e.get('event', {}).get('timestamp', ''))
+    out = []
+    for i, e in enumerate(by_time):
+        ev = e.get('event', {})
+        if ev.get('type') != 'deploy_started':
+            continue
+        start_ts = ev.get('timestamp', '')
+        try:
+            start_dt = parse_iso(start_ts)
+        except Exception:
+            continue
+        # 같은 deploy 의 deploy_ended (start 이후 첫 deploy_ended).
+        end_ts = end_dt = None
+        for f in by_time[i+1:]:
+            fev = f.get('event', {})
+            if fev.get('type') != 'deploy_ended':
+                continue
+            try:
+                cand_dt = parse_iso(fev.get('timestamp', ''))
+            except Exception:
+                continue
+            if cand_dt >= start_dt:
+                end_ts = fev.get('timestamp', '')
+                end_dt = cand_dt
+                break
+        if not end_dt:
+            continue
+        det = ev.get('details', {}) or {}
+        # Render events API 의 deploy_started details:
+        #   { deployId, trigger: { newCommit, deployedByRender, manual, rollback, ... } }
+        # commit message 는 events 응답에 없음 — SHA (앞 7자) 만 표시. message 까지
+        # 원하면 별도 /deploys/{deployId} 호출 (호출 burst risk 로 일단 생략).
+        trigger = det.get('trigger') or {}
+        commit_sha = (trigger.get('newCommit') or '')[:7]
+        flags = []
+        if trigger.get('manual'): flags.append('manual')
+        if trigger.get('rollback'): flags.append('rollback')
+        if trigger.get('clearCache'): flags.append('clearCache')
+        if trigger.get('envUpdated'): flags.append('envUpdated')
+        out.append({
+            'start_ts': to_kst_iso(start_ts),
+            'end_ts': to_kst_iso(end_ts),
+            'duration_s': (end_dt - start_dt).total_seconds(),
+            'commit_sha': commit_sha,
+            'flags': flags,   # ['manual', 'rollback' 등] — 본문에 chip 으로 표시.
+            'deploy_id': det.get('deployId', ''),
+        })
+    return out
+
+
 def parse_server_failures(events):
     """events → [{ts (KST ISO), instance, evicted, nonZeroExit, oom}]"""
     out = []
@@ -238,8 +296,11 @@ def compute_recovery_times(events):
     """server_failed / server_available / deploy_started 매칭 → 실제 downtime 계산.
 
     각 failure 에 대해 그 후 첫 server_available 매칭:
-      crash: server_failed → 다음 server_available
-      deploy: deploy_started → 다음 server_available (build + start + ready)
+      crash:  server_failed   → 다음 server_available
+      deploy: deploy_started  → 다음 server_available 또는 deploy_ended (빠른 쪽)
+              Render free plan 의 deploy 는 새 인스턴스로 swap — server_available
+              이벤트가 발사 안 되는 경우 있음. 그땐 deploy_ended 가 사실상
+              "available again" 의 의미.
 
     반환: [{kind, start_ts, end_ts, downtime_s, within_grace, evicted,
             nonZeroExit, oom, instance}]
@@ -256,10 +317,16 @@ def compute_recovery_times(events):
             start_dt = parse_iso(start_ts)
         except Exception:
             continue
+        # deploy 의 경우 server_available + deploy_ended 둘 다 후보 (빠른 쪽).
+        # crash 는 server_available 만.
+        end_types = (
+            ('server_available', 'deploy_ended') if t == 'deploy_started'
+            else ('server_available',)
+        )
         end_ts, end_dt = None, None
         for f in by_time[i+1:]:
             fev = f.get('event', {})
-            if fev.get('type') != 'server_available': continue
+            if fev.get('type') not in end_types: continue
             try:
                 cand_dt = parse_iso(fev.get('timestamp', ''))
             except Exception:
