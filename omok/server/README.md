@@ -165,8 +165,13 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 ### HTTP endpoint
 - `GET /` — 정적 파일 (omok 클라이언트). [omok/index.html](../index.html) 등.
 - `GET /i/{CODE}?n={NICK}` — 초대 링크. OG 메타 응답 후 canonical URL 로 redirect. [infra/share.js](infra/share.js).
-- `GET /api/stats` — 운영 통계 (monitor.py daily-summary 가 호출). `{ total_human_users, tiers, bots, ts }` JSON. 인증 없음, no-store cache.
-- `GET /api/daily-stats?date=YYYY-MM-DD` — KST 기준 일별 카운터 + SET 크기. valkey HINCRBY / SCARD 로 누적 (TTL 90일). 응답: `{ date, pvp_games, bot_games, total_bot_moves, worker_timeout, no_move, bot_retry, bot_skip, heartbeat_terminate, ws_connected, ws_disconnected, active_users, bot_retry_rooms, bot_retry_clients, bot_skip_rooms, bot_skip_clients, ts }`. 잘못된 date 형식은 400.
+- `GET /api/stats` — 운영 통계 (monitor 가 5분마다 호출). `{ total_human_users, tiers, bots, ts }` JSON. 인증 없음, no-store cache. **side-effect**: 호출 시점에 today daily Hash 에 `total_human_users` + `tier_*` snapshot — 7d trend 에서 KST 별 end-of-day 계정 수 / 티어 분포 조회 가능 (옛 `daily-stats.json` 대체).
+- `GET /api/daily-stats?date=YYYY-MM-DD` — KST 기준 일별 카운터 + SET 크기 + snapshot. valkey HGETALL/SCARD 직접 (cache 우회). 응답:
+  - **counters** (HINCRBY): `pvp_games, bot_games, total_bot_moves, worker_timeout, no_move, bot_retry, bot_skip, heartbeat_terminate, ws_connected, ws_disconnected`
+  - **SET 크기** (SCARD, `_backfill` Hash field 폴백): `active_users, bot_retry_rooms, bot_retry_clients, bot_skip_rooms, bot_skip_clients`
+  - **snapshot** (`/api/stats` 부수효과): `total_human_users` (int / null), `tiers` (dict / null)
+  - **봇 튜닝 지표** (bot_moves LIST 에서 derive): `hard_d6_pct, hard_d6_n` (cfgD=6 search 중 reached=6 비율)
+  - 메타: `date, ts`. 잘못된 date 형식은 400.
 - `GET /api/daily-games?date=YYYY-MM-DD` — game_over 매 게임의 raw JSON 배열 (LPUSH 누적, 최신 머리). 응답: `{ date, count, items: [...], ts }`. items 각 entry: `gameOverFields` (code/gameId/bot/botDiff/blackNick/whiteNick/blackRating/whiteRating/blackDelta/whiteDelta/stones/humanTurnsMs/winner/reason/ts). monitor 의 bot_perf / player_acts / TOP / movers / thinking time / reason 계산 source.
 - `GET /api/daily-bot-moves?date=YYYY-MM-DD` — 매 봇 착수 raw JSON 배열. items 각 entry: `{ ts, diff, stones, cfgD, cfgTopK, reach, elap, room }`. monitor 의 cfgMax 도달율 / elapsed p50/p95 계산 source.
 - `GET /api/online-series?from=<epoch_ms>&to=<epoch_ms>` — 1분 sampler 의 online count 시계열 (ZSET). 응답: `{ from, to, count, items: [{ts, count}], ts }`. monitor 가 KST hour 별 avg/peak 계산.

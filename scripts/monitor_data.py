@@ -51,11 +51,6 @@ def parse_iso(ts):
     return datetime.fromisoformat(s)
 
 
-def parse_iso_kst(ts):
-    """ISO ts → KST-aware datetime. parse 실패 시 ValueError 전파."""
-    return parse_iso(ts).astimezone(KST)
-
-
 def to_kst_iso(ts):
     """ISO ts (UTC or any tz) → KST ISO string (`+09:00`).
     빈 string / parse 실패 시 원본 그대로 반환 (graceful — 옛 로그 호환)."""
@@ -631,20 +626,9 @@ def hourly_bucket_by_ts(items, ts_field='ts'):
     return dict(buckets)
 
 
-def hourly_bot_activity(moves):
-    """KST hour bucket 별 봇 착수 횟수."""
-    buckets = defaultdict(int)
-    for r in moves:
-        try:
-            dt = parse_iso(r['ts']).astimezone(KST)
-            buckets[dt.hour] += 1
-        except Exception:
-            continue
-    return dict(buckets)
-
-
-# 옛 parse_online_count_series 는 valkey-first 전환 (PR #168) 이후 제거됨.
-# online time-series 는 server /api/online-series + hourly_online_from_series 가 대체.
+# 옛 parse_online_count_series + hourly_bot_activity + parse_iso_kst 는 valkey-first
+# 전환 (PR #168) 이후 callers 없어 제거. online time-series 는 server /api/online-series
+# + hourly_online_from_series 가, bot move hourly bucket 은 hourly_bucket_by_ts 로 일원화.
 
 
 # ============================================================

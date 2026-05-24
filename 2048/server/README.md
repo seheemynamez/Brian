@@ -40,9 +40,9 @@ npm run test:ci       # 둘 다
 
 | Path | 응답 |
 |---|---|
-| `GET /api/stats` | `{total_users, top_all_time, top_daily, active_ws, ts}` JSON (monitor 가 5분마다 호출 — sleep 방지 + 시계열 수집) |
-| `GET /api/daily-stats?date=YYYY-MM-DD` | KST 일별 카운터 + active_users SET 크기. 응답: `{date, submit_score, user_created, score_best, ws_connected, ws_disconnected, heartbeat_terminate, active_users, ts}`. valkey 90d TTL. 400 on invalid date. |
-| `GET /api/online-series?from=<epoch_ms>&to=<epoch_ms>` | 1분 sampler online count 시계열. 응답: `{from, to, count, items: [{ts, count}], ts}`. |
+| `GET /api/stats` | `{total_users, top_all_time, top_daily, active_ws, ts}` JSON (monitor 가 5분마다 호출 — sleep 방지 + 시계열 수집). **side-effect**: 호출 시점에 today daily Hash 에 `total_users / top_all_time / top_daily` snapshot (7d trend 표 용). |
+| `GET /api/daily-stats?date=YYYY-MM-DD` | KST 일별 카운터 + active_users SET 크기 + snapshot. 응답: `{date, submit_score, user_created, score_best, ws_connected, ws_disconnected, heartbeat_terminate, active_users, total_users, top_all_time, top_daily, ts}`. valkey 90d TTL, HGETALL 직접 (cache 우회). 400 on invalid date. |
+| `GET /api/online-series?from=<epoch_ms>&to=<epoch_ms>` | 1분 sampler online count 시계열. `from` 필수. 응답: `{from, to, count, items: [{ts, count}], ts}`. ZRANGEBYSCORE 직접 (cache 우회). |
 | `GET /i/2048` `/i/2048/{nick}` `/i/2048/{nick}/{score}` | 동적 OG meta + canonical 2048 페이지로 redirect |
 | 그 외 | 404 (정적 파일은 GitHub Pages 에서 서빙) |
 
