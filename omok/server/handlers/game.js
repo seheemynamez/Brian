@@ -9,7 +9,7 @@ const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('../game/renj
 const log = require('../infra/log');
 const {
   send, sendToPlayer, forEachSpectatorWs, broadcastRoom,
-  playerIdsPayload, playerStatusPayload, broadcastRoomsList,
+  playerIdsPayload, playerStatusPayload, disconnectStatePayload, broadcastRoomsList,
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
 const { recordGameResult, buildPlayerRatings } = require('../domain/users');
@@ -164,6 +164,7 @@ const startGame = (room) => {
     nicknames,
     ratings,
     playerStatus: playerStatusPayload(room),
+    ...disconnectStatePayload(room),  // disconnectGraceMs + (진행 중 시) disconnectDeadlines
     spectators: getSpectatorNames(room),
   };
   // 각 플레이어에게 본인 sessionId 와 함께 알림 (FE 가 sessionStorage 에 저장).

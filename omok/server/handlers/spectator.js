@@ -9,7 +9,7 @@ const {
 const connections = require('../connections');
 const {
   send, forEachSpectatorWs, broadcastRoom,
-  playerStatusPayload, broadcastRoomsList,
+  playerStatusPayload, disconnectStatePayload, broadcastRoomsList,
 } = require('./send');
 
 const SPECTATOR_DISCONNECT_GRACE_MS = Number(process.env.SPECTATOR_DISCONNECT_GRACE_MS) || 30000;
@@ -42,6 +42,7 @@ const sendSpectatorState = (ws, room) => {
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
     ratings: buildPlayerRatings(room),
     playerStatus: playerStatusPayload(room),
+    ...disconnectStatePayload(room),  // disconnectGraceMs + (진행 중 시) disconnectDeadlines
     board: room.board,
     turn: room.turn,
     status: room.status,

@@ -55,27 +55,35 @@ const dispose = (code) => {
 };
 
 // 색깔별 disconnect timer 는 별도 Map (다른 모양이라 어색해 분리).
-const disconnectTimers = new Map();  // roomCode → { black, white }
+// entry shape: { black, white, blackDeadline, whiteDeadline }
+//   - black / white: setTimeout handle 또는 null
+//   - blackDeadline / whiteDeadline: number (ms epoch) 또는 null
+// deadline 은 resume_success / spectate_success / game_start msg 에서 재접속/
+// 신규 입장 client 에게 전달 — 그 시점부터 grace 카운트다운 UI 표시 (PR — Issue
+// 추적: 관전자가 새로고침 시 grace 카운트다운 안 보이던 버그 fix).
+const disconnectTimers = new Map();  // roomCode → { black, white, blackDeadline, whiteDeadline }
 
 const getDisconnectEntry = (code) => {
   let entry = disconnectTimers.get(code);
   if (!entry) {
-    entry = { black: null, white: null };
+    entry = { black: null, white: null, blackDeadline: null, whiteDeadline: null };
     disconnectTimers.set(code, entry);
   }
   return entry;
 };
 
-const setDisconnectTimer = (code, color, handle) => {
+const setDisconnectTimer = (code, color, handle, deadline = null) => {
   const entry = getDisconnectEntry(code);
   if (entry[color]) clearTimeout(entry[color]);
   entry[color] = handle;
+  entry[`${color}Deadline`] = deadline;
 };
 
 const clearDisconnectTimer = (code, color) => {
   const entry = disconnectTimers.get(code);
   if (!entry) return;
   if (entry[color]) { clearTimeout(entry[color]); entry[color] = null; }
+  entry[`${color}Deadline`] = null;
 };
 
 const clearAllDisconnectTimers = (code) => {
@@ -83,13 +91,26 @@ const clearAllDisconnectTimers = (code) => {
   if (!entry) return;
   for (const c of ['black', 'white']) {
     if (entry[c]) { clearTimeout(entry[c]); entry[c] = null; }
+    entry[`${c}Deadline`] = null;
   }
   disconnectTimers.delete(code);
+};
+
+// 진행 중인 grace deadline 만 반환 — { black?: number, white?: number }
+// resume / spectate / game_start msg payload 용. 양쪽 다 online 이면 빈 객체.
+const getDisconnectDeadlines = (code) => {
+  const entry = disconnectTimers.get(code);
+  if (!entry) return {};
+  const out = {};
+  if (entry.blackDeadline) out.black = entry.blackDeadline;
+  if (entry.whiteDeadline) out.white = entry.whiteDeadline;
+  return out;
 };
 
 module.exports = {
   // 일반 timer
   setTimer, clearTimer, clearAllTimers, dispose, peek,
-  // disconnect timer (color-keyed)
-  setDisconnectTimer, clearDisconnectTimer, clearAllDisconnectTimers, getDisconnectEntry,
+  // disconnect timer (color-keyed) + deadline
+  setDisconnectTimer, clearDisconnectTimer, clearAllDisconnectTimers,
+  getDisconnectEntry, getDisconnectDeadlines,
 };

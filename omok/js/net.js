@@ -261,6 +261,26 @@ const onMatched = (msg) => {
   setRoomInUrl(msg.code);
 };
 
+// 진행 중 disconnect grace 정보 (resume/spectate/game_start msg 의 disconnectDeadlines
+// + disconnectGraceMs) 를 처리해 turn timer 일시정지 + 카운트다운 UI 시작.
+// 새로고침한 player / 신규 입장한 관전자 / 게임 시작 직후 이미 끊긴 상대 모두 cover.
+// (PR — Issue: 관전자 새로고침 시 grace 카운트다운 안 보이던 버그 fix.)
+const applyDisconnectInfo = (msg) => {
+  if (typeof msg.disconnectGraceMs === 'number') {
+    state.disconnectGraceMs = msg.disconnectGraceMs;
+  }
+  const deadlines = msg.disconnectDeadlines;
+  if (!deadlines) return;
+  // black / white 중 어느 색이든 deadline 있으면 그 색 disconnect 카운트다운 UI 시작.
+  // 양쪽 동시 끊김 케이스도 가능 (PVP) — 첫 색만 처리 (UI 표시 단일).
+  for (const color of ['black', 'white']) {
+    const deadline = deadlines[color];
+    if (!deadline) continue;
+    pauseTurnTimer(deadline);
+    break;
+  }
+};
+
 const onGameStart = (msg) => {
   state.myColor = msg.you;
   state.nicknames = msg.nicknames;
@@ -289,6 +309,7 @@ const onGameStart = (msg) => {
   showScreen('game');
   drawBoard();
   updateTurnUI();
+  applyDisconnectInfo(msg);   // 게임 시작 직후 상대 이미 끊긴 케이스도 처리
   playSound('turn_start');
 };
 
@@ -330,6 +351,7 @@ const onSpectateSuccess = (msg) => {
   } else if (state.turnDeadline) {
     startTimerTick();
   }
+  applyDisconnectInfo(msg);   // 관전자 새 입장 시 진행 중 grace 카운트다운 표시
 };
 
 const onResumeSuccess = (msg) => {
@@ -375,6 +397,7 @@ const onResumeSuccess = (msg) => {
   } else {
     startTimerTick();
   }
+  applyDisconnectInfo(msg);   // resume 시점 상대 grace 진행 중이면 카운트다운 시작
 };
 
 const onResumeFailed = () => {

@@ -123,7 +123,13 @@ const onPlayerDisconnect = (ws) => {
   const payload = { type: 'opponent_disconnected', color: myColor, deadline, graceMs: DISCONNECT_GRACE_MS };
   sendToPlayer(room, otherColor(myColor), payload);
   forEachSpectatorWs(room, (s) => send(s, payload));
-  roomRuntime.setDisconnectTimer(room.code, myColor, setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS));
+  // deadline 같이 저장 — resume/spectate/game_start msg payload 에서 진행 중
+  // grace 정보 전달 (PR — Issue: 관전자 새로고침 시 grace 카운트다운 안 보임 fix).
+  roomRuntime.setDisconnectTimer(
+    room.code, myColor,
+    setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS),
+    deadline,
+  );
 };
 
 const finalizeAbandon = (room, color) => {

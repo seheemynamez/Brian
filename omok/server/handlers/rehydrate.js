@@ -28,9 +28,13 @@ const rehydrateTimers = () => {
       const slot = room.players?.[color];
       if (!slot) continue;
       if (slot.type === 'bot') continue;  // 봇은 grace 안 함
+      // 부팅 직후라 deadline 도 0 부터 시작 — 진행 중 정보를 resume/spectate
+      // msg payload 로 전달해 클라이언트가 grace 카운트다운 UI 표시.
+      const deadline = Date.now() + DISCONNECT_GRACE_MS;
       roomRuntime.setDisconnectTimer(
         code, color,
         setTimeout(() => finalizeAbandon(room, color), DISCONNECT_GRACE_MS),
+        deadline,
       );
     }
     log.event('room_rehydrated', {
