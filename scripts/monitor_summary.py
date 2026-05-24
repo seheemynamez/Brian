@@ -210,7 +210,6 @@ def run_daily_summary():
     all_days = all_days[-7:]
     for d in all_days:
         snaps = by_day.get(d, [])
-        # PR — snap helper 사용 (옛/새 구조 모두 호환). 2048 컬럼도 추가.
         omok_renders = [snap_omok_render(s) for s in snaps]
         r2048_renders = [snap_2048_render(s) for s in snaps]
         aivens = [snap_aiven(s) for s in snaps]
