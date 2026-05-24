@@ -97,6 +97,8 @@ PR — 2048 통합으로 service 별 분리:
 | **현재 사람/사용자 계정 수, 동접** | **발행 시점** (`/api/stats` 단일 값). 본문 캡션에 명시. |
 | 7일 trend 표 | snapshot KST day 합산 (Render CPU/Aiven Mem) + `daily-stats.json` (PVP/봇/활성/worker_timeout/hard_d6) |
 | **`daily-stats[summary_date]` 갱신** | **trend 계산 직전** (race condition fix — Issue #148: 본문은 새 fetch 결과 / trend 표는 옛 stale daily-stats 결과 모순). 같은 발행 안에서 trend 가 본문 데이터와 일관성. |
+| **배포 이력 (24h)** 표 | **window 안 deploy_started → deploy_ended 매칭** (KST 어제). 시각/소요/commit SHA/trigger (auto/manual/rollback/envUpdated). Render events API 응답은 commit SHA 만 — message 까지 원하면 별도 `/deploys/{deployId}` 호출 필요 (현재 생략 — burst 비용). |
+| **서버 장애 / 배포 downtime (24h)** 표 | `compute_recovery_times` 결과 — `server_failed → server_available` (crash) + `deploy_started → server_available`/`deploy_ended` (deploy). free plan 의 deploy 는 `server_available` 미발사 → `deploy_ended` 가 사실상 "available again" 의 의미. |
 
 같은 KST day 의 daily-summary 를 여러 번 발행해도 (cron-job.org primary, manual trigger, retry 등) **시계열 데이터의 값은 안정** — 단 위 표의 "발행 시점 -X" 항목만 발행 시각에 따라 약간 변동.
 
