@@ -102,7 +102,8 @@ const dailyStatsHandler = async (req, res) => {
   };
   // tiers — Hash 의 tier_* prefix field 를 dict 로. snapshotDailyMeta 가 statsHandler
   // 의 부수효과로 갱신. 7일 trend 표가 과거 day 의 티어 분포 표시할 때 사용.
-  const TIER_NAMES = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master'];
+  // 'Unranked' 는 PLACEMENT_GAMES 미만 사람 user 의 카운트 (PR — unranked feature).
+  const TIER_NAMES = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master', 'Unranked'];
   const tiers = {};
   for (const t of TIER_NAMES) tiers[t] = Number(c[`tier_${t}`]) || 0;
   const tiersTotal = Object.values(tiers).reduce((a, b) => a + b, 0);

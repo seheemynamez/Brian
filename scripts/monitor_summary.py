@@ -470,7 +470,8 @@ def run_daily_summary():
     tiers_now = (server_stats or {}).get('tiers') or {}
     tiers_prev = (prev_stats or {}).get('tiers') or {}
     if tiers_now:
-        TIER_ORDER = ['Master', 'Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Iron']
+        # Unranked = 10판 미달 (placement) 사람 user. 별도 row, rating 구간 없음.
+        TIER_ORDER = ['Master', 'Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Iron', 'Unranked']
         TIER_RANGE = {
             'Master':   '2100+',
             'Diamond':  '1900~2099',
@@ -479,6 +480,7 @@ def run_daily_summary():
             'Silver':   '1300~1499',
             'Bronze':   '1100~1299',
             'Iron':     '~1099',
+            'Unranked': '10판 미달',
         }
         body.append('### 오목 티어 분포 _(발행시점)_\n')
         body.append('| 티어 | rating 구간 | 인원 | 비중 | 전일 Δ |')

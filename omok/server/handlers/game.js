@@ -33,6 +33,29 @@ const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 // 집계해 "사람 thinking time" 지표로 사용. 봇 차례는 제외 (봇은 search timeout 으로
 // 별도 trackable). 게임 도중 새로고침/disconnect 로 paused→resumed 된 차례도
 // 실제 사람이 보낸 시간만 누적됨 (pauseTurnTimer / resumeTurnTimer 로직 참고).
+// 게임 종료 msg payload 의 ratings/deltas/unranked/placement 묶음.
+// game.js (win/draw) + disconnect.js (opponent_left/abandoned) 4 site 공통.
+// **unranked 사이드는 rating/delta 도 null** — 게임 종료 후에도 player-card 의
+// 티어/레이팅 노출 방지 (rating leak 정책). 클라 renderTier 가 null 이면 row 숨김.
+// placementJustReached 시점은 unranked=false 이므로 rating 정상 노출.
+const ratingsPayload = (entry) => {
+  if (!entry) {
+    return { ratings: null, deltas: null, unranked: null, placementJustReached: null, placement: null };
+  }
+  const bU = !!entry.black.unranked;
+  const wU = !!entry.white.unranked;
+  return {
+    ratings: { black: bU ? null : entry.black.rating, white: wU ? null : entry.white.rating },
+    deltas:  { black: bU ? null : entry.black.delta,  white: wU ? null : entry.white.delta  },
+    unranked: { black: bU, white: wU },
+    placementJustReached: {
+      black: !!entry.black.placementJustReached,
+      white: !!entry.white.placementJustReached,
+    },
+    placement: { black: entry.black.placement, white: entry.white.placement },
+  };
+};
+
 const gameOverFields = (room, entry, extra) => {
   const black = room.players?.black;
   const white = room.players?.white;
@@ -303,8 +326,7 @@ const applyMove = (room, color, row, col, opts) => {
     const entry = recordGameResult(room, { winnerColor: color, reason: 'five' });
     broadcastRoom(room, {
       type: 'game_over', winner: color, line: winLine, gameId: room.gameId, playerIds,
-      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
-      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+      ...ratingsPayload(entry),
     });
     broadcastRoomsList();
     broadcastRankingUpdate();
@@ -320,8 +342,7 @@ const applyMove = (room, color, row, col, opts) => {
     const entry = recordGameResult(room, { winnerColor: 'draw', reason: 'draw' });
     broadcastRoom(room, {
       type: 'game_over', winner: 'draw', line: null, gameId: room.gameId, playerIds,
-      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
-      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+      ...ratingsPayload(entry),
     });
     broadcastRoomsList();
     broadcastRankingUpdate();
@@ -347,5 +368,6 @@ module.exports = {
   onMove,
   startGame,
   gameOverFields,  // disconnect.js 의 game_over 로그도 같은 형식 사용
+  ratingsPayload,  // disconnect.js 의 game_over / opponent_abandoned payload 공유
   recordGameOver,  // counter + active_users SET + games LIST
 };

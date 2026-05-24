@@ -18,7 +18,7 @@ const {
 const { removeSpectator } = require('./spectator');
 // pauseTurnTimer : 사용자 끊김 — 남은 시간 보존 (재연결 시 복구).
 // clearTurnTimer : 게임이 진짜 끝나는 흐름 (finalizeAbandon / onLeaveRoom) — timer 취소 + remainMs=0.
-const { pauseTurnTimer, clearTurnTimer, gameOverFields, recordGameOver } = require('./game');
+const { pauseTurnTimer, clearTurnTimer, gameOverFields, ratingsPayload, recordGameOver } = require('./game');
 const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
@@ -56,8 +56,7 @@ const onLeaveRoom = (ws) => {
     const entry = recordGameResult(room, { winnerColor, reason: 'opponent_left' });
     const gameOverPayload = {
       type: 'game_over', winner: winnerColor, line: null, gameId: room.gameId, playerIds, reason: 'opponent_left',
-      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
-      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+      ...ratingsPayload(entry),
     };
     sendToPlayer(room, oppColor, gameOverPayload);
     forEachSpectatorWs(room, (s) => send(s, gameOverPayload));
@@ -160,8 +159,7 @@ const finalizeAbandon = (room, color) => {
     const entry = recordGameResult(room, { winnerColor: oppColor, reason: 'abandoned', bothDisconnected });
     const abandonPayload = {
       type: 'opponent_abandoned', color, gameId: room.gameId, playerIds,
-      ratings: entry ? { black: entry.black.rating, white: entry.white.rating } : null,
-      deltas:  entry ? { black: entry.black.delta,  white: entry.white.delta  } : null,
+      ...ratingsPayload(entry),
     };
     for (const c of ['black', 'white']) sendToPlayer(room, c, abandonPayload);
     forEachSpectatorWs(room, (s) => send(s, abandonPayload));

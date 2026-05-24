@@ -678,6 +678,50 @@ canvas#board:not(.my-turn) { cursor: not-allowed; }
   font-variant-numeric: tabular-nums;
 }
 
+/* 본인이 unranked (placement 미달) 일 때 me-extra 에 표시하는 card.
+   rank-item.is-me 스타일 위에 grid template 만 재정의 — 6열로 placement 정보 표시. */
+.rank-item.placement-card {
+  grid-template-columns: 28px 24px 1fr auto auto;
+  grid-template-areas:
+    "num badge nick progress record"
+    "num badge hint hint hint";
+  row-gap: 4px;
+}
+.rank-item.placement-card .rank-num { grid-area: num; }
+.rank-item.placement-card .placement-badge { grid-area: badge; }
+.rank-item.placement-card .rank-nick { grid-area: nick; }
+.rank-item.placement-card .placement-progress {
+  grid-area: progress;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-1);
+  font-variant-numeric: tabular-nums;
+}
+.rank-item.placement-card .rank-record { grid-area: record; }
+.rank-item.placement-card .placement-hint {
+  grid-area: hint;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.placement-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 게임 종료 화면 — placement 막 통과 (티어 부여) 메시지 */
+.rating-line.placement-graduated .placement-msg {
+  font-weight: 800;
+  color: var(--accent-1);
+}
+/* 게임 종료 화면 — 본인이 아직 unranked 일 때 진행도 안내 (남은 N판) */
+.rating-line.placement-progress-line .placement-msg {
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
 /* 펼치기 / 접기 토글 버튼 — 랭킹 / 최근 대국 공용 */
 .list-toggle {
   align-self: center;

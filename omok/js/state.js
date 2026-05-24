@@ -52,6 +52,12 @@ export const state = {
   // 종료 시 변동분 — game_over payload 의 deltas. 종료 화면에 "1500 → 1490 (-10)" 표시용.
   // 게임 새로 시작하면 null 로 reset (state 잔존 방지).
   lastRatingDeltas: null,
+  // unranked feature — game_over payload 의 unranked/placementJustReached/placement 그대로 저장.
+  // renderRatingChange / renderRecentGameItem 가 이 값으로 placement UX 분기.
+  // placement: { black: {played, needed}|null, white: {...}|null } — 본인이 unranked 일 때만 진행도 표시.
+  lastUnranked: null,             // { black, white } | null
+  lastPlacementJustReached: null, // { black, white } | null
+  lastPlacement: null,            // { black, white } | null
   myNick: '',
   // 양 플레이어의 connection 상태 — 게임 화면의 online indicator 용.
   // 'online' | 'offline'. game_start/resume_success/spectate_success 시 서버가 동기화.
