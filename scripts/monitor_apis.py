@@ -31,10 +31,12 @@ from monitor_data import parse_iso
 
 # ============================================================
 # HTTP retry — transient 에러 (5xx, 429, network) 만 자동 재시도.
+# 429 는 Retry-After 헤더 (RFC 7231) 가 있으면 그 값 우선. 없으면 exp backoff.
 # ============================================================
 TRANSIENT_HTTP_STATUS = {429, 502, 503, 504}
-RETRY_MAX = 3
-RETRY_BASE_S = 1.0   # exp backoff: 1, 2, 4s
+RETRY_MAX = 5
+RETRY_BASE_S = 1.0      # exp backoff: 1, 2, 4, 8, 16s (RETRY_MAX-1 까지)
+RETRY_BACKOFF_CAP_S = 30.0   # Retry-After 가 너무 길어도 cap (workflow timeout 보호)
 
 
 def _is_transient(exc):
@@ -48,9 +50,34 @@ def _is_transient(exc):
     return False
 
 
+def _retry_after_seconds(exc):
+    """HTTP 429 응답의 Retry-After 헤더 (초 또는 HTTP-date) → 초. 없거나 parse 실패면 None.
+
+    RFC 7231 §7.1.3:
+      Retry-After = HTTP-date | delta-seconds
+    delta-seconds (정수 초) 우선 — 가장 흔함. HTTP-date 는 지원 안 함 (parse 복잡).
+    """
+    if not isinstance(exc, urllib.error.HTTPError):
+        return None
+    if exc.code != 429:
+        return None
+    if not exc.headers:
+        return None
+    h = exc.headers.get('Retry-After')
+    if not h:
+        return None
+    try:
+        return max(0.0, float(h.strip()))
+    except (ValueError, AttributeError):
+        return None   # HTTP-date 형식 — exp backoff fallback
+
+
 def _with_retry(call, label='http'):
-    """call() 을 RETRY_MAX 번까지 transient 에러 시 exp backoff 으로 재시도.
-    영구 에러 (4xx) 는 즉시 propagate — 호출자가 catch."""
+    """call() 을 RETRY_MAX 번까지 transient 에러 시 재시도.
+    429: Retry-After 헤더 값 우선 (cap RETRY_BACKOFF_CAP_S). 없으면 exp backoff.
+    기타 transient (5xx/network): exp backoff (cap = RETRY_BASE_S * 2^(MAX-2)).
+    영구 에러 (4xx 4xx 외) 는 즉시 propagate — 호출자가 catch.
+    """
     last_exc = None
     for attempt in range(RETRY_MAX):
         try:
@@ -60,9 +87,19 @@ def _with_retry(call, label='http'):
             if not _is_transient(e):
                 raise
             if attempt < RETRY_MAX - 1:
-                backoff = RETRY_BASE_S * (2 ** attempt)
+                # exp backoff (1, 2, 4, 8, 16s — cap 30s) 을 기본선으로 두고, 429
+                # Retry-After 가 더 길면 그걸 우선. Retry-After=0/작은 값으로 instant
+                # retry 가 되지 않게 exp 와 max.
+                exp = min(RETRY_BASE_S * (2 ** attempt), RETRY_BACKOFF_CAP_S)
+                retry_after = _retry_after_seconds(e)
+                if retry_after is not None:
+                    backoff = max(min(retry_after, RETRY_BACKOFF_CAP_S), exp)
+                    src = 'Retry-After+exp'
+                else:
+                    backoff = exp
+                    src = 'exp'
                 code = getattr(e, 'code', type(e).__name__)
-                print(f'  [{label}] transient {code}: retry in {backoff:.0f}s '
+                print(f'  [{label}] transient {code} ({src}): retry in {backoff:.1f}s '
                       f'(attempt {attempt + 1}/{RETRY_MAX})', file=sys.stderr)
                 time.sleep(backoff)
     raise last_exc
@@ -104,6 +141,19 @@ def http_patch(url, body, headers=None, timeout=30):
 PAGINATE_MAX_ITER = 50
 
 
+def _track_fetch(state, key, success):
+    """fetch helper — 호출자 (collect/summary) 가 fail_streak 추적 원하면
+    state/key 전달. 여기서 monitor_data 의 incr/reset 호출 (lazy import).
+    state=None 또는 key=None 이면 no-op."""
+    if state is None or key is None:
+        return
+    from monitor_data import incr_fail_streak, reset_fail_streak
+    if success:
+        reset_fail_streak(state, key)
+    else:
+        incr_fail_streak(state, key)
+
+
 # ============================================================
 # Render API
 # ============================================================
@@ -140,16 +190,20 @@ def render_recent_deploy_status(service='omok'):
     }
 
 
-def render_search_logs(text, start_iso, end_iso, limit=100, max_iter=PAGINATE_MAX_ITER, service='omok'):
-    """로그 검색 (cursor pagination — nextEndTime backward).
+def render_search_logs(text, start_iso, end_iso, limit=100, max_iter=PAGINATE_MAX_ITER,
+                       service='omok', track_state=None, track_key=None):
+    """로그 검색 (nextEndTime backward pagination).
 
     Window 안 모든 로그 누적. safety cap = limit × max_iter 건.
-    옛 `max_pages=5` (= 500건 cap) 의 silent loss 패턴 (PR — total_bot_moves=1000
-    이 사실은 더 있었음) 의 fix. 의도적으로 작은 sample 만 보려면 max_iter=1
-    + limit 작게.
+    의도적으로 작은 sample 만 보려면 max_iter=1 + limit 작게.
+
+    track_state / track_key 전달 시 fail_streak 추적:
+      - 첫 페이지부터 HTTPError → incr_fail_streak (fetch fail).
+      - 적어도 한 페이지 성공 → reset_fail_streak.
     """
     all_logs = []
     end = end_iso
+    fetched_any = False
     for _ in range(max_iter):
         qs = urllib.parse.urlencode({
             'ownerId': RENDER_OWNER_ID, 'resource': _service_id(service),
@@ -161,28 +215,30 @@ def render_search_logs(text, start_iso, end_iso, limit=100, max_iter=PAGINATE_MA
             data = http_get(url, render_headers())
         except urllib.error.HTTPError:
             break
+        fetched_any = True
         logs = data.get('logs') or []
         if not logs: break
         all_logs.extend(logs)
         if not data.get('hasMore'): break
         end = data.get('nextEndTime', '')
         if not end: break
+    _track_fetch(track_state, track_key, fetched_any)
     return all_logs
 
 
-def render_events(start_iso, end_iso, limit=100, max_iter=PAGINATE_MAX_ITER, service='omok'):
+def render_events(start_iso, end_iso, limit=100, max_iter=PAGINATE_MAX_ITER,
+                  service='omok', track_state=None, track_key=None):
     """Render events API — server_failed/available/deploy 등 인프라 이벤트.
 
     API 는 startTime 미지원 + limit max=100 → endTime backward + cursor
     페이지네이션. 매 호출 응답의 마지막 event 의 cursor 를 다음 호출에 전달.
     window 시작 도달 시 stop. client-side 로 startTime 이전 event 필터.
 
-    이전엔 단일 호출 (limit=100) 만 — 24h window 면 60h+ 거슬러 가는 응답에서
-    100건 cap 도달이 흔해 silent loss (deploy_count / server_failed / recoveries
-    누락).
+    track_state / track_key 전달 시 fail_streak 추적 (render_search_logs 와 동일).
     """
     all_events = []
     cursor = None
+    fetched_any = False
     try:
         start_dt = parse_iso(start_iso)
     except Exception:
@@ -197,6 +253,7 @@ def render_events(start_iso, end_iso, limit=100, max_iter=PAGINATE_MAX_ITER, ser
             events = http_get(url, render_headers())
         except urllib.error.HTTPError:
             break
+        fetched_any = True
         if not events:
             break
         all_events.extend(events)
@@ -212,6 +269,7 @@ def render_events(start_iso, end_iso, limit=100, max_iter=PAGINATE_MAX_ITER, ser
         cursor = events[-1].get('cursor')
         if not cursor:
             break
+    _track_fetch(track_state, track_key, fetched_any)
 
     # client-side 필터 (startTime 이전 잘라냄).
     if not start_dt:

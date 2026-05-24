@@ -18,8 +18,8 @@ from monitor_data import (
     load_state, parse_bot_logs, parse_bot_moves, parse_game_over,
     parse_game_started, parse_iso, parse_online_count_series,
     parse_server_failures, player_activity, render_bw_sum_mb, render_cpu_stats,
-    render_mem_stats, save_daily_stats, snap_2048_render, snap_aiven,
-    snap_omok_render, to_utc_iso,
+    render_mem_stats, save_daily_stats, save_state, snap_2048_render,
+    snap_aiven, snap_omok_render, to_utc_iso,
 )
 
 
@@ -54,6 +54,12 @@ def run_daily_summary():
     summary_date = win_start_kst.strftime('%Y-%m-%d')   # 어제 KST 날짜
     print(f'=== daily-summary {summary_date} KST (window {s_iso} ~ {e_iso}) ===')
 
+    # fetch_fail_streak 추적 — collect 와 같은 state.json 공유. 모든 fetch 호출에
+    # track_state=state + track_key=... 전달. 호출 직전 streak snapshot 보관 후
+    # 호출 끝나면 비교해 "이번 발행 시점 실패한 endpoint" 추출 → 본문에 표시.
+    state = load_state()
+    prev_streaks = dict(state.get('fetch_fail_streak', {}))
+
     # 1) Render / Aiven 메트릭 (24h KST 캘린더 day)
     # omok render
     cpu = render_metric('cpu', s_iso, e_iso, 300, service='omok')
@@ -77,17 +83,22 @@ def run_daily_summary():
     aiven_disk = aiven_stats(aiven, 'disk_usage') or {}
     aiven_load = aiven_stats(aiven, 'load_average') or {}
 
-    # 2) omok 로그 fetch
-    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, service='omok')
+    # 2) omok 로그 fetch — 모두 fail_streak tracking.
+    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, service='omok',
+                                  track_state=state, track_key='logs:omok:move_applied')
     bot_moves = parse_bot_moves(bot_logs)
     bot_by_cfg = bot_stats_by_cfg(bot_moves)
     bot_moves_by_hour = hourly_bucket_by_ts(bot_moves, 'ts')
-    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, service='omok')
+    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, service='omok',
+                                          track_state=state, track_key='logs:omok:game_started')
     game_started = parse_game_started(game_started_raw)
-    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, service='omok')
+    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, service='omok',
+                                       track_state=state, track_key='logs:omok:game_over')
     game_overs = parse_game_over(game_over_raw)
-    skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50, service='omok')
-    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, service='omok')
+    skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50, service='omok',
+                                   track_state=state, track_key='logs:omok:schedule_skip')
+    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, service='omok',
+                                    track_state=state, track_key='logs:omok:schedule_retry')
     # 영향 unique rooms/clients — alert 본문에는 있지만 daily-summary 표엔 단순
     # 카운트만 있었음. burst 가 1-2 게임 집중 vs 다수 사용자 패턴인지 판단용.
     retry_parsed = parse_bot_logs(retry_logs)
@@ -96,18 +107,23 @@ def run_daily_summary():
     retry_clients = len({p['client'] for p in retry_parsed if p['client']})
     skip_rooms = len({p['room'] for p in skip_parsed})
     skip_clients = len({p['client'] for p in skip_parsed if p['client']})
-    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, service='omok')
-    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, service='omok')
-    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, service='omok')
-    # PR #4(d) — worker_timeout / no_move 도 안정성 지표에 표시.
-    wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, service='omok')
-    nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, service='omok')
+    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, service='omok',
+                                 track_state=state, track_key='logs:omok:heartbeat')
+    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, service='omok',
+                                      track_state=state, track_key='logs:omok:ws_connected')
+    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, service='omok',
+                                      track_state=state, track_key='logs:omok:ws_disconnected')
+    wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, service='omok',
+                                 track_state=state, track_key='logs:omok:worker_timeout')
+    nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, service='omok',
+                                 track_state=state, track_key='logs:omok:no_move')
     # omok 인프라 이벤트 — server_failed (OOM / crash), deploy 등.
     # limit max = 100 (Render API 제약). 200 으로 호출하면 400 "invalid limit:
     # too large" 반환 + render_events 가 HTTPError catch 해서 빈 list 반환 →
     # deploy 횟수 / server_failed / recoveries 가 항상 0 으로 보이는 silent
     # failure 였음.
-    events = render_events(s_iso, e_iso, limit=100, service='omok')
+    events = render_events(s_iso, e_iso, limit=100, service='omok',
+                           track_state=state, track_key='events:omok')
     failures = parse_server_failures(events)
     oom_fails = [f for f in failures if f['evicted'] or f['oom']]
     crash_fails = [f for f in failures if not (f['evicted'] or f['oom'])]
@@ -116,13 +132,20 @@ def run_daily_summary():
     recoveries = compute_recovery_times(events)
 
     # 2-b) 2048 로그 fetch — 봇 없는 서비스, 활성/일일/동접 위주.
-    submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, service='2048')
-    user_created_logs_2048 = render_search_logs('[user_created]', s_iso, e_iso, limit=100, service='2048')
-    ws_conn_logs_2048 = render_search_logs('[ws_connected]', s_iso, e_iso, limit=100, service='2048')
-    ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, service='2048')
-    hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, service='2048')
-    score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, service='2048')
-    events_2048 = render_events(s_iso, e_iso, limit=100, service='2048')
+    submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, service='2048',
+                                          track_state=state, track_key='logs:2048:submit_score')
+    user_created_logs_2048 = render_search_logs('[user_created]', s_iso, e_iso, limit=100, service='2048',
+                                                track_state=state, track_key='logs:2048:user_created')
+    ws_conn_logs_2048 = render_search_logs('[ws_connected]', s_iso, e_iso, limit=100, service='2048',
+                                           track_state=state, track_key='logs:2048:ws_connected')
+    ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, service='2048',
+                                           track_state=state, track_key='logs:2048:ws_disconnected')
+    hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, service='2048',
+                                      track_state=state, track_key='logs:2048:heartbeat')
+    score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, service='2048',
+                                              track_state=state, track_key='logs:2048:score_best')
+    events_2048 = render_events(s_iso, e_iso, limit=100, service='2048',
+                                track_state=state, track_key='events:2048')
     failures_2048 = parse_server_failures(events_2048)
     deploy_count_2048 = sum(1 for e in events_2048 if e.get('event', {}).get('type') == 'deploy_ended')
     recoveries_2048 = compute_recovery_times(events_2048)
@@ -452,10 +475,29 @@ def run_daily_summary():
     body.append('### 임계 alert 이력 (24h)\n')
     if alert_history:
         for k, ts in alert_history:
-            body.append(f'- `{ts[:19]}` — {k}')
+            # ts 는 state.json 에 저장된 UTC ISO — 사람 표시는 KST + UTC 병기.
+            try:
+                kst_str = parse_iso(ts).astimezone(KST).strftime('%Y-%m-%d %H:%M:%S')
+                ts_disp = f'{kst_str} KST'
+            except Exception:
+                ts_disp = ts[:19]
+            body.append(f'- `{ts_disp}` — {k}')
     else:
         body.append('- 0건 (모두 임계 미달, 안전)')
     body.append('')
+
+    # 이번 발행 시점 fetch 실패 endpoint — prev_streaks 와 비교해 증가한 것만.
+    # silent loss 인지: game_started 가 빈 list 면 본문 "총 게임 시작 0" 으로
+    # 잘못 발행될 수 있으니 별도 경고 섹션으로 visible.
+    current_streaks = state.get('fetch_fail_streak', {}) or {}
+    new_fails = sorted(k for k, n in current_streaks.items() if n > prev_streaks.get(k, 0))
+    if new_fails:
+        body.append('### ⚠️ Fetch 실패 endpoint (이번 발행 — silent loss 경고)\n')
+        body.append('다음 endpoint 가 fetch 실패 — 위 본문의 관련 카운트가 누락됐을 수 있음:\n')
+        for ep in new_fails:
+            body.append(f'- `{ep}` (streak 누적 {current_streaks[ep]}회)')
+        body.append('\n_연속 fail_streak ≥ 3 회 시 별도 fetch_fail Issue 알림 (collect 5분 cron 에서 처리)._')
+        body.append('')
 
     # ============================================================
     # 2048 서비스 섹션 — 인프라 + 게임 활동.
@@ -606,6 +648,11 @@ def run_daily_summary():
         daily_stats = {k: v for k, v in daily_stats.items() if k >= cutoff}
         save_daily_stats(daily_stats)
         print(f'  saved: daily-stats.json ({len(daily_stats)} entries)')
+
+    # fetch_fail_streak 추적 결과 state.json 에 저장 — collect 의 fail_streak alert
+    # 정책과 통합. daily 발행 시 streak +1, 정상 fetch 면 reset.
+    if not DRY_RUN or os.environ.get('SAVE_METRICS') == '1':
+        save_state(state)
 
     # 이전 daily-summary close
     prev = list_issues_by_label('daily-summary', state='open')
