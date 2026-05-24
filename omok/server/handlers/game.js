@@ -114,7 +114,7 @@ const onTurnTimeout = (room) => {
       const humanWs = getWsBySessionId(humanSlot.sessionId);
       const humanOnline = humanWs && humanWs.readyState === humanWs.OPEN;
       if (!humanOnline) {
-        console.error('[BOT_GAME_TURN_TIMEOUT_OFFLINE] human timed out while offline (bot will continue solo)', {
+        log.warn('bot_game_turn_timeout_offline', {
           code: room.code, gameId: room.gameId,
           humanColor, humanClientId: humanSlot.clientId, humanNickname: humanSlot.nickname,
           sessionId: humanSlot.sessionId,

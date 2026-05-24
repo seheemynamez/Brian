@@ -20,6 +20,7 @@
 
 const { Worker } = require('worker_threads');
 const path = require('path');
+const log = require('../infra/log');
 
 // 동시 hard d6 (18s) 두 게임 + easy/medium 한 게임 정도까지 큐잉 없이 처리 가능
 // 하도록 3 으로 상향 (이전 기본 2). Render free 512MB 기준 worker 1개 추가 ≈ +50MB
@@ -57,7 +58,7 @@ const setupWorker = (index) => {
     p.resolve(msg);
   });
   w.on('error', (err) => {
-    console.error(`[bot-pool] worker[${index}] error:`, err && err.message);
+    log.error('bot_pool_worker_error', { worker: index, err: err && err.message });
     // 이 워커에 할당된 pending 모두 거부
     for (const [id, p] of pending) {
       if (p.workerIndex === index) {
@@ -71,7 +72,7 @@ const setupWorker = (index) => {
   });
   w.on('exit', (code) => {
     if (code !== 0) {
-      console.error(`[bot-pool] worker[${index}] exited code=${code}, restarting`);
+      log.error('bot_pool_worker_exit', { worker: index, code, action: 'restarting' });
       // exit 가 error 보다 늦게 올 수 있으나 안전하게 한 번 더 재생성 시도
       if (workers[index] === w) {
         busyCount[index] = 0;
@@ -102,7 +103,7 @@ const generateMoveAsync = (board, color, difficulty) => {
     const to = setTimeout(() => {
       if (!pending.has(id)) return;
       pending.delete(id);
-      console.error(`[bot-pool] worker[${workerIndex}] timeout (${WORKER_TIMEOUT_MS}ms) — terminating`);
+      log.error('bot_pool_worker_timeout', { worker: workerIndex, timeout_ms: WORKER_TIMEOUT_MS, action: 'terminating' });
       const w = workers[workerIndex];
       try { w && w.terminate(); } catch {}
       busyCount[workerIndex] = 0;

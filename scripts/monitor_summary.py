@@ -434,15 +434,18 @@ def run_daily_summary():
             # 모든 종결을 분모로 (이탈/포기도 보통 봇 승으로 처리되니 합리적).
             wr = (100.0 * s['wins'] / s['total']) if s['total'] else 0
             wr_str = f'{wr:.1f}%'
-            # 봇 rating 변화 — bot_delta_sum / last_rating.
-            bot_rating = s.get('bot_last_rating')
+            # 봇 rating — server /api/stats.bots[diff].rating 우선 (실시간 정확,
+            # PR — 옛 코드는 24h log 의 마지막 botRating 만 — 24h 외 게임 후 stale).
+            # fallback: 24h log 의 마지막 (server stats 없거나 fetch 실패 시).
+            server_bot = ((server_stats or {}).get('bots') or {}).get(diff) or {}
+            bot_rating = server_bot.get('rating') if server_bot.get('rating') is not None else s.get('bot_last_rating')
             bot_delta = s.get('bot_delta_sum', 0)
             if bot_rating is not None:
                 rating_col = f'{bot_rating} ({bot_delta:+d})'
             else:
                 rating_col = '-'
             body.append(f'| {diff} | {s["total"]} | {s["wins"]}/{s["losses"]}/{s["draws"]} | {wr_str} | {left_total} | {rating_col} | {rating_str} | {stones_str} |')
-        body.append('\n_승률 = 봇 승 / 총. 봇 rating Δ = 24h 누적 변화 (zero-sum). 상대 rating = 사람 측 분포._')
+        body.append('\n_승률 = 봇 승 / 총. 봇 rating = server `/api/stats.bots` 현재값 (fallback: 24h log 마지막). Δ = 24h 누적 변화 (zero-sum). 상대 rating = 사람 측 분포._')
     else:
         body.append('- (봇 게임 데이터 없음)')
     body.append('')
@@ -686,13 +689,21 @@ def run_daily_summary():
     # workflow fix 머지 이전엔 push 안 됐던 버그로 빈 칸이 많음 — fix 이후 채워짐.
     body.append('### 7일 트렌드 (오목)\n')
     if len(trend_days) >= 2:
-        body.append('| 날짜 | CPU max | Aiven Mem | PVP | 봇 | 활성 | 계정 | worker_timeout | hard d6 도달% |')
-        body.append('|---|---|---|---|---|---|---|---|---|')
+        body.append('| 날짜 | CPU max | Aiven Mem | PVP | 봇 | 봇 비율 | 활성 | 계정 | worker_timeout | hard d6 도달% |')
+        body.append('|---|---|---|---|---|---|---|---|---|---|')
         for d in trend_days:
             cpu_v = f'{d["omok_cpu_max_m"]:.1f}m' if d['omok_cpu_max_m'] is not None else '-'
             mem_v = f'{d["aiven_mem_max_pct"]:.2f}%' if d['aiven_mem_max_pct'] is not None else '-'
             pvp_v = str(d['pvp_games']) if d['pvp_games'] is not None else '-'
             bot_v = str(d['bot_games']) if d['bot_games'] is not None else '-'
+            # 봇 비율 — bot / (pvp + bot). 사용자 행동 추세 (봇 의존도 ↑↓).
+            pvp_n = d.get('pvp_games') or 0
+            bot_n = d.get('bot_games') or 0
+            total_games = pvp_n + bot_n
+            if total_games > 0:
+                bot_pct_v = f'{100.0 * bot_n / total_games:.1f}%'
+            else:
+                bot_pct_v = '-'
             active_v = str(d['active_users']) if d.get('active_users') is not None else '-'
             total_v = str(d['total_users']) if d.get('total_users') is not None else '-'
             wt_v = str(d['worker_timeout']) if d.get('worker_timeout') is not None else '-'
@@ -702,8 +713,8 @@ def run_daily_summary():
                 d6_v = f'{d["hard_d6_pct"]:.1f}% (n={n})'
             else:
                 d6_v = '-'
-            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {active_v} | {total_v} | {wt_v} | {d6_v} |')
-        body.append('\n_활성 = 그 날 game_over 의 unique 사람 닉. 계정 = `/api/stats` total_human_users. worker_timeout = 그 날 모든 5분 snapshot 의 카운트 합산. hard d6 도달% = 그 날 hard 봇 d6 cfg search 중 reached=d6 비율 (목표: 50%+)._')
+            body.append(f'| {d["date"]} | {cpu_v} | {mem_v} | {pvp_v} | {bot_v} | {bot_pct_v} | {active_v} | {total_v} | {wt_v} | {d6_v} |')
+        body.append('\n_활성 = 그 날 game_over 의 unique 사람 닉. 계정 = `/api/stats` total_human_users. 봇 비율 = bot / (PVP + bot). worker_timeout = 그 날 모든 5분 snapshot 의 카운트 합산. hard d6 도달% = 그 날 hard 봇 d6 cfg search 중 reached=d6 비율 (목표: 50%+)._')
     else:
         body.append('- 데이터 부족 (수집 시작 직후)')
     body.append('')
