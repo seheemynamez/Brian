@@ -1057,11 +1057,16 @@ test('RK1: 봇 게임 leave_room → 사람 rating 감소 + recent_games 적재'
   clearRankingMessages(ws);
   sendJson(ws, { type: 'request_ranking', limit: 50 });
   const list = await waitForType(ws, 'ranking_list');
-  const me = list.entries.find((e) => e.clientId === 'cid-rk1');
-  assert(me, 'me not in ranking after game');
-  assert(me.rating < 1200, `expected rating < 1200 (INITIAL) after loss, got ${me.rating}`);
-  assert(me.losses === 1, `expected losses=1, got ${me.losses}`);
-  assert(typeof me.tier === 'string' && me.tier.length > 0, 'tier missing');
+  // unranked feature: 1판 사용자는 top ranking 에서 빠지고 me 는 placement 상태로 반환.
+  const meInTop = list.entries.find((e) => e.clientId === 'cid-rk1');
+  assert(!meInTop, '1판 user 는 top ranking 제외돼야 함 (unranked)');
+  assert(list.me, 'me entry 누락');
+  assert(list.me.unranked === true, `me.unranked=true 기대, got ${list.me.unranked}`);
+  assert(list.me.placement && list.me.placement.played === 1 && list.me.placement.needed === 10,
+    `placement={played:1, needed:10} 기대, got ${JSON.stringify(list.me.placement)}`);
+  assert(list.me.losses === 1, `expected losses=1, got ${list.me.losses}`);
+  assert(list.me.rating === undefined, 'unranked me 는 rating 가림');
+  assert(list.me.tier === undefined,   'unranked me 는 tier 가림');
 
   clearRankingMessages(ws);
   sendJson(ws, { type: 'request_recent_games' });
@@ -1071,6 +1076,11 @@ test('RK1: 봇 게임 leave_room → 사람 rating 감소 + recent_games 적재'
   assert(myGame, 'my game not in recent_games');
   assert(myGame.reason === 'opponent_left', `expected reason=opponent_left, got ${myGame.reason}`);
   assert(myGame.isBot === true, 'expected isBot=true');
+  // rating 검증은 recent_games entry 의 post-rating + delta 로 (unranked 라 ranking 노출 X).
+  const mySide = myGame.black.clientId === 'cid-rk1' ? myGame.black : myGame.white;
+  assert(mySide.rating < 1200, `expected post-rating < 1200 after loss, got ${mySide.rating}`);
+  assert(mySide.delta < 0, `loss delta < 0 기대, got ${mySide.delta}`);
+  assert(mySide.unranked === true, 'recent_games entry.unranked=true 기대');
 });
 
 test('RK2: 봇 user 도 ranking 에 등록', async () => {
@@ -1095,22 +1105,41 @@ test('RK3: PVP leave_room → 떠난 쪽 패배 + ratings 변동', async () => {
   });
   void code;
   sendJson(host, { type: 'leave_room' });
-  await waitForType(guest, 'game_over');
+  const gameOver = await waitForType(guest, 'game_over');
 
+  // unranked feature: 1판 사용자는 top ranking 제외. me 는 placement, ratings 는 game_over payload 검증.
   clearRankingMessages(host);
   sendJson(host, { type: 'request_ranking', limit: 50 });
   const list = await waitForType(host, 'ranking_list');
-  const h = list.entries.find((e) => e.clientId === 'cid-rk3-host');
-  const g = list.entries.find((e) => e.clientId === 'cid-rk3-guest');
-  assert(h && g, 'host/guest not in ranking');
-  // zero-sum (양쪽 INITIAL_RATING=1200 시작 → 합 2400 유지)
-  assert(h.rating + g.rating === 2400, `zero-sum 깨짐: host=${h.rating} guest=${g.rating}`);
-  assert(h.rating < 1200 && g.rating > 1200, 'host should lose, guest should win');
-  assert(h.losses === 1 && g.wins === 1, `wins/losses 카운트 오류`);
+  assert(!list.entries.find((e) => e.clientId === 'cid-rk3-host'), 'host (1판) 는 top ranking 제외');
+  assert(!list.entries.find((e) => e.clientId === 'cid-rk3-guest'), 'guest (1판) 는 top ranking 제외');
+  assert(list.me && list.me.unranked === true, 'host me.unranked=true');
+  assert(list.me.losses === 1, `host losses=1 기대, got ${list.me.losses}`);
+
+  // unranked 양쪽 → game_over payload 의 unranked flag 양쪽 true, ratings/deltas 는 null (rating leak 방지).
+  assert(gameOver.unranked && gameOver.unranked.black === true && gameOver.unranked.white === true,
+    `unranked={black:true,white:true} 기대, got ${JSON.stringify(gameOver.unranked)}`);
+  assert(gameOver.ratings && gameOver.ratings.black === null && gameOver.ratings.white === null,
+    `unranked 사이드 ratings null 기대, got ${JSON.stringify(gameOver.ratings)}`);
+  assert(gameOver.deltas && gameOver.deltas.black === null && gameOver.deltas.white === null,
+    `unranked 사이드 deltas null 기대, got ${JSON.stringify(gameOver.deltas)}`);
+
+  // 실제 rating 변동은 recent_games 의 entry 로 검증 (entry 는 unranked 무관 보존).
+  clearRankingMessages(host);
+  sendJson(host, { type: 'request_recent_games' });
+  const games = await waitForType(host, 'recent_games_list', 2000);
+  const myGame = games.entries.find((g) => g.black.clientId === 'cid-rk3-host');
+  assert(myGame, 'rk3 game not in recent_games');
+  assert(myGame.black.rating + myGame.white.rating === 2400,
+    `zero-sum: black=${myGame.black.rating} white=${myGame.white.rating}`);
+  assert(myGame.black.rating < 1200 && myGame.white.rating > 1200, 'host should lose, guest should win');
+  assert(myGame.black.delta < 0 && myGame.white.delta > 0, 'delta 부호 오류');
 });
 
-test('GO1: PVP leave_room → 상대 game_over payload 에 ratings/deltas 포함', async () => {
-  // PR #74 의 game_over payload 강화 회귀 방지. 종료 화면에서 rating 즉시 반영 의존.
+test('GO1: PVP leave_room → 상대 game_over payload 의 ratings/deltas/unranked shape', async () => {
+  // PR #74 의 game_over payload 강화 회귀 방지 + unranked feature 반영.
+  // 양쪽 1판 user 라 unranked → ratings/deltas 는 null (rating leak 방지),
+  // 실제 rating 검증은 recent_games entry 로.
   const { host, guest } = await bootstrapRoom({
     hostNick: 'GO1Host', hostClientId: 'cid-go1-host',
     guestNick: 'GO1Guest', guestClientId: 'cid-go1-guest',
@@ -1122,19 +1151,27 @@ test('GO1: PVP leave_room → 상대 game_over payload 에 ratings/deltas 포함
   assert(gameOver.winner === 'white', `winner=white 기대, got ${gameOver.winner}`);
   assert(gameOver.reason === 'opponent_left', `reason=opponent_left 기대, got ${gameOver.reason}`);
 
-  // ratings / deltas 누락 안 됨
+  // ratings / deltas object 자체는 있고, unranked 사이드는 null.
   assert(gameOver.ratings, 'game_over.ratings 누락');
   assert(gameOver.deltas,  'game_over.deltas 누락');
-  assert(typeof gameOver.ratings.black === 'number' && typeof gameOver.ratings.white === 'number',
-    `ratings shape 오류: ${JSON.stringify(gameOver.ratings)}`);
-  assert(typeof gameOver.deltas.black  === 'number' && typeof gameOver.deltas.white  === 'number',
-    `deltas shape 오류: ${JSON.stringify(gameOver.deltas)}`);
+  assert(gameOver.ratings.black === null && gameOver.ratings.white === null,
+    `양쪽 unranked → ratings null 기대, got ${JSON.stringify(gameOver.ratings)}`);
+  assert(gameOver.deltas.black === null && gameOver.deltas.white === null,
+    `양쪽 unranked → deltas null 기대, got ${JSON.stringify(gameOver.deltas)}`);
+  assert(gameOver.unranked && gameOver.unranked.black === true && gameOver.unranked.white === true,
+    `unranked={black:true,white:true} 기대, got ${JSON.stringify(gameOver.unranked)}`);
+  // placement progress 노출 — 본인 색 화면용 진행도.
+  assert(gameOver.placement && gameOver.placement.black && gameOver.placement.black.played === 1,
+    `placement.black.played=1 기대, got ${JSON.stringify(gameOver.placement)}`);
 
-  // winner (white) delta > 0, loser (black) delta < 0. zero-sum.
-  assert(gameOver.deltas.white > 0, `winner delta > 0 기대, got ${gameOver.deltas.white}`);
-  assert(gameOver.deltas.black < 0, `loser delta < 0 기대, got ${gameOver.deltas.black}`);
-  assert(gameOver.deltas.white + gameOver.deltas.black === 0,
-    `zero-sum: white(${gameOver.deltas.white}) + black(${gameOver.deltas.black}) = ${gameOver.deltas.white + gameOver.deltas.black}`);
+  // 실제 rating 변동은 recent_games 에서 (entry 는 unranked 무관 보존).
+  clearRankingMessages(guest);
+  sendJson(guest, { type: 'request_recent_games' });
+  const games = await waitForType(guest, 'recent_games_list', 2000);
+  const myGame = games.entries.find((g) => g.gameId === gameOver.gameId);
+  assert(myGame, 'go1 game not in recent_games');
+  assert(myGame.black.delta < 0 && myGame.white.delta > 0, 'delta 부호 오류');
+  assert(myGame.black.delta + myGame.white.delta === 0, 'zero-sum 깨짐');
 });
 
 test('GO2: 봇 게임 grace 만료 후 opponent_abandoned payload 에 ratings/deltas 포함', async () => {
@@ -1150,16 +1187,20 @@ test('GO2: 봇 게임 grace 만료 후 opponent_abandoned payload 에 ratings/de
   // grace + 약간 여유 — finalizeAbandon 실행 + rating update + room cleanup 까지.
   await sleep(GRACE + 700);
 
-  // 새 ws 로 ranking 조회
+  // 새 ws 로 recent_games 조회 — unranked 라 top ranking 에는 안 나옴.
+  // recent_games entry 의 post-rating + delta 로 rating 감소 검증.
   const obs = await open();
   sendJson(obs, { type: 'set_nickname', nickname: 'GO2obs', clientId: 'cid-go2-obs' });
   clearRankingMessages(obs);
-  sendJson(obs, { type: 'request_ranking', limit: 50 });
-  const list = await waitForType(obs, 'ranking_list', 2000);
-  const me = list.entries.find((e) => e.clientId === 'cid-go2');
-  assert(me, 'GO2 user not in ranking after abandoned');
-  assert(me.rating < 1200, `abandoned = 사람 패배 → rating < 1200, got ${me.rating}`);
-  assert(me.losses === 1, `losses=1, got ${me.losses}`);
+  sendJson(obs, { type: 'request_recent_games' });
+  const games = await waitForType(obs, 'recent_games_list', 2000);
+  const myGame = games.entries.find((g) =>
+    g.black.clientId === 'cid-go2' || g.white.clientId === 'cid-go2');
+  assert(myGame, 'GO2 game not in recent_games after abandoned');
+  const mySide = myGame.black.clientId === 'cid-go2' ? myGame.black : myGame.white;
+  assert(mySide.rating < 1200, `abandoned = 사람 패배 → rating < 1200, got ${mySide.rating}`);
+  assert(mySide.delta < 0, `delta < 0 기대, got ${mySide.delta}`);
+  assert(myGame.reason === 'abandoned', `reason=abandoned 기대, got ${myGame.reason}`);
   obs.close();
 });
 

@@ -293,6 +293,9 @@ const onGameStart = (msg) => {
   state.lastMove = null;
   state.gameOver = false;
   state.lastRatingDeltas = null;  // 새 게임 — 이전 변동분 잔존 방지 (renderRatingChange 가 hide)
+  state.lastUnranked = null;
+  state.lastPlacementJustReached = null;
+  state.lastPlacement = null;
   state.role = 'player';
   if (msg.sessionId) {
     state.sessionId = msg.sessionId;
@@ -450,6 +453,9 @@ const onGameOver = (msg) => {
   if (msg.ratings) {
     state.ratings = msg.ratings;
     state.lastRatingDeltas = msg.deltas || null;
+    state.lastUnranked = msg.unranked || null;
+    state.lastPlacementJustReached = msg.placementJustReached || null;
+    state.lastPlacement = msg.placement || null;
     updatePlayerCards();
   }
   stopTimerTick();
@@ -512,6 +518,9 @@ const onOpponentAbandoned = (msg) => {
   if (msg.ratings) {
     state.ratings = msg.ratings;
     state.lastRatingDeltas = msg.deltas || null;
+    state.lastUnranked = msg.unranked || null;
+    state.lastPlacementJustReached = msg.placementJustReached || null;
+    state.lastPlacement = msg.placement || null;
     updatePlayerCards();
   }
   // msg.color 는 abandoned 한 쪽 (= loser). winner 는 그 반대.

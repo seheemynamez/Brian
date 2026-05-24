@@ -14,6 +14,12 @@ const {
 const { BOT_NICKNAMES } = require('../game/bot');
 const log = require('../infra/log');
 
+// Placement (배치) — 사람 user 가 PLACEMENT_GAMES 미만 플레이 시 unranked.
+// PVP+봇 합산. unranked 는 랭킹/티어/레이팅 display 가리고 internal Elo 는 그대로.
+const PLACEMENT_GAMES = 10;
+const playedCount = (u) => (u?.wins || 0) + (u?.losses || 0) + (u?.draws || 0);
+const isUnranked = (u) => !!u && !u.isBot && playedCount(u) < PLACEMENT_GAMES;
+
 // 봇 clientId 식별 — recordGameResult 의 nickname 덮어쓰기 추적용.
 const isBotClientId = (cid) => typeof cid === 'string' && cid.startsWith('_bot_');
 const expectedBotNickname = (cid) => {
@@ -42,14 +48,21 @@ const getRatingPreview = (clientId, isBot = false, botDifficulty = null) => {
 };
 
 // room.players 양쪽 색의 rating 을 한꺼번에 — 핸들러에서 game_start payload 빌드용.
-const buildPlayerRatings = (room) => {
-  const blk = room?.players?.black;
-  const wht = room?.players?.white;
-  return {
-    black: blk ? getRatingPreview(blk.clientId, blk.type === 'bot', blk.difficulty) : null,
-    white: wht ? getRatingPreview(wht.clientId, wht.type === 'bot', wht.difficulty) : null,
-  };
+// 사람 사이드: user 가 아직 없거나 (recordGameResult 호출 전) unranked 면 null
+// → 상대/관전자에게 rating/tier 노출 안 됨. 봇은 항상 노출.
+const ratingForSlot = (slot) => {
+  if (!slot) return null;
+  if (slot.type === 'bot') {
+    return getRatingPreview(slot.clientId, true, slot.difficulty);
+  }
+  const u = slot.clientId ? users.get(slot.clientId) : null;
+  if (!u || isUnranked(u)) return null;
+  return u.rating;
 };
+const buildPlayerRatings = (room) => ({
+  black: ratingForSlot(room?.players?.black),
+  white: ratingForSlot(room?.players?.white),
+});
 
 // 없으면 새로 만들고 valkey 에도 sync. 봇이면 봇 전용 초기 rating.
 // 있으면 nickname 만 마지막 값으로 업데이트 (마지막 사용한 닉 보존).
@@ -109,6 +122,11 @@ const recordGameResult = (room, { winnerColor, reason, bothDisconnected = false 
   const { deltaA: deltaBlack, deltaB: deltaWhite } =
     computeDeltas(blackUser.rating, whiteUser.rating, resultBlack);
 
+  // placement 진입 직전 played count snapshot — 이 게임으로 PLACEMENT_GAMES 달성하면
+  // entry 에 placementJustReached: true 표시. game_over 화면이 "티어 부여" 메세지 표시용.
+  const blackPlayedBefore = playedCount(blackUser);
+  const whitePlayedBefore = playedCount(whiteUser);
+
   blackUser.rating += deltaBlack;
   whiteUser.rating += deltaWhite;
   if (winnerColor === 'black')      { blackUser.wins++;  whiteUser.losses++; }
@@ -152,6 +170,14 @@ const recordGameResult = (room, { winnerColor, reason, bothDisconnected = false 
       rating: blackUser.rating,
       delta: deltaBlack,
       isBot: blackSlot.type === 'bot',
+      unranked: isUnranked(blackUser),
+      placementJustReached:
+        !blackUser.isBot &&
+        blackPlayedBefore === PLACEMENT_GAMES - 1 &&
+        playedCount(blackUser) === PLACEMENT_GAMES,
+      placement: blackUser.isBot
+        ? null
+        : { played: playedCount(blackUser), needed: PLACEMENT_GAMES },
     },
     white: {
       clientId: whiteSlot.clientId,
@@ -159,6 +185,14 @@ const recordGameResult = (room, { winnerColor, reason, bothDisconnected = false 
       rating: whiteUser.rating,
       delta: deltaWhite,
       isBot: whiteSlot.type === 'bot',
+      unranked: isUnranked(whiteUser),
+      placementJustReached:
+        !whiteUser.isBot &&
+        whitePlayedBefore === PLACEMENT_GAMES - 1 &&
+        playedCount(whiteUser) === PLACEMENT_GAMES,
+      placement: whiteUser.isBot
+        ? null
+        : { played: playedCount(whiteUser), needed: PLACEMENT_GAMES },
     },
   };
   store.persistRecentGame(entry);
@@ -182,8 +216,9 @@ const compareForRanking = (a, b) => {
 };
 
 // 메모리 cache 의 users 를 정렬 → top N 반환.
+// unranked 사람 user (PLACEMENT_GAMES 미만) 는 완전 제외 — 봇은 포함 (배치 무관).
 const getTopRanking = (limit = 10) => {
-  const arr = Array.from(users.values());
+  const arr = Array.from(users.values()).filter((u) => !isUnranked(u));
   arr.sort(compareForRanking);
   return arr.slice(0, limit).map((u) => ({
     clientId: u.clientId,
@@ -199,12 +234,25 @@ const getTopRanking = (limit = 10) => {
 
 const getRecentGames = (limit = 10) => recentGames.slice(0, limit);
 
-// 특정 clientId 의 ranking entry + 전체 순위. user 미등록이면 null.
+// 특정 clientId 의 ranking entry. user 미등록이면 null.
+// unranked 면 rank/rating/tier 대신 placement 정보만 반환 → 클라가 "프레이스 N/10" 표시.
 const getMyRankEntry = (clientId) => {
   if (!clientId) return null;
   const u = users.get(clientId);
   if (!u) return null;
-  const arr = Array.from(users.values());
+  if (isUnranked(u)) {
+    return {
+      unranked: true,
+      placement: { played: playedCount(u), needed: PLACEMENT_GAMES },
+      clientId: u.clientId,
+      nickname: u.nickname,
+      wins: u.wins,
+      losses: u.losses,
+      draws: u.draws,
+      isBot: u.isBot,
+    };
+  }
+  const arr = Array.from(users.values()).filter((x) => !isUnranked(x));
   arr.sort(compareForRanking);
   const idx = arr.findIndex((x) => x.clientId === clientId);
   if (idx < 0) return null;
@@ -232,15 +280,19 @@ const getMyRankEntry = (clientId) => {
 // 옛 코드는 봇 제외 → monitor 가 24h game_over 로그의 마지막 botRating 추정
 // (24h 외 봇 게임 후 stale). 이제 직접 노출. clientId 형식 `_bot_{difficulty}`
 // 에서 difficulty 만 키로.
+// tiers: 기존 7 티어 + 'Unranked' (PLACEMENT_GAMES 미만 사람 user) = 8키.
+// 모든 사람 user 는 정확히 하나의 티어에 카운트. 봇은 아예 제외.
 const getUserStats = () => {
   const tiers = Object.fromEntries(TIER_THRESHOLDS.map((t) => [t.name, 0]));
+  tiers.Unranked = 0;
   const bots = {};
   let total = 0;
   for (const u of users.values()) {
     if (!u) continue;
     if (!u.isBot) {
       total++;
-      tiers[getTier(u.rating)]++;
+      if (isUnranked(u)) tiers.Unranked++;
+      else tiers[getTier(u.rating)]++;
     } else if (typeof u.clientId === 'string' && u.clientId.startsWith('_bot_')) {
       const diff = u.clientId.slice('_bot_'.length);
       bots[diff] = {
@@ -260,4 +312,5 @@ module.exports = {
   getRatingPreview, buildPlayerRatings,
   getUserStats,                     // /api/stats endpoint 용 (PR #95)
   compareForRanking,  // unit test 용 — 정렬 로직 자체 검증
+  isUnranked, playedCount, PLACEMENT_GAMES,  // unranked feature — handlers / tests
 };

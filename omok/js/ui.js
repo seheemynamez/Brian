@@ -291,6 +291,8 @@ export const showGameOver = (winner, reason) => {
 //   - 변동된 사람 = 본인/상대 무관. A 만 변동되면 A 한 줄, B 만이면 B 한 줄, 둘 다면 두 줄.
 //   - 관전자 화면에도 동일 (당사자 한정 X — tier 변동 자체가 이벤트라 모두에게 노출).
 //   - 양쪽 다 tier 동일 → row 자체 hidden (rating delta 만 있는 경우엔 표시 X).
+//   - unranked: placementJustReached 시점에만 "🎉 티어 부여 — {tierAfter}" 1줄 표시.
+//     아직 unranked 면 변동 자체 숨김 (rating leak 방지).
 const renderRatingChange = () => {
   const el = $('rating-change');
   if (!el) return;
@@ -302,7 +304,37 @@ const renderRatingChange = () => {
   const buildLine = (color) => {
     const after = state.ratings?.[color];
     const delta = state.lastRatingDeltas?.[color];
+    const justReached = !!state.lastPlacementJustReached?.[color];
+    const stillUnranked = !!state.lastUnranked?.[color];
+    const nick = state.nicknames?.[color] || (color === 'black' ? '흑' : '백');
+
+    // placement 막 통과 — 티어 부여 축하 메시지. 양쪽/관전자 모두 노출 (이벤트성).
+    // before/after 노출 X (배치 중엔 가렸으니까).
+    if (justReached && after != null) {
+      const tierAfter = tierOf(after);
+      const emojiAfter = TIER_EMOJI[tierAfter] || '⚙️';
+      return `<div class="rating-line placement-graduated">
+        <span class="rating-label">${escapeText(nick)}</span>
+        <span class="placement-msg">🎉 배치 완료 — ${emojiAfter} ${tierAfter}</span>
+      </div>`;
+    }
+    // 아직 unranked — 본인 색에 한해 진행도 표시 ("남은 N판"). 상대/관전자한텐 가림 (rating leak 방지).
+    if (stillUnranked) {
+      const isMine = state.role === 'player' && state.myColor === color;
+      if (!isMine) return '';
+      const p = state.lastPlacement?.[color];
+      if (!p || typeof p.played !== 'number') return '';
+      const remain = Math.max(0, (p.needed || 10) - p.played);
+      const remainMsg = remain > 0
+        ? `남은 ${remain}판이면 랭킹 등록!`
+        : `곧 배치 완료!`;
+      return `<div class="rating-line placement-progress-line">
+        <span class="rating-label">${escapeText(nick)}</span>
+        <span class="placement-msg">📋 배치 ${p.played}/${p.needed} — ${remainMsg}</span>
+      </div>`;
+    }
     if (after == null || delta == null) return '';
+
     const before = after - delta;
     const tierBefore = tierOf(before);
     const tierAfter  = tierOf(after);
@@ -316,7 +348,6 @@ const renderRatingChange = () => {
     const deltaCls = delta > 0 ? 'pos' : 'neg';
     const emojiBefore = TIER_EMOJI[tierBefore] || '⚙️';
     const emojiAfter  = TIER_EMOJI[tierAfter]  || '⚙️';
-    const nick = state.nicknames?.[color] || (color === 'black' ? '흑' : '백');
 
     return `<div class="rating-line">
       <span class="rating-label">${escapeText(nick)}</span>
@@ -327,7 +358,7 @@ const renderRatingChange = () => {
   };
 
   const lines = buildLine('black') + buildLine('white');
-  if (!lines) return hide();   // 양쪽 다 tier 동일
+  if (!lines) return hide();
   el.innerHTML = lines;
   el.classList.remove('hidden');
 };
@@ -470,7 +501,27 @@ const renderRankItem = (entry, rank, { isMe }) => {
   `;
 };
 
-// msg: { entries, me } — entries 는 top N, me 는 본인 entry+rank (또는 null=미등록).
+// 본인이 unranked 일 때 me-extra 에 표시할 placement 카드.
+// rating/tier/rank 다 숨김 — W/L/D + "배치 N/10" 만.
+const renderPlacementCard = (me) => {
+  const p = me.placement || { played: 0, needed: 10 };
+  const remain = Math.max(0, p.needed - p.played);
+  const nick = escapeText(me.nickname || '?');
+  const rec = `${me.wins || 0}승 ${me.losses || 0}패${(me.draws || 0) ? ` ${me.draws}무` : ''}`;
+  return `
+    <div class="rank-item is-me placement-card" data-cid="${escapeText(me.clientId || '')}">
+      <div class="rank-num">–</div>
+      <div class="placement-badge" title="배치 ${p.played}/${p.needed}">📋</div>
+      <div class="rank-nick">${nick}<span class="rank-me-badge">나</span></div>
+      <div class="placement-progress">배치 ${p.played}/${p.needed}</div>
+      <div class="rank-record">${rec}</div>
+      <div class="placement-hint">남은 ${remain}판이면 랭킹 등록!</div>
+    </div>
+  `;
+};
+
+// msg: { entries, me } — entries 는 top N (unranked 제외), me 는 본인 entry (unranked
+// 면 { unranked: true, placement, ...W/L/D }, 아니면 { rank, rating, tier, ... }).
 export const updateRanking = (msg) => {
   const entries = msg && Array.isArray(msg.entries) ? msg.entries : [];
   const me = msg && msg.me ? msg.me : null;
@@ -483,7 +534,16 @@ export const updateRanking = (msg) => {
   count.textContent = entries.length;
   if (!entries.length) {
     wrap.innerHTML = '<div class="rooms-empty">아직 랭킹 데이터가 없어요</div>';
-    if (meExtra) meExtra.classList.add('hidden');
+    if (meExtra) {
+      // entries 비어도 본인이 unranked 면 placement 카드는 표시 (게임 시작 유도).
+      if (me && me.unranked) {
+        meExtra.classList.remove('hidden');
+        meExtra.innerHTML = renderPlacementCard(me);
+      } else {
+        meExtra.classList.add('hidden');
+        meExtra.innerHTML = '';
+      }
+    }
     if (toggle) toggle.classList.add('hidden');
     return;
   }
@@ -494,16 +554,24 @@ export const updateRanking = (msg) => {
   // 4개 이상이면 토글 버튼 노출 — 기본 3개만 보이고 펼치면 전체.
   if (toggle) toggle.classList.toggle('hidden', entries.length <= 3);
 
-  // 본인 row — top N 밖에 있으면 me-extra 에 표시. top 안이면 hidden.
-  // me === null (미등록) 도 hidden.
+  // 본인 row — me 의 케이스별 처리.
+  //   - unranked: placement 카드 (rating/tier/rank 숨김 + W/L/D + "배치 N/10").
+  //   - top N 안: hidden (entries 에 이미 표시됨).
+  //   - top N 밖 (rated): rank 포함된 일반 row.
+  //   - me=null: hidden.
   if (meExtra) {
-    const meInTop = me && entries.some((e) => e.clientId === me.clientId);
-    if (!me || meInTop) {
-      meExtra.classList.add('hidden');
-      meExtra.innerHTML = '';
-    } else {
+    if (me && me.unranked) {
       meExtra.classList.remove('hidden');
-      meExtra.innerHTML = renderRankItem(me, me.rank, { isMe: true });
+      meExtra.innerHTML = renderPlacementCard(me);
+    } else {
+      const meInTop = me && entries.some((e) => e.clientId === me.clientId);
+      if (!me || meInTop) {
+        meExtra.classList.add('hidden');
+        meExtra.innerHTML = '';
+      } else {
+        meExtra.classList.remove('hidden');
+        meExtra.innerHTML = renderRankItem(me, me.rank, { isMe: true });
+      }
     }
   }
 };
@@ -541,9 +609,12 @@ const renderRecentGameItem = (g) => {
     const isMe = s.clientId === myCid ? ' is-me-row' : '';
     const nick = escapeText(s.nickname || '?');
     const bot = s.isBot ? `<span class="rank-bot-mark">🤖</span>` : '';
-    const delta = typeof s.delta === 'number'
-      ? `<span class="rating-delta ${deltaClass(s.delta)}">${deltaText(s.delta)}</span>`
-      : '';
+    // unranked (placement 미달) — delta 숨김. 봇은 항상 rated.
+    const delta = s.unranked
+      ? ''
+      : (typeof s.delta === 'number'
+          ? `<span class="rating-delta ${deltaClass(s.delta)}">${deltaText(s.delta)}</span>`
+          : '');
     return `<span class="recent-game-side${winnerOf}${isMe}">
       <span class="side-color-dot ${color}"></span>${nick}${bot} ${delta}
     </span>`;

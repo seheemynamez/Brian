@@ -7,7 +7,7 @@ Korean Gomoku WebSocket server. 정적 파일 호스팅 (omok/ 디렉토리) + `
 ```bash
 npm install
 npm start             # 기본 — memory backend, port 8080
-npm run test:unit     # 단위 테스트 (renju / rating / game-logic / parity / bot / ranking-sort / queue-bot-offer / rooms-visibility 등 — 140 케이스)
+npm run test:unit     # 단위 테스트 (renju / rating / game-logic / parity / bot / ranking-sort / users-unranked / queue-bot-offer / rooms-visibility 등 — 163 케이스)
 npm test              # E2E 회귀 (recovery / reconnect / spectator / bot lifecycle — 79 시나리오, memory backend)
 npm run test:ci       # 둘 다 (CI 와 동일)
 npm run test:valkey   # E2E 를 valkey backend 로 (.env 의 VALKEY_URL 사용, prefix omok:test 자동격리)
@@ -129,13 +129,13 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 - `{ type: "resume_success", ... }` / `{ type: "resume_failed", reason }`
 - `{ type: "move", row, col, color, turn? }`
 - `{ type: "turn_started", turn, deadline }` / `{ type: "turn_skipped", skipped, turn }`
-- `{ type: "game_over", winner, line, gameId, playerIds }`
+- `{ type: "game_over", winner, line, gameId, playerIds, ratings?, deltas?, unranked?, placementJustReached?, placement? }` — `ratings/deltas` 는 `{black, white}` 사후값/변동분. `unranked.{black,white}` 는 게임 적용 후 그 사이드가 여전히 unranked 인지. `placementJustReached.{black,white}` 는 이 게임으로 PLACEMENT_GAMES (10) 를 막 채웠는지 — 클라가 "🎉 배치 완료 — {티어}" 메시지 분기 (양쪽/관전자 모두 노출). `placement.{black,white}` 는 `{played, needed}` 또는 봇이면 null — 클라가 본인 색이 unranked 일 때 "📋 배치 N/10 — 남은 K판이면 랭킹 등록!" 진행도 표시 (본인 한정 — 상대/관전자한텐 가림).
 - `{ type: "rematch_pending", who }`
 - `{ type: "opponent_disconnected", color, deadline }` / `{ type: "opponent_reconnected", color }`
 - `{ type: "opponent_left" }` / `{ type: "opponent_abandoned", color }`
 - `{ type: "spectator_list", spectators }` / `{ type: "spectator_replaced" }`
 - `{ type: "online_count", n }` / `{ type: "online_list", nicknames }` / `{ type: "rooms_list", rooms }`
-- `{ type: "ranking_list", entries, me? }` / `{ type: "recent_games_list", entries }`
+- `{ type: "ranking_list", entries, me? }` / `{ type: "recent_games_list", entries }` — `entries` 는 PLACEMENT_GAMES (10) 미달 사람 user 를 제외한 rated 만. 봇은 항상 포함. `me` 는 rated 면 `{rank, rating, tier, ...}`, unranked 면 `{unranked:true, placement:{played, needed:10}, nickname, wins, losses, draws, ...}` — rating/tier/rank 가림. `recent_games_list.entries[i].{black,white}` 는 `unranked` flag 포함 — 클라가 unranked 사이드 delta 숨김.
 - `{ type: "matched", code }` / `{ type: "queue_waiting" }` / `{ type: "queue_canceled", reason }`
 - `{ type: "bot_offer" }`
 - `{ type: "player_replaced" }`
@@ -165,11 +165,11 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 ### HTTP endpoint
 - `GET /` — 정적 파일 (omok 클라이언트). [omok/index.html](../index.html) 등.
 - `GET /i/{CODE}?n={NICK}` — 초대 링크. OG 메타 응답 후 canonical URL 로 redirect. [infra/share.js](infra/share.js).
-- `GET /api/stats` — 운영 통계 (monitor 가 5분마다 호출). `{ total_human_users, tiers, bots, ts }` JSON. 인증 없음, no-store cache. **side-effect**: 호출 시점에 today daily Hash 에 `total_human_users` + `tier_*` snapshot — 7d trend 에서 KST 별 end-of-day 계정 수 / 티어 분포 조회 가능 (옛 `daily-stats.json` 대체).
+- `GET /api/stats` — 운영 통계 (monitor 가 5분마다 호출). `{ total_human_users, tiers, bots, ts }` JSON. `tiers` 는 8 키 (Iron / Bronze / Silver / Gold / Platinum / Diamond / Master / **Unranked**) — Unranked 는 PLACEMENT_GAMES (10) 미달 사람 user 의 카운트. 인증 없음, no-store cache. **side-effect**: 호출 시점에 today daily Hash 에 `total_human_users` + `tier_*` snapshot — 7d trend 에서 KST 별 end-of-day 계정 수 / 티어 분포 조회 가능 (옛 `daily-stats.json` 대체).
 - `GET /api/daily-stats?date=YYYY-MM-DD` — KST 기준 일별 카운터 + SET 크기 + snapshot. valkey HGETALL/SCARD 직접 (cache 우회). 응답:
   - **counters** (HINCRBY): `pvp_games, bot_games, total_bot_moves, worker_timeout, no_move, bot_retry, bot_skip, heartbeat_terminate, ws_connected, ws_disconnected`
   - **SET 크기** (SCARD, `_backfill` Hash field 폴백): `active_users, bot_retry_rooms, bot_retry_clients, bot_skip_rooms, bot_skip_clients`
-  - **snapshot** (`/api/stats` 부수효과): `total_human_users` (int / null), `tiers` (dict / null)
+  - **snapshot** (`/api/stats` 부수효과): `total_human_users` (int / null), `tiers` (8키 dict 또는 null — Iron/Bronze/Silver/Gold/Platinum/Diamond/Master/Unranked)
   - **봇 튜닝 지표** (bot_moves LIST 에서 derive): `hard_d6_pct, hard_d6_n` (cfgD=6 search 중 reached=6 비율)
   - 메타: `date, ts`. 잘못된 date 형식은 400.
 - `GET /api/daily-games?date=YYYY-MM-DD` — game_over 매 게임의 raw JSON 배열 (LPUSH 누적, 최신 머리). 응답: `{ date, count, items: [...], ts }`. items 각 entry: `gameOverFields` (code/gameId/bot/botDiff/blackNick/whiteNick/blackRating/whiteRating/blackDelta/whiteDelta/stones/humanTurnsMs/winner/reason/ts). monitor 의 bot_perf / player_acts / TOP / movers / thinking time / reason 계산 source.
