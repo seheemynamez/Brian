@@ -27,6 +27,10 @@ const otherColor = (c) => (c === 'black' ? 'white' : 'black');
 // 봇 게임 식별 (bot=true/false) + 봇 난이도 + 양 색 nickname + rating + delta.
 // entry 가 null (양쪽 동시 끊김 케이스 등) 이면 rating/delta 필드는 undefined — log 가 skip.
 // stones = 종료 시점 보드 돌 수 = 게임 길이 지표.
+// humanTurnsMs = 사람 측 매 차례 elapsed (ms) CSV — monitor 가 일간 avg/p50/p95
+// 집계해 "사람 thinking time" 지표로 사용. 봇 차례는 제외 (봇은 search timeout 으로
+// 별도 trackable). 게임 도중 새로고침/disconnect 로 paused→resumed 된 차례도
+// 실제 사람이 보낸 시간만 누적됨 (pauseTurnTimer / resumeTurnTimer 로직 참고).
 const gameOverFields = (room, entry, extra) => {
   const black = room.players?.black;
   const white = room.players?.white;
@@ -40,6 +44,10 @@ const gameOverFields = (room, entry, extra) => {
       }
     }
   }
+  // 사람 turn 시간 CSV — log fmt 가 공백 있는 값을 quote 처리하므로 ',' 만 사용.
+  // 빈 배열이면 필드 자체 omit (undefined → log helper 가 skip).
+  const turns = room.humanTurnsMs;
+  const humanTurnsMs = (Array.isArray(turns) && turns.length) ? turns.join(',') : undefined;
   return {
     code: room.code, gameId: room.gameId,
     bot: !!room.hasBot, botDiff,
@@ -47,6 +55,7 @@ const gameOverFields = (room, entry, extra) => {
     blackRating: entry?.black?.rating, whiteRating: entry?.white?.rating,
     blackDelta: entry?.black?.delta, whiteDelta: entry?.white?.delta,
     stones,
+    humanTurnsMs,
     ...extra,
   };
 };
@@ -65,6 +74,9 @@ const recordGameOverDailyCounter = (room) => {
 const startTurnTimer = (room) => {
   clearTurnTimer(room);
   room.turnDeadline = Date.now() + TURN_TIMEOUT_MS;
+  // 차례 시작 시각 — applyMove 시 elapsed 계산 (사람 차례면 humanTurnsMs 에 push).
+  // pause/resume 거치면 그 사이 시간은 카운트 안 됨 (resumeTurnTimer 가 보정).
+  room.turnStartedAt = Date.now();
   roomRuntime.setTimer(room.code, 'turnTimer', setTimeout(() => onTurnTimeout(room), TURN_TIMEOUT_MS));
   // timeoutMs 도 같이 보냄 — 클라이언트가 시계 skew 로 31초 표시되는 케이스 방지 (cap 용).
   broadcastRoom(room, { type: 'turn_started', turn: room.turn, deadline: room.turnDeadline, timeoutMs: TURN_TIMEOUT_MS });
@@ -74,6 +86,7 @@ const clearTurnTimer = (room) => {
   roomRuntime.clearTimer(room.code, 'turnTimer');
   room.turnDeadline = 0;
   room.turnRemainMs = 0;
+  room.turnStartedAt = 0;
 };
 
 // 일시 정지 — disconnect 시 사용. 현 turn 의 남은 시간을 turnRemainMs 에 저장 후 timer 정지.
@@ -85,6 +98,7 @@ const pauseTurnTimer = (room) => {
   }
   roomRuntime.clearTimer(room.code, 'turnTimer');
   room.turnDeadline = 0;
+  // turnStartedAt 은 그대로 유지 — resumeTurnTimer 가 turnRemainMs 로부터 새 startedAt 보정.
 };
 
 // resume/reclaim 시 사용 — pauseTurnTimer 가 저장한 turnRemainMs 로 timer 재개.
@@ -94,6 +108,10 @@ const pauseTurnTimer = (room) => {
 const resumeTurnTimer = (room) => {
   const remain = (room.turnRemainMs && room.turnRemainMs > 0) ? room.turnRemainMs : TURN_TIMEOUT_MS;
   room.turnDeadline = Date.now() + remain;
+  // 남은 시간으로부터 "이미 소비된" 시간을 역산해 turnStartedAt 보정.
+  // pause 전 elapsed = TURN_TIMEOUT_MS - remain → 그만큼 과거로 startedAt 세팅 →
+  // applyMove 의 elapsed = (now - startedAt) 가 실제 사람이 보낸 누적 시간과 일치.
+  room.turnStartedAt = Date.now() - (TURN_TIMEOUT_MS - remain);
   roomRuntime.setTimer(room.code, 'turnTimer', setTimeout(() => onTurnTimeout(room), remain));
   room.turnRemainMs = 0;
   // 양쪽 + spectator 다 새 deadline 받게 turn_started broadcast 재사용.
@@ -159,6 +177,8 @@ const startGame = (room) => {
   room.lastMove = null;
   room.rematchVotes.clear();
   room.loser = null;
+  // 사람 차례 thinking time 누적 (ms). 게임마다 새로 시작 — game_over 로그에 CSV 로 출력.
+  room.humanTurnsMs = [];
 
   const blackSlot = room.players.black;
   const whiteSlot = room.players.white;
@@ -225,6 +245,19 @@ const applyMove = (room, color, row, col, opts) => {
         });
       }
       return;
+    }
+  }
+
+  // 사람 차례 elapsed 누적 — 봇은 search timeout 으로 측정되므로 제외.
+  // forbidden rollback 이후이므로 실제로 board 에 commit 된 수만 카운트 (한 차례
+  // 안에서 금수 재시도가 여러 번 일어나도 마지막 valid move 1건만 push).
+  // turnStartedAt 이 없는 옛 hydrated room (이 PR 직전 활성 게임) 도 안전하게 skip.
+  if (opts && opts.actor === 'human' && room.turnStartedAt > 0) {
+    const elapsed = Date.now() - room.turnStartedAt;
+    // sanity: 0 ~ 2× turn timeout 사이만 (음수 / 비정상 huge 값 제외).
+    if (elapsed >= 0 && elapsed <= TURN_TIMEOUT_MS * 2) {
+      if (!Array.isArray(room.humanTurnsMs)) room.humanTurnsMs = [];
+      room.humanTurnsMs.push(elapsed);
     }
   }
 

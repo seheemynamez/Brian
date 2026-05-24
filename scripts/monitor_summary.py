@@ -15,12 +15,12 @@ from monitor_apis import (
 )
 from monitor_data import (
     aiven_stats, bot_perf_stats, bot_stats_by_cfg, compute_recovery_times,
-    hourly_bucket_by_ts, kst_window, load_daily_stats, load_recent_metrics,
-    load_state, parse_bot_logs, parse_bot_moves, parse_deploys, parse_game_over,
-    parse_game_started, parse_iso, parse_online_count_series,
-    parse_server_failures, player_activity, render_bw_sum_mb, render_cpu_stats,
-    render_mem_stats, save_daily_stats, save_state, snap_2048_render,
-    snap_aiven, snap_omok_render, to_utc_iso,
+    hourly_bucket_by_ts, human_turn_stats, kst_window, load_daily_stats,
+    load_recent_metrics, load_state, parse_bot_logs, parse_bot_moves,
+    parse_deploys, parse_game_over, parse_game_started, parse_iso,
+    parse_online_count_series, parse_server_failures, player_activity,
+    render_bw_sum_mb, render_cpu_stats, render_mem_stats, save_daily_stats,
+    save_state, snap_2048_render, snap_aiven, snap_omok_render, to_utc_iso,
 )
 
 
@@ -163,6 +163,9 @@ def run_daily_summary():
 
     # 4) 봇 운영 지표 (봇별 승패 + 상대 rating 분포)
     bot_perf = bot_perf_stats(game_overs)
+    # 사람 thinking time — game_over 의 humanTurnsMs CSV flatten 후 통계.
+    # PVP / 봇 게임 분리 — 봇 상대일 때 사람이 더 신중하거나/덜 신중한 경향 분석 가능.
+    human_turn_split = human_turn_stats(game_overs, split_by_bot=True)
 
     # 5) 사람 활동 (TOP / rating movers + 활성 사용자)
     player_acts = player_activity(game_overs)
@@ -517,6 +520,30 @@ def run_daily_summary():
         body.append('\n_임계: 도달율 <40% → topK ↓, >80% → topK ↑. 승률 <30% → 강화, >80% → 약화. 표본 적은 cfg (n<10) / 봇 (total<5) 은 skip._')
     else:
         body.append('- (현재 권장 사항 없음 — 모든 cfg 도달율 40~80% & 봇 승률 30~80% 정상 범위)')
+    body.append('')
+
+    # 사람 thinking time — 매 차례 elapsed (ms) 분포. server game_over 로그의
+    # humanTurnsMs CSV 를 flatten. 봇 차례는 search timeout 으로 별도 측정 → 제외.
+    # PVP vs 봇 게임 분리 — 봇 상대일 때 신중도 차이 분석.
+    body.append('### 사람 thinking time (차례 elapsed)\n')
+    htsplit = human_turn_split or {}
+    rows = []
+    for label, key in [('PVP', 'pvp'), ('vs 봇', 'bot')]:
+        st = htsplit.get(key)
+        if not st: continue
+        rows.append((label, st))
+    if rows:
+        body.append('| 구분 | 차례 수 | 게임 | avg | p50 | p95 | max |')
+        body.append('|---|---|---|---|---|---|---|')
+        for label, st in rows:
+            body.append(
+                f'| {label} | {st["n"]} | {st["games"]} | '
+                f'{st["avg_ms"]/1000:.1f}s | {st["p50_ms"]/1000:.1f}s | '
+                f'{st["p95_ms"]/1000:.1f}s | {st["max_ms"]/1000:.1f}s |'
+            )
+        body.append('\n_사람 차례에 보낸 실제 시간만 누적 (disconnect 중 paused 시간 제외). 봇 차례는 별도 cfgMax 표 참고._')
+    else:
+        body.append('- (사람 차례 데이터 없음)')
     body.append('')
 
     # 시간대별 활동 (KST hour, 세 종류 통합 표)

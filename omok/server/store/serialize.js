@@ -20,6 +20,14 @@ const serializeRoom = (room) => ({
   // disconnect 중 pauseTurnTimer 가 저장한 남은 시간. valkey hydrate 후 resumeTurnTimer
   // 가 이 값으로 timer 재개. 누락 시 새로고침/재배포 후 남은 시간이 초기화됨.
   turnRemainMs: room.turnRemainMs || 0,
+  // 현 차례 시작 시각 — applyMove 가 사람 thinking time 누적 시 사용. hydrate 후엔
+  // resumeTurnTimer 가 turnRemainMs 기반으로 다시 보정하므로 그대로 보존해도 무방
+  // (단, 재배포 사이 흐른 wall time 만큼 elapsed 가 부풀려질 수 있어 startTurnTimer/
+  // resumeTurnTimer 가 재호출 시 덮어쓰는 게 정상 흐름).
+  turnStartedAt: room.turnStartedAt || 0,
+  // 사람 차례 elapsed CSV 의 raw 배열 — game_over 시 log 로 flush. 재배포 사이
+  // 누락 방지 위해 persist.
+  humanTurnsMs: Array.isArray(room.humanTurnsMs) ? room.humanTurnsMs.slice() : [],
   status: room.status,
   winner: room.winner,
   winLine: room.winLine,
