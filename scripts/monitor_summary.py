@@ -18,9 +18,8 @@ from monitor_data import (
     aiven_stats, bot_moves_from_endpoint, bot_perf_stats, bot_stats_by_cfg,
     compute_recovery_times, games_from_endpoint, hourly_bucket_by_ts,
     hourly_online_from_series, human_turn_stats, kst_window,
-    load_recent_metrics, load_state, online_series_from_endpoint, parse_bot_logs,
-    parse_bot_moves, parse_deploys, parse_game_over, parse_game_started,
-    parse_iso, parse_online_count_series, parse_server_failures, player_activity,
+    load_recent_metrics, load_state, online_series_from_endpoint, parse_deploys,
+    parse_iso, parse_server_failures, player_activity,
     render_bw_sum_mb, render_cpu_stats, render_mem_stats,
     save_state, snap_2048_render, snap_aiven, snap_omok_render, to_utc_iso,
 )
@@ -107,17 +106,11 @@ def run_daily_summary():
 
     # game_started 는 더 이상 fetch 안 함 — pvp_games + bot_games 카운터로 대체.
     # 시간대별 분포 (games_by_hour) 는 game_overs 에서 ts 기준 bucket.
-    game_started = []  # 옛 호환 placeholder (downstream 더 이상 직접 사용 안 함)
-
-    # 봇 영향 unique rooms/clients — daily SET 크기 endpoint 응답에서 직접.
+    # 봇 영향 unique rooms/clients + 카운터 — daily-stats endpoint 응답에서 직접.
     retry_rooms = int(daily_omok.get('bot_retry_rooms') or 0)
     retry_clients = int(daily_omok.get('bot_retry_clients') or 0)
     skip_rooms = int(daily_omok.get('bot_skip_rooms') or 0)
     skip_clients = int(daily_omok.get('bot_skip_clients') or 0)
-    # 옛 parse 결과 placeholder — 일부 alert / 본문 코드가 참조 (점진적 제거 예정).
-    retry_logs = []; skip_logs = []
-    retry_parsed = []; skip_parsed = []
-    # 카운트는 daily-stats endpoint 의 카운터.
     hb_count = int(daily_omok.get('heartbeat_terminate') or 0)
     ws_conn_count = int(daily_omok.get('ws_connected') or 0)
     ws_disc_count = int(daily_omok.get('ws_disconnected') or 0)
@@ -125,12 +118,6 @@ def run_daily_summary():
     nm_count = int(daily_omok.get('no_move') or 0)
     retry_count_total = int(daily_omok.get('bot_retry') or 0)
     skip_count_total = int(daily_omok.get('bot_skip') or 0)
-    # downstream `len(hb_logs)` 호환 placeholder.
-    hb_logs = [None] * hb_count
-    ws_conn_logs = []  # online_avg/peak 는 online-series endpoint 로
-    ws_disc_logs = []
-    wt_logs = [None] * wt_count
-    nm_logs = [None] * nm_count
 
     # online time-series — server 1분 sampler (epoch_ms ZSET). 윈도우 = KST 어제.
     win_from_ms = int(win_start_kst.timestamp() * 1000)
@@ -163,13 +150,13 @@ def run_daily_summary():
     online_resp_2048 = fetch_online_series(win_from_ms, win_to_ms, service='2048')
     online_series_2048 = online_series_from_endpoint(online_resp_2048.get('items') if online_resp_2048 else [])
     online_2048_avg_by_hour, online_2048_peak_by_hour = hourly_online_from_series(online_series_2048)
-    # 옛 log placeholder — downstream 코드가 len() 등으로 참조 (점진 제거).
-    submit_logs_2048 = [None] * int(daily_2048.get('submit_score') or 0)
-    user_created_logs_2048 = [None] * int(daily_2048.get('user_created') or 0)
-    score_best_logs_2048 = [None] * int(daily_2048.get('score_best') or 0)
-    hb_logs_2048 = [None] * int(daily_2048.get('heartbeat_terminate') or 0)
-    ws_conn_logs_2048 = []  # online series 로 대체
-    ws_disc_logs_2048 = []
+    # 2048 카운터 — daily-stats endpoint 응답에서 직접.
+    submit_count_2048 = int(daily_2048.get('submit_score') or 0)
+    user_created_count_2048 = int(daily_2048.get('user_created') or 0)
+    score_best_count_2048 = int(daily_2048.get('score_best') or 0)
+    hb_count_2048 = int(daily_2048.get('heartbeat_terminate') or 0)
+    ws_conn_count_2048 = int(daily_2048.get('ws_connected') or 0)
+    ws_disc_count_2048 = int(daily_2048.get('ws_disconnected') or 0)
     # 2048 infra events — Render API 직접 (server domain 아님).
     events_2048 = render_events(s_iso, e_iso, limit=100, service='2048',
                                 track_state=state, track_key='events:2048')
@@ -199,11 +186,9 @@ def run_daily_summary():
                            key=lambda kv: -kv[1]['delta_sum'])[:5]
     top_movers_dn = sorted([(n, d) for n, d in player_acts.items() if d['delta_sum'] < 0],
                            key=lambda kv: kv[1]['delta_sum'])[:5]
-    # 활성 사용자 24h — server 의 daily-set:active_users SCARD 가 authoritative.
-    # game_overs 의 player_acts 키 (사람 nick) 와 일치해야 하지만 valkey 가 SoT
-    # (game_over LIST 와 같은 시점에 SADD 됨).
-    active_user_nicks = set(player_acts.keys())   # body 의 TOP / movers 용
-    active_users_24h = int(daily_omok.get('active_users') or len(active_user_nicks))
+    # 활성 사용자 24h — server 의 daily-set:active_users SCARD 가 SoT.
+    # game_overs LIST 와 같은 시점에 SADD 됨.
+    active_users_24h = int(daily_omok.get('active_users') or 0)
 
     # 5-b) server /api/stats — 현재 사람 계정 수 (PR #95).
     server_stats = fetch_server_stats(service='omok')
@@ -219,8 +204,6 @@ def run_daily_summary():
     # 일별 단위 합이라 영향 없음. 시간대별 표는 omok 만 사용 (2048 는 본문에 시간대별
     # 표 없음). 추후 필요 시 server 가 hourly bucket Hash 추가 검토.
     submits_2048_by_hour = {}
-    # 호환 placeholder — body 가 `len(active_nicks_2048)` 등 참조.
-    active_nicks_2048 = set([f'_synthetic_{i}' for i in range(active_users_2048_count)])
 
     # 6) reason 카운트
     reason_counts = defaultdict(int)
@@ -460,7 +443,7 @@ def run_daily_summary():
     body.append(f'- **24h 활성 사용자**: **{active_users_24h}명**{_delta(active_users_24h, "active_users")} (게임 한 판 이상 둔 unique 닉네임)')
     body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count}{_delta(pvp_count, "pvp_games")} / 봇 {bot_game_count}{_delta(bot_game_count, "bot_games")})')
     body.append(f'- 봇 착수 총 횟수: **{bot_total}건**{_delta(bot_total, "total_bot_moves")}')
-    body.append(f'- 새 ws 연결: 대략 **{len(ws_conn_logs)}건**{_delta(len(ws_conn_logs), "ws_connected")}\n')
+    body.append(f'- 새 ws 연결: 대략 **{ws_conn_count}건**{_delta(ws_conn_count, "ws_connected")}\n')
 
     # 티어 분포 (PR — server /api/stats 의 tiers + 전일 Δ).
     # 발행 시점 snapshot — 0명 티어도 트렌드 일관성 위해 모두 표시 (Master→Iron).
@@ -658,15 +641,15 @@ def run_daily_summary():
     body.append(f'| game_over (전체) | {len(game_overs)} |')
     for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]):
         body.append(f'| └ reason={r} | {c} |')
-    body.append(f'| **worker_timeout** | **{len(wt_logs)}** _(0 유지 베이스, > 0 = 회귀)_ |')
-    body.append(f'| search no_move | {len(nm_logs)} |')
+    body.append(f'| **worker_timeout** | **{wt_count}** _(0 유지 베이스, > 0 = 회귀)_ |')
+    body.append(f'| search no_move | {nm_count} |')
     # RETRY/SKIP 영향 unique 게임/사용자 — 단순 카운트만으로는 "1-2 게임 집중"
     # vs "다수 사용자 패턴" 구분 어려움. alert 본문 패턴과 같이 노출.
-    retry_extra = f' (게임 {retry_rooms}개 / 사용자 {retry_clients}명)' if retry_logs else ''
-    skip_extra = f' (게임 {skip_rooms}개 / 사용자 {skip_clients}명)' if skip_logs else ''
-    body.append(f'| schedule RETRY (봇 wakeup, 정상) | {len(retry_logs)}{retry_extra} |')
-    body.append(f'| schedule SKIP (RETRY 실패) | {len(skip_logs)}{skip_extra} |')
-    body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs)} |')
+    retry_extra = f' (게임 {retry_rooms}개 / 사용자 {retry_clients}명)' if retry_count_total else ''
+    skip_extra = f' (게임 {skip_rooms}개 / 사용자 {skip_clients}명)' if skip_count_total else ''
+    body.append(f'| schedule RETRY (봇 wakeup, 정상) | {retry_count_total}{retry_extra} |')
+    body.append(f'| schedule SKIP (RETRY 실패) | {skip_count_total}{skip_extra} |')
+    body.append(f'| heartbeat_terminate (zombie 정리) | {hb_count} |')
     body.append(f'| **server_failed (전체)** | **{len(failures)}** |')
     body.append(f'| └ OOM (evicted) | {len(oom_fails)} |')
     body.append(f'| └ crash (nonZeroExit) | {len(crash_fails)} |')
@@ -736,8 +719,8 @@ def run_daily_summary():
     body.append('')
 
     # 이번 발행 시점 fetch 실패 endpoint — prev_streaks 와 비교해 증가한 것만.
-    # silent loss 인지: game_started 가 빈 list 면 본문 "총 게임 시작 0" 으로
-    # 잘못 발행될 수 있으니 별도 경고 섹션으로 visible.
+    # silent loss 인지: server endpoint 응답 실패 → 본문 카운트 0 으로 잘못 발행
+    # 위험. 별도 경고 섹션으로 visible.
     current_streaks = state.get('fetch_fail_streak', {}) or {}
     new_fails = sorted(k for k, n in current_streaks.items() if n > prev_streaks.get(k, 0))
     if new_fails:
@@ -774,17 +757,17 @@ def run_daily_summary():
     active_ws_2048 = stats_2048.get('active_ws')
     count_str = f'**{total_users_2048}**{_delta(total_users_2048, "total_users_2048")}' if total_users_2048 is not None else '_(stats fetch 실패 — cold-start 가능성)_'
     body.append(f'- 현재 사용자 계정 수 _(발행시점)_: {count_str}')
-    body.append(f'- **24h 활성 사용자**: **{len(active_nicks_2048)}명**{_delta(len(active_nicks_2048), "active_users_2048")} (점수 등록한 unique 닉)')
+    body.append(f'- **24h 활성 사용자**: **{active_users_2048_count}명**{_delta(active_users_2048_count, "active_users_2048")} (점수 등록한 unique 닉)')
     body.append(f'- 24h 점수 등록: **{daily_submits_2048}건**{_delta(daily_submits_2048, "daily_submits_2048")}')
     body.append(f'- 24h 신규 사용자: **{new_users_2048}명**{_delta(new_users_2048, "new_users_2048")}')
-    body.append(f'- 24h 새 ws 연결: 대략 **{len(ws_conn_logs_2048)}건**')
+    body.append(f'- 24h 새 ws 연결: 대략 **{ws_conn_count_2048}건**')
     if active_ws_2048 is not None:
         body.append(f'- 현재 동접 (ws) _(발행시점)_: **{active_ws_2048}명**')
     if top_all is not None:
         body.append(f'- 전체 최고 점수: **{top_all}**')
     # 옛 "오늘 최고 점수" 는 발행 시점 KST date 의 best — 5/23 요약 본문에 5/24
     # 점수가 들어가 혼동 유발. 제거 (전체 최고 와 trend 표로 충분).
-    body.append(f'- 24h best 갱신 broadcast: **{len(score_best_logs_2048)}건**\n')
+    body.append(f'- 24h best 갱신 broadcast: **{score_best_count_2048}건**\n')
 
     # 2048 시간대별 활동
     if submits_2048_by_hour:
@@ -804,7 +787,7 @@ def run_daily_summary():
     body.append('|---|---|')
     oom_2048 = [f for f in failures_2048 if f['evicted'] or f['oom']]
     crash_2048 = [f for f in failures_2048 if not (f['evicted'] or f['oom'])]
-    body.append(f'| heartbeat_terminate (zombie 정리) | {len(hb_logs_2048)} |')
+    body.append(f'| heartbeat_terminate (zombie 정리) | {hb_count_2048} |')
     body.append(f'| **server_failed (전체)** | **{len(failures_2048)}** |')
     body.append(f'| └ OOM (evicted) | {len(oom_2048)} |')
     body.append(f'| └ crash (nonZeroExit) | {len(crash_2048)} |')

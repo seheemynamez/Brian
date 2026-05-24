@@ -553,35 +553,10 @@ def human_turn_stats(game_overs, split_by_bot=False):
 
 
 # ============================================================
-# game_started / game_over 로그 파싱 (PR #86 보강된 필드)
-# 새 game_over 로그 형식: key=value pairs (value 가 공백 / "..." 으로 인용)
-#   [game_over] code=XXXX gameId=YY winner=black reason=five bot=true botDiff=hard ...
+# game records / online series — server /api endpoint 응답 adapter.
+# 옛 parse_game_over / parse_game_started / parse_online_count_series / parse_log_fields
+# 는 PR #168 valkey-first 전환 이후 제거 (Render log fetch 자체가 없어짐).
 # ============================================================
-LOG_FIELD_RE = re.compile(r'(\w+)=("(?:[^"\\]|\\.)*"|\S+)')
-
-
-def parse_log_fields(message):
-    """`[event] k=v k=v` → dict. 값이 따옴표면 unquote."""
-    out = {}
-    for k, v in LOG_FIELD_RE.findall(message):
-        if v.startswith('"') and v.endswith('"'):
-            v = v[1:-1].replace('\\"', '"')
-        out[k] = v
-    return out
-
-
-def parse_game_over(logs):
-    out = []
-    for L in logs:
-        msg = L.get('message', '')
-        if '[game_over]' not in msg:
-            continue
-        f = parse_log_fields(msg)
-        f['ts'] = to_kst_iso(L.get('timestamp', ''))
-        out.append(f)
-    return out
-
-
 def games_from_endpoint(items):
     """server /api/daily-games items → parse_game_over 와 동일 row 형식.
 
@@ -648,18 +623,6 @@ def hourly_online_from_series(series):
     return avg, peak
 
 
-def parse_game_started(logs):
-    out = []
-    for L in logs:
-        msg = L.get('message', '')
-        if '[game_started]' not in msg:
-            continue
-        f = parse_log_fields(msg)
-        f['ts'] = to_kst_iso(L.get('timestamp', ''))
-        out.append(f)
-    return out
-
-
 # ============================================================
 # 시간대별 분포 (KST hour bucket)
 # ============================================================
@@ -689,28 +652,8 @@ def hourly_bot_activity(moves):
     return dict(buckets)
 
 
-def parse_online_count_series(logs):
-    """ws_connected / ws_disconnected 로그의 `online=N` 시계열 → KST hour 별 평균/peak."""
-    pat = re.compile(r'online=(\d+)')
-    series = []
-    for L in logs:
-        m = pat.search(L.get('message', ''))
-        if not m: continue
-        try:
-            dt = parse_iso(L['timestamp']).astimezone(KST)
-            series.append((dt, int(m.group(1))))
-        except Exception:
-            continue
-    series.sort()
-    by_hour_avg = {}
-    by_hour_peak = {}
-    grouped = defaultdict(list)
-    for dt, n in series:
-        grouped[dt.hour].append(n)
-    for h, vals in grouped.items():
-        by_hour_avg[h] = sum(vals) / len(vals)
-        by_hour_peak[h] = max(vals)
-    return by_hour_avg, by_hour_peak
+# 옛 parse_online_count_series 는 valkey-first 전환 (PR #168) 이후 제거됨.
+# online time-series 는 server /api/online-series + hourly_online_from_series 가 대체.
 
 
 # ============================================================
