@@ -13465,5 +13465,92 @@
       "mem_pct_avg": 66.98295722282886,
       "mem_pct_max": 69.3734600202721
     }
+  },
+  {
+    "ts": "2026-05-24T10:30:20.148478+00:00",
+    "services": {
+      "omok": {
+        "render": {
+          "cpu_peak_m": 1.0557333,
+          "cpu_avg_m": 0.5555490164705883,
+          "mem_peak_mb": 101.74609184265137,
+          "deploy_status": "live",
+          "server_failed_count": 0,
+          "server_oom_count": 0,
+          "server_crash_count": 0,
+          "downtime_count": 2,
+          "downtime_max_s": 49.728286,
+          "slow_recovery_count": 0,
+          "worker_timeout_count": 0,
+          "no_move_count": 0,
+          "bot_retry_count": 0,
+          "bot_skip_count": 0,
+          "bot_retry_rooms": 0,
+          "bot_retry_clients": 0,
+          "bot_skip_rooms": 0,
+          "bot_skip_clients": 0
+        },
+        "stats": {
+          "total_human_users": 203,
+          "tiers": {
+            "Iron": 5,
+            "Bronze": 190,
+            "Silver": 7,
+            "Gold": 1,
+            "Platinum": 0,
+            "Diamond": 0,
+            "Master": 0
+          },
+          "bots": {
+            "hard": {
+              "rating": 1436,
+              "wins": 142,
+              "losses": 64,
+              "draws": 0
+            },
+            "easy": {
+              "rating": 1224,
+              "wins": 115,
+              "losses": 84,
+              "draws": 0
+            },
+            "medium": {
+              "rating": 1382,
+              "wins": 171,
+              "losses": 97,
+              "draws": 0
+            }
+          },
+          "ts": "2026-05-24T10:30:23.494Z"
+        }
+      },
+      "2048": {
+        "render": {
+          "cpu_peak_m": 0.49158329999999995,
+          "cpu_avg_m": 0.29382187,
+          "mem_peak_mb": 41.46875,
+          "deploy_status": "live",
+          "server_failed_count": 0,
+          "server_oom_count": 0,
+          "server_crash_count": 0,
+          "downtime_count": 0,
+          "downtime_max_s": null,
+          "slow_recovery_count": 0
+        },
+        "stats": {
+          "total_users": 24,
+          "top_all_time": 26276,
+          "top_daily": 16964,
+          "active_ws": 3,
+          "ts": "2026-05-24T10:30:25.397Z"
+        }
+      }
+    },
+    "aiven": {
+      "cpu_pct_avg": 7.041327082571375,
+      "cpu_pct_max": 8.909242298047886,
+      "mem_pct_avg": 66.92600789649198,
+      "mem_pct_max": 68.78383835054265
+    }
   }
 ]
