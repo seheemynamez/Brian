@@ -302,6 +302,20 @@ def fetch_server_stats(service='omok'):
         return None
 
 
+def fetch_daily_stats(date, service='omok'):
+    """GET /api/daily-stats?date=YYYY-MM-DD — server 가 valkey 에 누적한
+    authoritative 일별 카운터. 응답: {date, pvp_games, bot_games, total_bot_moves, ts}.
+
+    date 가 잘못된 형식이면 400, 해당 날짜 카운터가 없으면 모든 필드 0.
+    cold-start / down / 4xx → None (caller 가 log-based 폴백).
+    """
+    try:
+        return http_get(f'{_service_url(service)}/api/daily-stats?date={date}', timeout=10)
+    except Exception as e:
+        print(f'  [{service}] /api/daily-stats fetch 실패: {e}')
+        return None
+
+
 # ============================================================
 # Aiven API
 # ============================================================

@@ -17,6 +17,7 @@ const { getSpectatorNames, sendSpectatorState } = require('./spectator');
 const {
   getBotColor, scheduleBotMove, afterSuccessfulMove,
 } = require('./bot');
+const { incrementToday } = require('../infra/daily-counter');
 
 const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS) || 30000;
 
@@ -48,6 +49,14 @@ const gameOverFields = (room, entry, extra) => {
     stones,
     ...extra,
   };
+};
+
+// 일별 카운터 — 매 game_over (win/draw/abandon) 시점 호출. monitor 가
+// /api/daily-stats?date=… 로 읽어 authoritative source 로 사용.
+// pvp_games / bot_games 는 room.hasBot 에 따라 분기. fire-and-forget.
+const recordGameOverDailyCounter = (room) => {
+  if (!room) return;
+  incrementToday(room.hasBot ? 'bot_games' : 'pvp_games');
 };
 
 // ============================================================
@@ -219,6 +228,12 @@ const applyMove = (room, color, row, col, opts) => {
     }
   }
 
+  // 봇 착수 — 일별 카운터 (total_bot_moves) 증가. monitor 가 daily-stats endpoint 로 읽음.
+  // forbidden rollback 이후이므로 실제로 board 에 commit 된 수만 카운트.
+  if (opts && opts.actor === 'bot') {
+    incrementToday('total_bot_moves');
+  }
+
   room.lastMove = [row, col];
   const playerIds = playerIdsPayload(room);
 
@@ -241,6 +256,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', gameOverFields(room, entry, { winner: color, reason: 'five' }));
+    recordGameOverDailyCounter(room);
   } else if (isDraw(room.board)) {
     room.status = 'over';
     room.winner = 'draw';
@@ -257,6 +273,7 @@ const applyMove = (room, color, row, col, opts) => {
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', gameOverFields(room, entry, { winner: 'draw', reason: 'draw' }));
+    recordGameOverDailyCounter(room);
   } else {
     room.turn = otherColor(room.turn);
     broadcastRoom(room, { type: 'move', row, col, color, turn: room.turn });
@@ -276,4 +293,5 @@ module.exports = {
   onMove,
   startGame,
   gameOverFields,  // disconnect.js 의 game_over 로그도 같은 형식 사용
+  recordGameOverDailyCounter,  // disconnect.js (abandon 처리) 도 호출
 };

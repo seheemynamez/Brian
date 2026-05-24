@@ -29,6 +29,9 @@ const log = require('../infra/log');
 
 const PREFIX = process.env.VALKEY_KEY_PREFIX || 'omok';
 const RECENT_GAMES_CAP = Number(process.env.RECENT_GAMES_CAP) || 100;
+// daily counter TTL — 90일 보존. monitor 의 7d trend / 30d daily-stats.json 보다
+// 길게 잡아 lookback 안정. 더 길게 잡으면 valkey 메모리 부담 (각 key ~50바이트 × 일수).
+const DAILY_TTL_SEC = 90 * 86400;
 const K = {
   room: (code) => `${PREFIX}:room:${code}`,
   rooms: `${PREFIX}:rooms`,
@@ -40,6 +43,10 @@ const K = {
   user: (cid) => `${PREFIX}:user:${cid}`,
   users: `${PREFIX}:users`,
   recentGames: `${PREFIX}:recent_games`,
+  // 일별 카운터 — Hash (HINCRBY 로 atomic 증가). fields: pvp_games, bot_games, total_bot_moves
+  // key 는 KST YYYY-MM-DD 기준 (server 가 KST date 로 호출).
+  daily: (date) => `${PREFIX}:daily:${date}`,
+  dailyMatch: `${PREFIX}:daily:*`,
 };
 
 const createValkeyStore = () => {
@@ -66,12 +73,15 @@ const createValkeyStore = () => {
   const botOffer = new Map();
   const users = new Map();         // clientId → user JSON
   const recentGames = [];          // 최신 먼저 (unshift). hydrate 시 valkey 의 LRANGE 0 N-1 을 그대로.
+  // 일별 카운터 — date(YYYY-MM-DD) → { pvp_games, bot_games, total_bot_moves }.
+  // 서버 in-process atomic 보장 (Node.js single-thread). valkey 도 HINCRBY 로 atomic.
+  const dailyStats = new Map();
 
   const fnf = (p) => Promise.resolve(p).catch((e) => log.error('valkey_cmd_fail', { err: e && e.message }));
 
   const api = {
     backend: 'valkey',
-    rooms, sessions, queue, botOffer, users, recentGames,
+    rooms, sessions, queue, botOffer, users, recentGames, dailyStats,
     client,
 
     async connect() {
@@ -160,10 +170,33 @@ const createValkeyStore = () => {
       for (const j of gamesJson) {
         try { recentGames.push(JSON.parse(j)); } catch {}
       }
+      // Daily stats — SCAN 으로 살아 있는 키 (TTL 만료 안 된 것) 모두 메모리 캐싱.
+      let dailyHydrated = 0;
+      const dailyPrefix = `${PREFIX}:daily:`;
+      let dCursor = '0';
+      do {
+        const [next, keys] = await client.scan(dCursor, 'MATCH', K.dailyMatch, 'COUNT', 200);
+        dCursor = next;
+        for (const k of keys) {
+          const date = k.slice(dailyPrefix.length);
+          try {
+            const h = await client.hgetall(k);
+            if (h && Object.keys(h).length) {
+              const obj = {};
+              for (const [f, v] of Object.entries(h)) obj[f] = Number(v) || 0;
+              dailyStats.set(date, obj);
+              dailyHydrated++;
+            }
+          } catch (e) {
+            log.error('valkey_daily_hydrate_fail', { date, err: e && e.message });
+          }
+        }
+      } while (dCursor !== '0');
       log.event('valkey_hydrated', {
         prefix: PREFIX, rooms: roomHydrated, sessions: sessionHydrated,
         queue: queue.length, botOffer: botOfferHydrated,
         users: userHydrated, recentGames: recentGames.length,
+        daily: dailyHydrated,
       });
     },
 
@@ -220,6 +253,22 @@ const createValkeyStore = () => {
       if (recentGames.length > RECENT_GAMES_CAP) recentGames.length = RECENT_GAMES_CAP;
       fnf(client.lpush(K.recentGames, JSON.stringify(entry)));
       fnf(client.ltrim(K.recentGames, 0, RECENT_GAMES_CAP - 1));
+    },
+    // 일별 카운터 — HINCRBY (valkey atomic) + 메모리 캐시 동시 증가.
+    // field 별 따로 증가 → caller 가 game_over / move applied 시점에 호출.
+    incrementDailyCounter(date, field, n = 1) {
+      if (!date || !field || !n) return;
+      const obj = dailyStats.get(date) || {};
+      obj[field] = (obj[field] || 0) + n;
+      dailyStats.set(date, obj);
+      fnf(client.hincrby(K.daily(date), field, n));
+      // TTL 갱신 — HINCRBY 자체는 TTL 안 건드림. 매 호출마다 EXPIRE 다시 걸어 90일 슬라이딩.
+      fnf(client.expire(K.daily(date), DAILY_TTL_SEC));
+    },
+    // 특정 date 의 카운터 dict 반환. 없으면 null.
+    getDailyStats(date) {
+      if (!date) return null;
+      return dailyStats.get(date) || null;
     },
   };
   return api;
