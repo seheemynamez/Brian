@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 from collections import defaultdict
-from datetime import timedelta, timezone
+from datetime import timedelta
 
 from monitor_config import (
     AIVEN_MEM_LIMIT_MB, DRY_RUN, KST, NOW, RENDER_BW_LIMIT_GB,
@@ -14,11 +14,12 @@ from monitor_apis import (
 )
 from monitor_data import (
     aiven_stats, bot_perf_stats, bot_stats_by_cfg, compute_recovery_times,
-    hourly_bucket_by_ts, load_daily_stats, load_recent_metrics, load_state,
-    parse_bot_logs, parse_bot_moves, parse_game_over, parse_game_started,
-    parse_iso, parse_online_count_series, parse_server_failures, player_activity,
-    render_bw_sum_mb, render_cpu_stats, render_mem_stats, save_daily_stats,
-    snap_2048_render, snap_aiven, snap_omok_render,
+    hourly_bucket_by_ts, kst_window, load_daily_stats, load_recent_metrics,
+    load_state, parse_bot_logs, parse_bot_moves, parse_game_over,
+    parse_game_started, parse_iso, parse_online_count_series,
+    parse_server_failures, player_activity, render_bw_sum_mb, render_cpu_stats,
+    render_mem_stats, save_daily_stats, snap_2048_render, snap_aiven,
+    snap_omok_render, to_utc_iso,
 )
 
 
@@ -45,14 +46,11 @@ def gauge_table(rows):
 # run_daily_summary
 # ============================================================
 def run_daily_summary():
-    # 시간 윈도우 — KST 어제 00:00 ~ 오늘 00:00 (캘린더 day)
-    kst_today_00 = NOW.astimezone(KST).replace(hour=0, minute=0, second=0, microsecond=0)
-    win_end_kst = kst_today_00
-    win_start_kst = kst_today_00 - timedelta(days=1)
-    win_end_utc = win_end_kst.astimezone(timezone.utc)
-    win_start_utc = win_start_kst.astimezone(timezone.utc)
-    s_iso = win_start_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
-    e_iso = win_end_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # 시간 윈도우 — KST 어제 00:00 ~ 오늘 00:00 (캘린더 day). kst_window helper
+    # 로 통일 — 모든 day 단위 집계의 단일 진입점.
+    win_start_kst, win_end_kst = kst_window(days=1)
+    s_iso = to_utc_iso(win_start_kst)
+    e_iso = to_utc_iso(win_end_kst)
     summary_date = win_start_kst.strftime('%Y-%m-%d')   # 어제 KST 날짜
     print(f'=== daily-summary {summary_date} KST (window {s_iso} ~ {e_iso}) ===')
 
@@ -60,7 +58,7 @@ def run_daily_summary():
     # omok render
     cpu = render_metric('cpu', s_iso, e_iso, 300, service='omok')
     mem = render_metric('memory', s_iso, e_iso, 300, service='omok')
-    bw_30d_start = (win_end_utc - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    bw_30d_start = to_utc_iso(win_end_kst - timedelta(days=30))
     bw = render_metric('bandwidth', bw_30d_start, e_iso, 300, service='omok')
     cpu_st = render_cpu_stats(cpu) or {}
     mem_st = render_mem_stats(mem) or {}
@@ -174,13 +172,15 @@ def run_daily_summary():
         r = g.get('reason', '')
         if r: reason_counts[r] += 1
 
-    # 7) alert 이력 (state.json 의 24h 안 last_alert 시각)
+    # 7) alert 이력 (state.json 의 24h 안 last_alert 시각). last_alert ts 는 UTC.
+    # win_start_kst / win_end_kst 는 tz-aware (KST) — parse_iso 가 UTC 로 반환해도
+    # tz-aware 끼리 비교 가능 (자동 변환).
     state = load_state()
     alert_history = []
     for k, ts in state.get('last_alert', {}).items():
         try:
             dt = parse_iso(ts)
-            if dt >= win_start_utc and dt < win_end_utc:
+            if dt >= win_start_kst and dt < win_end_kst:
                 alert_history.append((k, ts))
         except Exception:
             pass
@@ -602,8 +602,8 @@ def run_daily_summary():
             'top_all_time_2048': stats_2048.get('top_all_time'),
             'top_daily_2048': stats_2048.get('top_daily'),
         }
-        # 30일 이상 오래된 entry 정리
-        cutoff = (kst_today_00 - timedelta(days=30)).strftime('%Y-%m-%d')
+        # 30일 이상 오래된 entry 정리 (win_end_kst = 오늘 KST 00:00 기준)
+        cutoff = (win_end_kst - timedelta(days=30)).strftime('%Y-%m-%d')
         daily_stats = {k: v for k, v in daily_stats.items() if k >= cutoff}
         save_daily_stats(daily_stats)
         print(f'  saved: daily-stats.json ({len(daily_stats)} entries)')

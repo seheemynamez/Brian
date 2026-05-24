@@ -7,11 +7,25 @@
 
 GitHub Actions 내장 `schedule` 은 best-effort 라 peak 시 수십분~수시간 skip 발생. 외부 ping 으로 ~99%+ 신뢰도 확보. setup: [`docs/MONITOR_RELIABILITY.md`](../docs/MONITOR_RELIABILITY.md).
 
+## Timezone 정책
+
+| 위치 | 기준 | 비고 |
+|---|---|---|
+| 파일명 `YYYY-MM-DD.json` | **KST date** | 각 파일은 그 KST day 00:00 ~ 익일 00:00 snapshot |
+| snapshot 내부 `ts` | UTC ISO | 외부 API (Render/Aiven) 응답과 호환 — 가공/비교 비용 ↓ |
+| `daily-stats.json` key | KST date | summary_date 와 일치 |
+| `state.json` `last_alert` ts | UTC ISO | cooldown 계산 (절대 시간) 만 사용, 사람 표시 X |
+| alert / daily-summary 본문 시각 | KST 표기 + UTC 병기 | `2026-05-24 09:05:14 KST (00:05:14Z)` |
+| 모든 day 단위 집계 | KST | 7일 trend / 시간대별 bucket / window |
+| Render/Aiven API 호출 | UTC ISO (`...Z`) | `to_utc_iso(kst_dt)` helper 로 변환 |
+
+호출자가 KST 일관 사용 가정 가능. parser (`parse_bot_logs`, `parse_game_over`, `compute_recovery_times` 등) 의 ts 결과는 모두 KST ISO 로 normalize.
+
 ## 파일
 
-- `YYYY-MM-DD.json` — 일별 시계열 (해당 일에 collect 가 누적한 snapshot 배열)
-- `state.json` — alert cooldown 상태 (마지막 알림 시각, 같은 알림 종류 2시간 1회 제한)
-- `daily-stats.json` — daily-summary 가 사용하는 일별 통계 누적 (30일치 보존). 필드: `pvp_games`, `bot_games`, `total_bot_moves`, `render_cpu_max_m`, `aiven_mem_max_pct`, `active_users` (24h game_over 의 unique 사람 닉네임 수), `total_human_users` (그 날 발행 시 server `/api/stats` 응답).
+- `YYYY-MM-DD.json` — **KST 캘린더 day** 별 시계열 (KST 00:00 ~ 익일 00:00). snapshot 내부 `ts` 는 UTC ISO.
+- `state.json` — alert cooldown 상태 (같은 알림 종류 2시간 1회 제한). `last_alert` ts 는 UTC ISO.
+- `daily-stats.json` — daily-summary 가 사용하는 일별 통계 누적 (30일치 보존). key = KST date. 필드: `pvp_games`, `bot_games`, `total_bot_moves`, `render_cpu_max_m`, `aiven_mem_max_pct`, `active_users` (24h game_over 의 unique 사람 닉네임 수), `total_human_users` (그 날 발행 시 server `/api/stats` 응답).
 
 ## snapshot 구조 (collect 모드)
 
@@ -78,8 +92,21 @@ PR — 2048 통합으로 service 별 분리:
 ```sh
 # 로컬에서 dry-run (Issue 안 만들고 stdout 만 출력)
 cd ~/Development/Personal/Brian
-source ~/.zshrc && use-sehee
+source ~/.zshrc && use-sehee   # 운영 데이터 fetch. dev/test 면 use-brian
 GITHUB_REPOSITORY=seheemynamez/Brian SAVE_METRICS=0 python3 scripts/monitor.py
+# daily-summary 모드:
+MODE=daily-summary GITHUB_REPOSITORY=seheemynamez/Brian SAVE_METRICS=0 python3 scripts/monitor.py
 ```
 
 GitHub Actions 에서는 [Actions UI](https://github.com/seheemynamez/Brian/actions/workflows/monitor-infra.yml) 의 `Run workflow` 로 `collect` / `daily-summary` 직접 호출 가능.
+
+## 마이그레이션 (옛 UTC date 파일 → KST date)
+
+KST 타임존 일관화 (PR 시점) 전에는 파일명이 UTC date 였음. 그 파일들을 KST date 별로 재분류하는 일회성 스크립트:
+
+```sh
+python3 scripts/migrate_metrics_to_kst.py            # dry-run
+python3 scripts/migrate_metrics_to_kst.py --apply    # 실제 변경
+```
+
+각 옛 파일의 snapshot ts (UTC) 를 KST 로 변환해 해당 KST day 파일로 이동. 옛 UTC 이름 파일 중 새 KST 파일과 겹치지 않는 것만 삭제. 한 번 실행 후 commit. 새 데이터는 collect 가 KST_TODAY 로 자동 저장.

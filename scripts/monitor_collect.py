@@ -19,8 +19,8 @@ import os
 from datetime import timedelta
 
 from monitor_config import (
-    ALERT_LABELS, AIVEN_MEM_LIMIT_MB, COOLDOWN_HOURS, DRY_RUN, METRICS_DIR, NOW,
-    REPO_ROOT, RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, SERVICES, TODAY,
+    ALERT_LABELS, AIVEN_MEM_LIMIT_MB, COOLDOWN_HOURS, DRY_RUN, KST_TODAY,
+    METRICS_DIR, NOW, REPO_ROOT, RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, SERVICES,
     THRESHOLD_AIVEN_MEM_PCT, THRESHOLD_BOT_RETRY_15MIN, THRESHOLD_BOT_SKIP_15MIN,
     THRESHOLD_DOWNTIME_S, THRESHOLD_RENDER_CPU_M,
     alert_key_for, service_label,
@@ -31,10 +31,14 @@ from monitor_apis import (
 )
 from monitor_data import (
     aiven_stats, bot_activity_summary, compute_recovery_times, cooldown_ok,
-    load_state, mark_alerted, parse_bot_logs, parse_bot_moves,
+    kst_pretty, load_state, mark_alerted, parse_bot_logs, parse_bot_moves,
     parse_server_failures, render_cpu_stats, render_mem_stats,
-    save_state, summarize_bot_logs,
+    save_state, summarize_bot_logs, to_utc_iso,
 )
+
+
+# 모든 alert 본문에서 공통 사용 — collect 실행 시각 (KST 표기 + UTC 병기).
+NOW_KST_LABEL = f'{kst_pretty(NOW.isoformat())} ({NOW.strftime("%H:%M:%SZ")})'
 
 
 # ============================================================
@@ -121,7 +125,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
             f'## Render CPU peak 임계 초과 — {service}\n\n'
             f'- 측정: **{cpu_st["max"]:.1f}m** (CPU peak, 최근 15분)\n'
             f'- 임계: ≥ {THRESHOLD_RENDER_CPU_M:.0f}m (한도 {RENDER_CPU_LIMIT_M:.0f}m)\n'
-            f'- 시각: {NOW.isoformat()}\n\n'
+            f'- 시각: {NOW_KST_LABEL}\n\n'
             f'### 같이 본 상태\n'
             f'- Render Memory peak: {mem_st["max"]:.1f}MB / {RENDER_MEM_LIMIT_MB:.0f}MB\n'
             f'- Aiven CPU max: {aiven_cpu["max"]:.1f}% (h)\n'
@@ -163,7 +167,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
     if raw['oom_fails']:
         oom_fails = raw['oom_fails']
         samples = '\n'.join(
-            f'- `{f["ts"][:19]}` instance={f["instance"][-6:]} evicted={f["evicted"]} oom={f["oom"]}'
+            f'- `{kst_pretty(f["ts"])}` instance={f["instance"][-6:]} evicted={f["evicted"]} oom={f["oom"]}'
             for f in oom_fails[:5])
         alerts.append((
             alert_key_for('server_oom', service),
@@ -171,7 +175,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
             f'## 서버 OOM (메모리 한도 초과) 감지 — {service}\n\n'
             f'- 카운트: **{len(oom_fails)}건** (최근 15분)\n'
             f'- 임계: > 0 (OOM 은 자원 부족 신호 — 1건도 위험)\n'
-            f'- 시각: {NOW.isoformat()}\n\n'
+            f'- 시각: {NOW_KST_LABEL}\n\n'
             f'### 의미\n'
             f'`evicted=true` 또는 `oom=true` — 인스턴스가 메모리 한도 (512MB) 도달로 강제 종료됨. '
             f'Render 가 자동 재시작 하지만 진행 중 게임/세션 사라짐.\n\n'
@@ -184,7 +188,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
     if raw['crash_fails']:
         crash_fails = raw['crash_fails']
         samples = '\n'.join(
-            f'- `{f["ts"][:19]}` instance={f["instance"][-6:]} nonZeroExit={f["nonZeroExit"]}'
+            f'- `{kst_pretty(f["ts"])}` instance={f["instance"][-6:]} nonZeroExit={f["nonZeroExit"]}'
             for f in crash_fails[:5])
         alerts.append((
             alert_key_for('server_crash', service),
@@ -192,7 +196,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
             f'## 서버 crash 감지 (nonZeroExit) — {service}\n\n'
             f'- 카운트: **{len(crash_fails)}건** (최근 15분)\n'
             f'- 임계: > 0 (crash 1건도 회귀 신호)\n'
-            f'- 시각: {NOW.isoformat()}\n\n'
+            f'- 시각: {NOW_KST_LABEL}\n\n'
             f'### 의미\n'
             f'`nonZeroExit=1` — Node 프로세스가 코드 에러 또는 `process.exit(N≠0)` 로 종료. '
             f'unhandled exception / startup 실패 / hydrate 실패 가능성.\n\n'
@@ -205,7 +209,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
     if raw['slow_recoveries']:
         slow_recoveries = raw['slow_recoveries']
         samples = '\n'.join(
-            f'- `{r["start_ts"][:19]}` {r["kind"]} — downtime **{r["downtime_s"]:.1f}s** (60s grace 초과)'
+            f'- `{kst_pretty(r["start_ts"])}` {r["kind"]} — downtime **{r["downtime_s"]:.1f}s** (60s grace 초과)'
             for r in slow_recoveries[:5])
         max_dt = max(r['downtime_s'] for r in slow_recoveries)
         alerts.append((
@@ -234,7 +238,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
         retry_parsed = raw.get('retry_parsed', [])
         skip_parsed = raw.get('skip_parsed', [])
         if len(wt_logs) > 0:
-            samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in wt_logs[:5])
+            samples = '\n'.join(f'- `{kst_pretty(L["timestamp"])}` {L["message"][:140]}' for L in wt_logs[:5])
             alerts.append((
                 alert_key_for('worker_timeout', service),
                 _title(service, f'[monitor] worker_timeout 발생 {len(wt_logs)}건'),
@@ -245,14 +249,14 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
                 f'self-abort 회귀 의심. 최근 PR 점검 필요.\n',
             ))
         if len(nm_logs) > 0:
-            samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in nm_logs[:5])
+            samples = '\n'.join(f'- `{kst_pretty(L["timestamp"])}` {L["message"][:140]}' for L in nm_logs[:5])
             alerts.append((
                 alert_key_for('no_move', service),
                 _title(service, f'[monitor] 봇 no_move {len(nm_logs)}건'),
                 f'## 봇이 수를 못 두는 케이스\n\n- 카운트: **{len(nm_logs)}건**\n\n### 샘플\n{samples}\n',
             ))
         if len(retry_logs) >= THRESHOLD_BOT_RETRY_15MIN:
-            samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in retry_logs[:5])
+            samples = '\n'.join(f'- `{kst_pretty(L["timestamp"])}` {L["message"][:140]}' for L in retry_logs[:5])
             alerts.append((
                 alert_key_for('bot_retry_burst', service),
                 _title(service, f'[monitor] 봇 schedule RETRY {len(retry_logs)}건 (≥{THRESHOLD_BOT_RETRY_15MIN})'),
@@ -260,7 +264,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
                 f'- 카운트: **{len(retry_logs)}건** (최근 15분)\n'
                 f'- 임계: ≥ {THRESHOLD_BOT_RETRY_15MIN}건\n'
                 f'{summarize_bot_logs(retry_parsed)}\n'
-                f'- 시각: {NOW.isoformat()}\n\n'
+                f'- 시각: {NOW_KST_LABEL}\n\n'
                 f'### 의미\n'
                 f'RETRY = Wi-Fi 잠시 lag 으로 사람 zombie 판정 → 3s 후 재시도. PR #85 의 정상 회복 흐름. '
                 f'burst 가 잦으면 다수 사용자 lag 상황 (서버 응답 지연 / 사용자 측 ISP 등 영향). '
@@ -271,7 +275,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
                 f'- Aiven CPU max: {aiven_cpu["max"] if aiven_cpu else "?"}%\n',
             ))
         if len(skip_logs) >= THRESHOLD_BOT_SKIP_15MIN:
-            samples = '\n'.join(f'- `{L["timestamp"][:19]}` {L["message"][:140]}' for L in skip_logs[:5])
+            samples = '\n'.join(f'- `{kst_pretty(L["timestamp"])}` {L["message"][:140]}' for L in skip_logs[:5])
             alerts.append((
                 alert_key_for('bot_skip_burst', service),
                 _title(service, f'[monitor] 봇 schedule SKIP {len(skip_logs)}건 (≥{THRESHOLD_BOT_SKIP_15MIN})'),
@@ -279,7 +283,7 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
                 f'- 카운트: **{len(skip_logs)}건** (최근 15분)\n'
                 f'- 임계: ≥ {THRESHOLD_BOT_SKIP_15MIN}건\n'
                 f'{summarize_bot_logs(skip_parsed)}\n'
-                f'- 시각: {NOW.isoformat()}\n\n'
+                f'- 시각: {NOW_KST_LABEL}\n\n'
                 f'### 의미\n'
                 f'SKIP 은 PR #85 이후 거의 발생 X 가 정상. burst 발생 = `bothPlayersOnline` 가드를 RETRY 가 '
                 f'우회 못 하는 새 패턴. 코드 회귀 또는 새 끊김 시나리오 의심.\n\n'
@@ -301,7 +305,7 @@ def _build_aiven_alert(aiven_mem):
         f'## Aiven Memory 임계 초과\n\n'
         f'- 측정: **{aiven_mem["max"]:.1f}%** / {AIVEN_MEM_LIMIT_MB:.0f}MB\n'
         f'- 임계: ≥ {THRESHOLD_AIVEN_MEM_PCT:.0f}% — noeviction (100% 시 write 실패)\n'
-        f'- 시각: {NOW.isoformat()}\n\n'
+        f'- 시각: {NOW_KST_LABEL}\n\n'
         f'### 다음 조치 후보\n'
         f'- 정기 cleanup 검토\n'
         f'- Aiven Startup-4 (4GB / $30월) 검토\n',
@@ -312,12 +316,12 @@ def _build_aiven_alert(aiven_mem):
 # entry — run_collect
 # ============================================================
 def run_collect():
+    # 15분 window 의 시각 자체는 UTC NOW 기준 (cron 주기와 무관). API 호출 직전
+    # `to_utc_iso` 로 일관 변환 — `'+00:00'` 대신 `Z` 표기로 Render/Aiven 호환.
     win_end = NOW
-    # Window 30분 → 15분 (cron 30분 → 5분 변경에 맞춰 더 세밀하게).
-    # 같은 alert 가 evaluation 마다 재발사되지 않게 COOLDOWN_HOURS=2 으로 묶임.
     win_start = NOW - timedelta(minutes=15)
-    s_iso = win_start.strftime('%Y-%m-%dT%H:%M:%SZ')
-    e_iso = win_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+    s_iso = to_utc_iso(win_start)
+    e_iso = to_utc_iso(win_end)
 
     # service 별 메트릭/이벤트/로그 + stats
     services_snapshot = {}
@@ -382,10 +386,12 @@ def run_collect():
             mark_alerted(state, key)
             print(f'  alerted: {key} → {url}')
 
-    # 저장
+    # 저장 — 파일명은 KST 기준 (예: KST 2026-05-24 09:00 ~ 2026-05-25 09:00 의
+    # snapshot 들이 모두 metrics/2026-05-24.json 에 들어가지 않음 — 9시간 어긋남
+    # 옛 버그 fix). snapshot 내부 ts 는 UTC 유지.
     if not DRY_RUN or os.environ.get('SAVE_METRICS') == '1':
         METRICS_DIR.mkdir(exist_ok=True)
-        daily_file = METRICS_DIR / f'{TODAY}.json'
+        daily_file = METRICS_DIR / f'{KST_TODAY}.json'
         daily = json.loads(daily_file.read_text()) if daily_file.exists() else []
         daily.append(snapshot)
         daily_file.write_text(json.dumps(daily, indent=2, ensure_ascii=False))

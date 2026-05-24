@@ -78,7 +78,9 @@ DAILY_STATS_FILE = METRICS_DIR / 'daily-stats.json'
 
 NOW = datetime.now(timezone.utc)
 KST = timezone(timedelta(hours=9))
-TODAY = NOW.strftime('%Y-%m-%d')
+# 모든 metric 파일명 / day 단위 집계는 KST 기준. snapshot 내부 ts 만 UTC ISO 유지
+# (외부 API 응답이 UTC 라 변환 비용 최소화). 사람이 보는 모든 시각은 KST 로 표시.
+KST_TODAY = NOW.astimezone(KST).strftime('%Y-%m-%d')
 
 # alert key → label 매핑. service 별 alert 는 key 에 ':{service}' suffix 가 붙어
 # cooldown 추적은 분리되지만 라벨은 공통. title prefix `[{service}]` 로 issue 에서 구분.
