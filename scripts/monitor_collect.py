@@ -19,8 +19,9 @@ import os
 from datetime import timedelta
 
 from monitor_config import (
-    ALERT_LABELS, AIVEN_MEM_LIMIT_MB, COOLDOWN_HOURS, DRY_RUN, KST_TODAY,
-    METRICS_DIR, NOW, REPO_ROOT, RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, SERVICES,
+    ALERT_LABELS, AIVEN_MEM_LIMIT_MB, COOLDOWN_HOURS, DRY_RUN,
+    FETCH_FAIL_THRESHOLD, KST_TODAY, METRICS_DIR, NOW, REPO_ROOT,
+    RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, SERVICES,
     THRESHOLD_AIVEN_MEM_PCT, THRESHOLD_BOT_RETRY_15MIN, THRESHOLD_BOT_SKIP_15MIN,
     THRESHOLD_DOWNTIME_S, THRESHOLD_RENDER_CPU_M,
     alert_key_for, service_label,
@@ -31,9 +32,10 @@ from monitor_apis import (
 )
 from monitor_data import (
     aiven_stats, bot_activity_summary, compute_recovery_times, cooldown_ok,
-    kst_pretty, load_state, mark_alerted, parse_bot_logs, parse_bot_moves,
-    parse_server_failures, render_cpu_stats, render_mem_stats,
-    save_state, summarize_bot_logs, to_utc_iso,
+    fail_streaks_over, incr_fail_streak, kst_pretty, load_state, mark_alerted,
+    parse_bot_logs, parse_bot_moves, parse_server_failures, render_cpu_stats,
+    render_mem_stats, reset_fail_streak, save_state, summarize_bot_logs,
+    to_utc_iso,
 )
 
 
@@ -117,7 +119,9 @@ def _title(service, body_title):
 
 def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
     alerts = []
-    cpu_st = raw['cpu_st']; mem_st = raw['mem_st']; deploy = raw['deploy']
+    # raw 가 비어있으면 (_collect_render 가 fetch fail 로 빈 dict 반환) 모든 alert
+    # skip — None-safe lookup 으로 자연 처리. fail_streak alert 가 별도로 발생.
+    cpu_st = raw.get('cpu_st'); mem_st = raw.get('mem_st'); deploy = raw.get('deploy')
 
     # ---- Render CPU peak — service 공통, 봇 활동 컨텍스트 (omok 만)
     if cpu_st and cpu_st['max'] >= THRESHOLD_RENDER_CPU_M:
@@ -134,8 +138,11 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
         if SERVICES[service]['has_bot_logs']:
             # CPU peak 시점 원인 추적: 같은 window 의 봇 활동 (난이도/cfg/장기 search).
             try:
+                # limit max=100 (Render API 제약). 페이지네이션이 자동으로
+                # window 안 모든 move 누적 — 옛 limit=200 (400 invalid limit
+                # 에러로 silent fail) 패턴 fix.
                 move_logs = render_search_logs(
-                    '[bot] move applied', s_iso, e_iso, limit=200, service=service)
+                    '[bot] move applied', s_iso, e_iso, limit=100, service=service)
                 moves = parse_bot_moves(move_logs)
                 body += f'\n### 같은 window 의 봇 활동\n{bot_activity_summary(moves)}\n'
             except Exception as e:
@@ -294,6 +301,36 @@ def _build_alerts(service, snap, raw, aiven_cpu, aiven_mem, s_iso, e_iso):
 
 
 # ============================================================
+# fetch_fail_streak — monitor 자체의 외부 API fetch 가 연속 실패 시 alert.
+# transient retry (monitor_apis.RETRY_MAX) 후에도 실패라 진짜 outage 의심.
+# ============================================================
+def _build_fail_streak_alerts(state):
+    """state 의 fetch_fail_streak 중 임계 도달한 endpoint 들에 대해 alert 생성.
+    cooldown 은 호출자 (run_collect) 의 cooldown_ok / mark_alerted 가 처리."""
+    alerts = []
+    for endpoint, n in fail_streaks_over(state, FETCH_FAIL_THRESHOLD):
+        alerts.append((
+            f'fetch_fail:{endpoint}',
+            f'[monitor] {endpoint} fetch {n}회 연속 실패',
+            f'## monitor 자체의 외부 API fetch 연속 실패\n\n'
+            f'- endpoint: **`{endpoint}`**\n'
+            f'- 연속 실패: **{n}회** (cron 5분 × {n} ≈ {5 * n}분)\n'
+            f'- 임계: ≥ {FETCH_FAIL_THRESHOLD}회\n'
+            f'- 시각: {NOW_KST_LABEL}\n\n'
+            f'### 의미\n'
+            f'transient retry (HTTP 5xx/429/network, 3회 exp backoff) 가 모두 실패 → '
+            f'영구 에러 또는 외부 API outage 의심. monitor 가 이 endpoint 데이터를 '
+            f'못 가져오는 동안 관련 alert / daily-summary 컬럼이 비어 있음.\n\n'
+            f'### 다음 조치 후보\n'
+            f'- 해당 API status page 확인 (Render: status.render.com / Aiven: status.aiven.io)\n'
+            f'- secret 만료/rotate 점검 (`RENDER_API_KEY` / `AIVEN_API_TOKEN`)\n'
+            f'- service_id / project / service 변경 여부 (monitor_config 확인)\n'
+            f'- 한 번 회복 (다음 cron 성공) 시 streak 자동 reset.\n',
+        ))
+    return alerts
+
+
+# ============================================================
 # Aiven (공유 — omok / 2048 같은 인스턴스 prefix 격리)
 # ============================================================
 def _build_aiven_alert(aiven_mem):
@@ -323,25 +360,43 @@ def run_collect():
     s_iso = to_utc_iso(win_start)
     e_iso = to_utc_iso(win_end)
 
-    # service 별 메트릭/이벤트/로그 + stats
+    # state 먼저 load — fetch_fail_streak 추적용.
+    state = load_state()
+
+    # service 별 메트릭/이벤트/로그 + stats. 각 fetch 그룹마다 fail_streak 추적.
     services_snapshot = {}
     services_raw = {}
     for svc_key in SERVICES:
         try:
             snap, raw = _collect_render(svc_key, s_iso, e_iso)
+            reset_fail_streak(state, f'render:{svc_key}')
         except Exception as e:
-            print(f'  [{svc_key}] render fetch 실패: {e}')
+            n = incr_fail_streak(state, f'render:{svc_key}')
+            print(f'  [{svc_key}] render fetch 실패 (streak={n}): {e}')
             snap, raw = {}, {}
         try:
             stats = fetch_server_stats(service=svc_key) or {}
+            if stats:
+                reset_fail_streak(state, f'stats:{svc_key}')
+            else:
+                # /api/stats 가 None (cold-start / network) — fail streak 으로 카운트.
+                n = incr_fail_streak(state, f'stats:{svc_key}')
+                print(f'  [{svc_key}] stats fetch 빈 응답 (streak={n})')
         except Exception as e:
-            print(f'  [{svc_key}] stats fetch 실패: {e}')
+            n = incr_fail_streak(state, f'stats:{svc_key}')
+            print(f'  [{svc_key}] stats fetch 실패 (streak={n}): {e}')
             stats = {}
         services_snapshot[svc_key] = {'render': snap, 'stats': stats}
         services_raw[svc_key] = raw
 
     # Aiven (공유)
-    aiven = aiven_metrics(period='hour')
+    try:
+        aiven = aiven_metrics(period='hour')
+        reset_fail_streak(state, 'aiven')
+    except Exception as e:
+        n = incr_fail_streak(state, 'aiven')
+        print(f'  [aiven] metrics fetch 실패 (streak={n}): {e}')
+        aiven = {}
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
 
@@ -358,8 +413,7 @@ def run_collect():
     }
     print(json.dumps(snapshot, indent=2, ensure_ascii=False))
 
-    # 임계 검사
-    state = load_state()
+    # 임계 검사 — state 는 위에서 load. fetch_fail_streak 도 같이 평가.
     alerts = []
     for svc_key in SERVICES:
         alerts.extend(_build_alerts(
@@ -368,6 +422,7 @@ def run_collect():
     aiven_alert = _build_aiven_alert(aiven_mem)
     if aiven_alert:
         alerts.append(aiven_alert)
+    alerts.extend(_build_fail_streak_alerts(state))
 
     for key, title, body in alerts:
         if not cooldown_ok(state, key):
@@ -376,8 +431,9 @@ def run_collect():
         # ALERT_LABELS lookup — service suffix 떼고 base_key 로 조회.
         base_key = key.split(':', 1)[0]
         labels = list(ALERT_LABELS.get(base_key, ['monitor', 'severity-high']))
-        # service 별 식별 라벨 — base_key:service 형태에서 service 추출
-        if ':' in key:
+        # service 별 식별 라벨 — base_key:service 형태에서 service 추출.
+        # fetch_fail 은 endpoint 자체가 title 에 노출되므로 service label 안 붙임.
+        if ':' in key and base_key != 'fetch_fail':
             labels.append(service_label(key.split(':', 1)[1]))
         url = create_issue(title, body, labels)
         if url or DRY_RUN:

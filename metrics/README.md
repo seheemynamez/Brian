@@ -82,8 +82,18 @@ PR — 2048 통합으로 service 별 분리:
 - 봇 `schedule SKIP` ≥ 3 건 (RETRY 가 못 잡는 진짜 끊김)
 - Server downtime > 60 초 (DISCONNECT_GRACE_MS 초과)
 - Render 배포 비정상 (`deploy_status` ∉ {`live`, `*_in_progress`})
+- **monitor 자체 fetch 연속 실패 ≥ 3회** (= 약 15분) — endpoint 별 (`render:{svc}` / `stats:{svc}` / `aiven`). transient retry (3회 exp backoff) 통과 후에도 실패. label `alert-fetch`.
 
 임계 도달 시 GitHub Issue 자동 생성 (label: `monitor`, severity, `service-{omok|2048}`). 같은 alert key 는 **2시간 cooldown** (이전 6시간 — cron 5분에 맞춰 단축). alert key 는 `{base}:{service}` 형태로 service 별 cooldown 분리 (omok 의 CPU peak 와 2048 의 CPU peak 가 동시 발사 가능). 봇 관련 alert (`worker_timeout` / `no_move` / `bot_retry_burst` / `bot_skip_burst`) 는 `has_bot_logs=true` 인 omok 만 평가.
+
+## Fetch 정책
+
+| 항목 | 정책 |
+|---|---|
+| Retry | transient HTTP 5xx / 429 / network 에러 → exp backoff (1→2→4s, 최대 3회). `monitor_apis.http_get/post/patch` 에 일괄 적용. 4xx 4xx (404/400/...) 는 영구 에러로 즉시 propagate. |
+| Pagination | `render_search_logs` (nextEndTime), `render_events` (cursor) 모두 페이지네이션 자동 — window 안 모든 데이터 누적. safety cap `max_iter=50` (limit×50 = 5000건). Render API limit max=100 제약. |
+| 실패 처리 | 호출자 (collect) 가 try/except 로 graceful skip — 해당 metric/alert 만 None, 나머지 흐름 정상. fetch_fail_streak (state.json) 에 endpoint 별 누적, 연속 3회 (≈ 15분) 도달 시 별도 alert. 성공 시 streak 자동 reset. |
+| daily-summary | retry 효과는 자동. fail_streak 추적은 collect 만 (1일 1회 실행이라 streak 의미 ↓) — 본문에 "데이터 없음" 표시로 대신. |
 
 ## 수동 실행
 

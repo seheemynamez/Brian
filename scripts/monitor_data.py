@@ -106,6 +106,31 @@ def mark_alerted(state, alert_key):
 
 
 # ============================================================
+# fetch fail streak — endpoint 별 연속 fetch 실패 카운트 (state.json).
+# transient retry (monitor_apis.RETRY_MAX) 통과해도 실패 시 incr. 성공 시 reset.
+# 연속 N 회 도달 시 fetch_fail 알림 발사 (monitor_collect 가 처리).
+# ============================================================
+def incr_fail_streak(state, endpoint_key):
+    """endpoint 의 연속 실패 카운트 +1. 새 카운트 반환."""
+    streaks = state.setdefault('fetch_fail_streak', {})
+    streaks[endpoint_key] = streaks.get(endpoint_key, 0) + 1
+    return streaks[endpoint_key]
+
+
+def reset_fail_streak(state, endpoint_key):
+    """0 으로 reset (이미 0 이면 no-op)."""
+    streaks = state.setdefault('fetch_fail_streak', {})
+    if streaks.get(endpoint_key, 0) > 0:
+        streaks[endpoint_key] = 0
+
+
+def fail_streaks_over(state, threshold):
+    """state 의 fail_streak 중 threshold 이상인 (endpoint, count) 목록."""
+    streaks = state.get('fetch_fail_streak', {}) or {}
+    return [(ep, n) for ep, n in streaks.items() if n >= threshold]
+
+
+# ============================================================
 # daily-stats / 일별 snapshot IO (7일 trend 용)
 # ============================================================
 def load_daily_stats():
