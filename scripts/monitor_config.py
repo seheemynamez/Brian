@@ -71,6 +71,11 @@ THRESHOLD_DOWNTIME_S = 60.0
 # 6시간은 진짜 문제가 회복 안 됐을 때 너무 늦게 재감지 → 2시간으로 단축.
 COOLDOWN_HOURS = 2
 
+# fetch_fail_streak — monitor 자체의 외부 API fetch 가 연속 N 회 실패 시 alert.
+# transient retry (monitor_apis.RETRY_MAX=3) 후에도 실패라 진짜 outage 의심.
+# cron 5분 × 3 = 약 15분 = 사람이 인지할 만한 outage 시작 시점.
+FETCH_FAIL_THRESHOLD = 3
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 METRICS_DIR = REPO_ROOT / 'metrics'
 STATE_FILE = METRICS_DIR / 'state.json'
@@ -95,6 +100,7 @@ ALERT_LABELS = {
     'server_oom':       ['monitor', 'alert-render', 'severity-critical'],   # OOM 강제 종료
     'server_crash':     ['monitor', 'alert-render', 'severity-critical'],   # nonZeroExit 코드 에러
     'server_slow_recovery': ['monitor', 'alert-render', 'severity-high'],   # downtime > 60s (grace 초과)
+    'fetch_fail':       ['monitor', 'alert-fetch',  'severity-high'],       # monitor 자체 fetch 연속 실패
 }
 
 

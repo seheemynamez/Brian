@@ -78,16 +78,16 @@ def run_daily_summary():
     aiven_load = aiven_stats(aiven, 'load_average') or {}
 
     # 2) omok 로그 fetch
-    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, max_pages=10, service='omok')
+    bot_logs = render_search_logs('move applied', s_iso, e_iso, limit=100, service='omok')
     bot_moves = parse_bot_moves(bot_logs)
     bot_by_cfg = bot_stats_by_cfg(bot_moves)
     bot_moves_by_hour = hourly_bucket_by_ts(bot_moves, 'ts')
-    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, max_pages=5, service='omok')
+    game_started_raw = render_search_logs('game_started', s_iso, e_iso, limit=100, service='omok')
     game_started = parse_game_started(game_started_raw)
-    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, max_pages=5, service='omok')
+    game_over_raw = render_search_logs('game_over', s_iso, e_iso, limit=100, service='omok')
     game_overs = parse_game_over(game_over_raw)
     skip_logs = render_search_logs('schedule SKIP', s_iso, e_iso, limit=50, service='omok')
-    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, max_pages=3, service='omok')
+    retry_logs = render_search_logs('schedule RETRY', s_iso, e_iso, limit=100, service='omok')
     # 영향 unique rooms/clients — alert 본문에는 있지만 daily-summary 표엔 단순
     # 카운트만 있었음. burst 가 1-2 게임 집중 vs 다수 사용자 패턴인지 판단용.
     retry_parsed = parse_bot_logs(retry_logs)
@@ -96,12 +96,12 @@ def run_daily_summary():
     retry_clients = len({p['client'] for p in retry_parsed if p['client']})
     skip_rooms = len({p['room'] for p in skip_parsed})
     skip_clients = len({p['client'] for p in skip_parsed if p['client']})
-    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, max_pages=2, service='omok')
-    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, max_pages=10, service='omok')
-    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, max_pages=10, service='omok')
+    hb_logs = render_search_logs('heartbeat_terminate', s_iso, e_iso, limit=100, service='omok')
+    ws_conn_logs = render_search_logs('ws_connected', s_iso, e_iso, limit=100, service='omok')
+    ws_disc_logs = render_search_logs('ws_disconnected', s_iso, e_iso, limit=100, service='omok')
     # PR #4(d) — worker_timeout / no_move 도 안정성 지표에 표시.
-    wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, max_pages=5, service='omok')
-    nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, max_pages=2, service='omok')
+    wt_logs = render_search_logs('worker_timeout', s_iso, e_iso, limit=100, service='omok')
+    nm_logs = render_search_logs('search returned no move', s_iso, e_iso, limit=100, service='omok')
     # omok 인프라 이벤트 — server_failed (OOM / crash), deploy 등.
     # limit max = 100 (Render API 제약). 200 으로 호출하면 400 "invalid limit:
     # too large" 반환 + render_events 가 HTTPError catch 해서 빈 list 반환 →
@@ -116,12 +116,12 @@ def run_daily_summary():
     recoveries = compute_recovery_times(events)
 
     # 2-b) 2048 로그 fetch — 봇 없는 서비스, 활성/일일/동접 위주.
-    submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
-    user_created_logs_2048 = render_search_logs('[user_created]', s_iso, e_iso, limit=100, max_pages=3, service='2048')
-    ws_conn_logs_2048 = render_search_logs('[ws_connected]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
-    ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, max_pages=10, service='2048')
-    hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, max_pages=2, service='2048')
-    score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, max_pages=5, service='2048')
+    submit_logs_2048 = render_search_logs('[submit_score]', s_iso, e_iso, limit=100, service='2048')
+    user_created_logs_2048 = render_search_logs('[user_created]', s_iso, e_iso, limit=100, service='2048')
+    ws_conn_logs_2048 = render_search_logs('[ws_connected]', s_iso, e_iso, limit=100, service='2048')
+    ws_disc_logs_2048 = render_search_logs('[ws_disconnected]', s_iso, e_iso, limit=100, service='2048')
+    hb_logs_2048 = render_search_logs('[heartbeat_terminate]', s_iso, e_iso, limit=100, service='2048')
+    score_best_logs_2048 = render_search_logs('[score_best]', s_iso, e_iso, limit=100, service='2048')
     events_2048 = render_events(s_iso, e_iso, limit=100, service='2048')
     failures_2048 = parse_server_failures(events_2048)
     deploy_count_2048 = sum(1 for e in events_2048 if e.get('event', {}).get('type') == 'deploy_ended')
