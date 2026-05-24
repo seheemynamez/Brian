@@ -11,6 +11,7 @@ const roomRuntime = require('../domain/room-runtime');
 const {
   send, sendToPlayer, forEachSpectatorWs,
   playerStatusPayload,
+  disconnectStatePayload,
 } = require('./send');
 const { getSpectatorNames, addSpectator } = require('./spectator');
 const log = require('../infra/log');
@@ -111,6 +112,7 @@ const onResumeSession = (ws, msg) => {
     nicknames: { black: room.players.black?.nickname || '', white: room.players.white?.nickname || '' },
     ratings: buildPlayerRatings(room),
     playerStatus: playerStatusPayload(room),
+    ...disconnectStatePayload(room),  // disconnectGraceMs + (진행 중 시) disconnectDeadlines
     status: room.status,
     winner: room.winner,
     line: room.winLine,

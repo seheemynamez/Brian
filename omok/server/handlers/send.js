@@ -4,8 +4,10 @@
 // ============================================================
 
 const connections = require('../connections');
+const roomRuntime = require('../domain/room-runtime');
 const { getRoomsList } = require('../domain/rooms');
 const { getWss } = require('./state');
+const { DISCONNECT_GRACE_MS } = require('../infra/timings');
 
 // 도메인 코드가 ws 객체에 직접 의존하지 않도록, ID 기반 송신 헬퍼를 함께 노출 (이슈 #31).
 // 기존 send(ws, msg) 는 점진 마이그레이션을 위해 유지.
@@ -70,6 +72,20 @@ const playerStatusPayload = (room) => {
     if (slot.type === 'bot') { out[color] = 'online'; continue; }
     const ws = connections.getWsBySessionId(slot.sessionId);
     out[color] = (ws && ws.readyState === ws.OPEN) ? 'online' : 'offline';
+  }
+  return out;
+};
+
+// 진행 중인 disconnect grace deadline + 정책 ms — resume_success / spectate_success
+// / game_start msg payload 에 같이 전달. 새로 입장한 client 가 grace 카운트다운
+// UI 를 시작할 수 있게. (PR — 관전자 새로고침 시 grace 안 보이던 버그 fix.)
+// 반환: { disconnectDeadlines?: { black?, white? }, disconnectGraceMs }
+//   - disconnectDeadlines 가 빈 객체면 omit (msg 크기 절약).
+const disconnectStatePayload = (room) => {
+  const out = { disconnectGraceMs: DISCONNECT_GRACE_MS };
+  const deadlines = roomRuntime.getDisconnectDeadlines(room.code);
+  if (Object.keys(deadlines).length > 0) {
+    out.disconnectDeadlines = deadlines;
   }
   return out;
 };
@@ -171,6 +187,7 @@ module.exports = {
   broadcastRoom,
   playerIdsPayload,
   playerStatusPayload,
+  disconnectStatePayload,
   bothPlayersOnline,
   broadcastOnlineCount,
   broadcastRoomsList,
