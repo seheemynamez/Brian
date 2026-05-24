@@ -32,7 +32,8 @@ npm run test:ci       # 둘 다
 │   ├── memory.js       # in-process Map (테스트/로컬)
 │   └── valkey.js       # Aiven Valkey write-through
 └── __tests__/
-    └── unit/users.test.js
+    ├── unit/users.test.js  # users 도메인 단위
+    └── recovery.test.js    # E2E (npm test 가 서버 자동 spawn — port 18082)
 ```
 
 ## HTTP endpoint
