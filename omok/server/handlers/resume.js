@@ -12,6 +12,7 @@ const {
   send, sendToPlayer, forEachSpectatorWs,
   playerStatusPayload,
   disconnectStatePayload,
+  bothPlayersOnline,
 } = require('./send');
 const { getSpectatorNames, addSpectator } = require('./spectator');
 const log = require('../infra/log');
@@ -80,8 +81,16 @@ const onResumeSession = (ws, msg) => {
     ws.nickname = slot.nickname;
   }
   const oppColor = otherColor(sess.color);
-  sendToPlayer(room, oppColor, { type: 'opponent_reconnected', color: sess.color });
-  forEachSpectatorWs(room, (sWs) => send(sWs, { type: 'opponent_reconnected', color: sess.color }));
+  // 남은 grace 정보 같이 보냄 — 양쪽 동시 끊긴 케이스 또는 다른 색 grace 진행
+  // 중인 경우 client 가 그 색의 카운트다운 UI 유지 (PR — Issue: 한 쪽 reconnect
+  // 시 다른 쪽 grace UI 까지 잘못 cancel 되던 버그 fix).
+  const reconnectPayload = {
+    type: 'opponent_reconnected',
+    color: sess.color,
+    ...disconnectStatePayload(room),
+  };
+  sendToPlayer(room, oppColor, reconnectPayload);
+  forEachSpectatorWs(room, (sWs) => send(sWs, reconnectPayload));
   // 봇 게임 / PVP 모두 disconnect 시 turn timer 동결됨 (disconnect.js → pauseTurnTimer).
   // resume 시 양쪽 다 online 일 때만 turn timer 재개 — PVP 는 한 쪽만 reconnect 한 상태면
   // 다른 쪽 reconnect 까지 timer 안 시작. 봇 게임은 봇이 항상 online 이라 사람 reconnect 즉시 재개.
