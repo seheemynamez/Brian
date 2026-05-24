@@ -71,13 +71,19 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // /api/daily-stats?date=YYYY-MM-DD — 카운터 + SET 크기 합성 응답.
 // monitor 의 daily-summary 가 이 단일 endpoint 로 server-domain 카운터 전부 수신.
 // fields 가 없으면 (해당 날짜 게임 없거나 TTL 만료) 0 으로 응답.
+// backfill 호환: SET 크기 = 0 이고 `{name}_backfill` 카운터가 있으면 그 값 fallback.
+// (옛 daily-stats.json 데이터를 valkey 로 옮긴 경우 — SET 멤버는 모르고 카운트만 옴.)
 const dailyStatsHandler = (req, res) => {
   const url = new URL(req.url, 'http://x');
   const date = url.searchParams.get('date') || '';
   if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
   const store = getStore();
   const c = store.getDailyStats(date) || {};
-  const getSize = (name) => store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+  const setSize = (name) => {
+    const live = store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+    if (live > 0) return live;
+    return Number(c[`${name}_backfill`]) || 0;
+  };
   sendJson(res, 200, {
     date,
     // counters
@@ -91,12 +97,12 @@ const dailyStatsHandler = (req, res) => {
     heartbeat_terminate: c.heartbeat_terminate || 0,
     ws_connected: c.ws_connected || 0,
     ws_disconnected: c.ws_disconnected || 0,
-    // unique SET 크기
-    active_users: getSize('active_users'),
-    bot_retry_rooms: getSize('bot_retry_rooms'),
-    bot_retry_clients: getSize('bot_retry_clients'),
-    bot_skip_rooms: getSize('bot_skip_rooms'),
-    bot_skip_clients: getSize('bot_skip_clients'),
+    // unique SET 크기 (없으면 backfill counter fallback)
+    active_users: setSize('active_users'),
+    bot_retry_rooms: setSize('bot_retry_rooms'),
+    bot_retry_clients: setSize('bot_retry_clients'),
+    bot_skip_rooms: setSize('bot_skip_rooms'),
+    bot_skip_clients: setSize('bot_skip_clients'),
     ts: new Date().toISOString(),
   });
 };

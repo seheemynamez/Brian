@@ -388,14 +388,57 @@ def run_daily_summary():
     body.append(f'| Memory (MB) | {mem_st.get("avg",0):.1f} | {mem_st.get("p50",0):.1f} | {mem_st.get("p95",0):.1f} | {mem_st.get("max",0):.1f} |')
     body.append(f'| Bandwidth 30d 누적 _(발행시점-30d)_ | {bw_30d:.1f}MB (한도 100GB) |  |  |  |')
     body.append('')
-    body.append('### Aiven valkey 메트릭 _(period=day, 발행시점-24h — 측정 window 와 별도)_\n| 항목 | avg | p50 | p95 | max |')
-    body.append('|---|---|---|---|---|')
-    body.append(f'| CPU % | {aiven_cpu.get("avg",0):.2f} | {aiven_cpu.get("p50",0):.2f} | {aiven_cpu.get("p95",0):.2f} | {aiven_cpu.get("max",0):.2f} |')
-    body.append(f'| Memory % | {aiven_mem.get("avg",0):.2f} | {aiven_mem.get("p50",0):.2f} | {aiven_mem.get("p95",0):.2f} | {aiven_mem.get("max",0):.2f} |')
-    body.append(f'| Disk % | {aiven_disk.get("avg",0):.3f} | — | — | {aiven_disk.get("max",0):.3f} |')
-    body.append(f'| Load avg | {aiven_load.get("avg",0):.2f} | — | {aiven_load.get("p95",0):.2f} | {aiven_load.get("max",0):.2f} |')
+    # Aiven valkey 상태 — 3-tier 색 코드 (🟢safe / 🟡warn / 🟠high / 🔴crit / ⚪na).
+    # noeviction 정책 + free-1 plan (1GB RAM, disk 0) 기준. max 값으로 상태 판정.
+    from monitor_config import (
+        THRESHOLD_AIVEN_CPU_PCT_WARN, THRESHOLD_AIVEN_CPU_PCT_HIGH, THRESHOLD_AIVEN_CPU_PCT_CRIT,
+        THRESHOLD_AIVEN_MEM_PCT_WARN, THRESHOLD_AIVEN_MEM_PCT_HIGH, THRESHOLD_AIVEN_MEM_PCT_CRIT,
+        THRESHOLD_AIVEN_DISK_PCT_WARN, THRESHOLD_AIVEN_DISK_PCT_HIGH, THRESHOLD_AIVEN_DISK_PCT_CRIT,
+        THRESHOLD_AIVEN_LOAD_WARN, THRESHOLD_AIVEN_LOAD_HIGH, THRESHOLD_AIVEN_LOAD_CRIT,
+    )
+    from monitor_data import severity_for
+    cpu_max = aiven_cpu.get('max') or 0
+    mem_max = aiven_mem.get('max') or 0
+    disk_max = aiven_disk.get('max') or 0
+    load_max = aiven_load.get('max') or 0
+    _, cpu_emo  = severity_for(cpu_max, THRESHOLD_AIVEN_CPU_PCT_WARN, THRESHOLD_AIVEN_CPU_PCT_HIGH, THRESHOLD_AIVEN_CPU_PCT_CRIT)
+    _, mem_emo  = severity_for(mem_max, THRESHOLD_AIVEN_MEM_PCT_WARN, THRESHOLD_AIVEN_MEM_PCT_HIGH, THRESHOLD_AIVEN_MEM_PCT_CRIT)
+    _, disk_emo = severity_for(disk_max, THRESHOLD_AIVEN_DISK_PCT_WARN, THRESHOLD_AIVEN_DISK_PCT_HIGH, THRESHOLD_AIVEN_DISK_PCT_CRIT)
+    _, load_emo = severity_for(load_max, THRESHOLD_AIVEN_LOAD_WARN, THRESHOLD_AIVEN_LOAD_HIGH, THRESHOLD_AIVEN_LOAD_CRIT)
+    # max% → 절대값 MB (메모리만, 한도 1024MB 기준).
+    mem_max_mb = mem_max * AIVEN_MEM_LIMIT_MB / 100
+    body.append('### Aiven valkey 메트릭 _(period=day, 발행시점-24h — 측정 window 와 별도)_\n')
+    body.append('| 항목 | avg | p50 | p95 | max | 상태 | 임계 (warn / high / crit) |')
+    body.append('|---|---|---|---|---|---|---|')
+    body.append(
+        f'| CPU % | {aiven_cpu.get("avg",0):.2f} | {aiven_cpu.get("p50",0):.2f} | '
+        f'{aiven_cpu.get("p95",0):.2f} | **{cpu_max:.2f}** | {cpu_emo} | '
+        f'{THRESHOLD_AIVEN_CPU_PCT_WARN:.0f} / {THRESHOLD_AIVEN_CPU_PCT_HIGH:.0f} / {THRESHOLD_AIVEN_CPU_PCT_CRIT:.0f} |'
+    )
+    body.append(
+        f'| Memory % _({mem_max_mb:.0f}MB / {AIVEN_MEM_LIMIT_MB:.0f}MB)_ | '
+        f'{aiven_mem.get("avg",0):.2f} | {aiven_mem.get("p50",0):.2f} | '
+        f'{aiven_mem.get("p95",0):.2f} | **{mem_max:.2f}** | {mem_emo} | '
+        f'{THRESHOLD_AIVEN_MEM_PCT_WARN:.0f} / {THRESHOLD_AIVEN_MEM_PCT_HIGH:.0f} / {THRESHOLD_AIVEN_MEM_PCT_CRIT:.0f} |'
+    )
+    body.append(
+        f'| Disk % | {aiven_disk.get("avg",0):.3f} | — | — | **{disk_max:.3f}** | {disk_emo} | '
+        f'{THRESHOLD_AIVEN_DISK_PCT_WARN:.0f} / {THRESHOLD_AIVEN_DISK_PCT_HIGH:.0f} / {THRESHOLD_AIVEN_DISK_PCT_CRIT:.0f} |'
+    )
+    body.append(
+        f'| Load avg | {aiven_load.get("avg",0):.2f} | — | {aiven_load.get("p95",0):.2f} | '
+        f'**{load_max:.2f}** | {load_emo} | '
+        f'{THRESHOLD_AIVEN_LOAD_WARN:.1f} / {THRESHOLD_AIVEN_LOAD_HIGH:.1f} / {THRESHOLD_AIVEN_LOAD_CRIT:.1f} |'
+    )
     body.append('')
-    body.append(f'**Aiven 장기 메모리 트렌드**: {aiven_trend_msg}\n')
+    body.append(
+        '_플랜: **free-1** (1024MB node RAM, disk 0, `maxmemory-policy=noeviction`, valkey 내부 cap=299MB)._\n'
+        '_Aiven `mem_usage` 는 **node OS RSS 비율** — baseline ~60-70% 정상 (OS + 복제 버퍼 + valkey 오버헤드)._\n'
+        '_데이터 자체 부담은 valkey 내부 ~5MB 수준 (299MB cap 의 1.7%). noeviction 으로 인한 write 실패는_\n'
+        '_valkey 내부 cap 도달 시 발생 — 본 메트릭으로는 직접 감지 X (향후 INFO MEMORY 직접 조회 후보)._\n'
+        '_본 임계는 "OS OOM kill 임박" 관점: WARN 75% / HIGH 85% / CRIT 95%._'
+    )
+    body.append(f'\n**Aiven 장기 메모리 트렌드**: {aiven_trend_msg}\n')
 
     # 게임 활동 요약 — 계정 수 / 활성 사용자 + 전일Δ (PR — 5개 개선 (a))
     body.append('### 게임 활동 요약 (오목)\n')

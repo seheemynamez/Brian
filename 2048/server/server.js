@@ -52,7 +52,12 @@ const dailyStatsHandler = (req, res) => {
   if (!DATE_RE.test(date)) return sendJson(res, 400, { error: 'date=YYYY-MM-DD required' });
   const store = getStore();
   const c = store.getDailyStats ? (store.getDailyStats(date) || {}) : {};
-  const getSize = (name) => store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+  // backfill 호환: SET 크기 0 이면 `{name}_backfill` counter fallback.
+  const setSize = (name) => {
+    const live = store.getDailySetSize ? store.getDailySetSize(date, name) : 0;
+    if (live > 0) return live;
+    return Number(c[`${name}_backfill`]) || 0;
+  };
   sendJson(res, 200, {
     date,
     submit_score: c.submit_score || 0,
@@ -61,7 +66,7 @@ const dailyStatsHandler = (req, res) => {
     ws_connected: c.ws_connected || 0,
     ws_disconnected: c.ws_disconnected || 0,
     heartbeat_terminate: c.heartbeat_terminate || 0,
-    active_users: getSize('active_users'),
+    active_users: setSize('active_users'),
     ts: new Date().toISOString(),
   });
 };

@@ -431,6 +431,19 @@ def aiven_stats(metrics_dict, key):
     }
 
 
+def severity_for(value, warn, high, crit):
+    """value 와 (warn, high, crit) 임계 비교 → ('safe'|'warn'|'high'|'crit', emoji).
+
+    value None / 음수 → ('na', '⚪'). 본문 표/alert 의 상태 컬럼에 통일된 표시 위함.
+    """
+    if value is None or not isinstance(value, (int, float)) or value < 0:
+        return ('na', '⚪')
+    if value >= crit: return ('crit', '🔴')
+    if value >= high: return ('high', '🟠')
+    if value >= warn: return ('warn', '🟡')
+    return ('safe', '🟢')
+
+
 # ============================================================
 # 봇 move 로그 파싱 (daily-summary 의 cfgMax 분석 용)
 # ============================================================

@@ -58,7 +58,39 @@ AIVEN_MEM_LIMIT_MB = 1024.0
 # - 동시 3 게임 lag = ~45건/15분
 # → 임계 30 으로 동시 2 게임 이상 lag 만 잡음 (한 게임 단독 케이스 제외).
 THRESHOLD_RENDER_CPU_M = 100.0   # 한도 (100m) 도달 — throttle 시작.
-THRESHOLD_AIVEN_MEM_PCT = 80.0
+
+# Aiven valkey (free-1 plan: 1024MB node RAM, disk 0 = in-memory only)
+#
+# 중요: Aiven mem_usage 메트릭은 **node OS RSS 비율 (/1024MB)** 이며
+# **valkey 내부 maxmemory (299MB)** 와 별개. 운영 확인 (2026-05-24):
+#   - 노드 RSS baseline ~60-70% (OS + 복제 버퍼 + valkey 오버헤드, 데이터 거의 비어 있음)
+#   - valkey 데이터 자체는 5MB 수준 → 299MB / 1.7% 사용
+#   - noeviction 으로 write 실패하는 시점 = valkey 내부 299MB 도달 (별도 메트릭, 본 모니터링 미수집)
+# 따라서 Aiven mem_pct 기반 임계는 "node OOM kill 위험" 관점.
+# 실제 데이터 cleanup 필요 신호는 valkey INFO MEMORY 별도 조회가 정확 (향후 PR 후보).
+#
+# 임계 (Aiven node mem, 3-tier):
+#   - WARN  (75%): 본문 표 노랑. 정상 baseline 부근, 모니터링만.
+#   - HIGH  (85%): alert. OS OOM 임박. 데이터 cleanup + plan upgrade 검토.
+#   - CRIT  (95%): 즉시 조치. OOM kill 직전.
+THRESHOLD_AIVEN_MEM_PCT_WARN = 75.0
+THRESHOLD_AIVEN_MEM_PCT_HIGH = 85.0
+THRESHOLD_AIVEN_MEM_PCT_CRIT = 95.0
+THRESHOLD_AIVEN_MEM_PCT = THRESHOLD_AIVEN_MEM_PCT_HIGH  # backward-compat alias
+# CPU — valkey 9.0 single-thread (io_threads=1 default). CPU 사용율 90% 면 throughput
+# 한도 도달, RTT 증가. free-1 1 core 기준.
+THRESHOLD_AIVEN_CPU_PCT_WARN = 50.0
+THRESHOLD_AIVEN_CPU_PCT_HIGH = 70.0
+THRESHOLD_AIVEN_CPU_PCT_CRIT = 90.0
+# Disk — free-1 은 disk_space_mb=0 (in-memory only). 응답 값 항상 0 또는 N/A 가능.
+# 유료 plan upgrade 시 의미 — RDB/AOF 영속화 disk 사용.
+THRESHOLD_AIVEN_DISK_PCT_WARN = 50.0
+THRESHOLD_AIVEN_DISK_PCT_HIGH = 75.0
+THRESHOLD_AIVEN_DISK_PCT_CRIT = 90.0
+# Load average — node-level 1m load. CPU=1 이라 1.0 이 사실상 100%.
+THRESHOLD_AIVEN_LOAD_WARN = 0.8
+THRESHOLD_AIVEN_LOAD_HIGH = 1.5
+THRESHOLD_AIVEN_LOAD_CRIT = 2.5
 # 봇 zombie 회복 (PR #85). RETRY 가 정상 동작이지만 burst 가 잦으면 사용자 lag 심각.
 # SKIP 는 RETRY 후에도 회복 못 한 경우 — 거의 발생 X (없어야 정상).
 THRESHOLD_BOT_RETRY_15MIN = 30   # 15분 안 RETRY 30건 이상 (≈동시 2 게임 lag)

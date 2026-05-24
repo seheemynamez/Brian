@@ -22,7 +22,9 @@ from monitor_config import (
     ALERT_LABELS, AIVEN_MEM_LIMIT_MB, COOLDOWN_HOURS, DRY_RUN,
     FETCH_FAIL_THRESHOLD, KST_TODAY, METRICS_DIR, NOW, REPO_ROOT,
     RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, SERVICES,
-    THRESHOLD_AIVEN_MEM_PCT, THRESHOLD_BOT_RETRY_15MIN, THRESHOLD_BOT_SKIP_15MIN,
+    THRESHOLD_AIVEN_MEM_PCT, THRESHOLD_AIVEN_MEM_PCT_CRIT,
+    THRESHOLD_AIVEN_CPU_PCT_HIGH, THRESHOLD_AIVEN_CPU_PCT_CRIT,
+    THRESHOLD_BOT_RETRY_15MIN, THRESHOLD_BOT_SKIP_15MIN,
     THRESHOLD_DOWNTIME_S, THRESHOLD_RENDER_CPU_M,
     alert_key_for, service_label,
 )
@@ -331,20 +333,55 @@ def _build_fail_streak_alerts(state):
 # ============================================================
 # Aiven (공유 — omok / 2048 같은 인스턴스 prefix 격리)
 # ============================================================
-def _build_aiven_alert(aiven_mem):
-    if not (aiven_mem and aiven_mem['max'] >= THRESHOLD_AIVEN_MEM_PCT):
-        return None
-    return (
-        'aiven_mem_high',
-        f'[monitor] Aiven valkey Memory {aiven_mem["max"]:.1f}% (≥{THRESHOLD_AIVEN_MEM_PCT:.0f}%)',
-        f'## Aiven Memory 임계 초과\n\n'
-        f'- 측정: **{aiven_mem["max"]:.1f}%** / {AIVEN_MEM_LIMIT_MB:.0f}MB\n'
-        f'- 임계: ≥ {THRESHOLD_AIVEN_MEM_PCT:.0f}% — noeviction (100% 시 write 실패)\n'
-        f'- 시각: {NOW_KST_LABEL}\n\n'
-        f'### 다음 조치 후보\n'
-        f'- 정기 cleanup 검토\n'
-        f'- Aiven Startup-4 (4GB / $30월) 검토\n',
-    )
+def _build_aiven_alerts(aiven_mem, aiven_cpu):
+    """Aiven memory + CPU alert 2종. HIGH 이상이면 발사, CRIT 이상이면 severity 분리."""
+    alerts = []
+    # Memory — noeviction 위험: HIGH(75%) 즉시 cleanup 검토, CRIT(85%) 긴급.
+    if aiven_mem and aiven_mem.get('max') is not None:
+        m = aiven_mem['max']
+        if m >= THRESHOLD_AIVEN_MEM_PCT:
+            crit = m >= THRESHOLD_AIVEN_MEM_PCT_CRIT
+            sev = 'CRIT' if crit else 'HIGH'
+            mb_used = m * AIVEN_MEM_LIMIT_MB / 100
+            alerts.append((
+                'aiven_mem_high',
+                f'[monitor] Aiven valkey node Memory {sev} {m:.1f}% '
+                f'(≥{THRESHOLD_AIVEN_MEM_PCT_CRIT if crit else THRESHOLD_AIVEN_MEM_PCT:.0f}%)',
+                f'## Aiven Memory 임계 {sev}\n\n'
+                f'- 측정: **{m:.1f}%** (~{mb_used:.0f}MB / {AIVEN_MEM_LIMIT_MB:.0f}MB node RAM, OS RSS 기준)\n'
+                f'- 임계: high {THRESHOLD_AIVEN_MEM_PCT:.0f}% / **crit {THRESHOLD_AIVEN_MEM_PCT_CRIT:.0f}%** — OS OOM kill 임박.\n'
+                f'- 시각: {NOW_KST_LABEL}\n\n'
+                f'### 참고 — valkey 내부 vs node 메트릭\n'
+                f'- 본 메트릭은 **node OS RSS** 비율 (baseline ~60-70% 정상, OS+복제 버퍼+valkey 오버헤드).\n'
+                f'- noeviction 으로 write 실패하는 시점 = valkey 내부 `maxmemory=299MB` 도달 (별도 메트릭, 본 모니터링 미수집).\n'
+                f'- 본 alert 는 "node 자체 OOM kill" 관점.\n\n'
+                f'### 즉시 조치\n'
+                f'- 직접 조회: `redis-cli INFO MEMORY` (`used_memory_human`, `maxmemory_human`)\n'
+                f'- TTL 만료 미정리 키 SCAN (대용량 LIST 우선): `SCAN MATCH \'omok:daily-list:*\'`\n'
+                f'- LIST cap 검토: `bot_moves` (~36MB/90d), `games` (~9MB/90d) 가 주요 차지\n'
+                f'- Plan upgrade 후보: Hobbyist-2 (~$25/월) 또는 Startup-4 (~$60/월)\n'
+                f'- `maxmemory-policy` → `allkeys-lru` 변경 (Aiven console, 자동 정리)\n',
+            ))
+    # CPU — single-thread valkey 라 100% 면 throughput 한도.
+    if aiven_cpu and aiven_cpu.get('max') is not None:
+        c = aiven_cpu['max']
+        if c >= THRESHOLD_AIVEN_CPU_PCT_HIGH:
+            crit = c >= THRESHOLD_AIVEN_CPU_PCT_CRIT
+            sev = 'CRIT' if crit else 'HIGH'
+            alerts.append((
+                'aiven_cpu_high',
+                f'[monitor] Aiven valkey CPU {sev} {c:.1f}% '
+                f'(≥{THRESHOLD_AIVEN_CPU_PCT_CRIT if crit else THRESHOLD_AIVEN_CPU_PCT_HIGH:.0f}%)',
+                f'## Aiven CPU 임계 {sev}\n\n'
+                f'- 측정: **{c:.1f}%** (1 core, single-thread valkey)\n'
+                f'- 임계: high {THRESHOLD_AIVEN_CPU_PCT_HIGH:.0f}% / **crit {THRESHOLD_AIVEN_CPU_PCT_CRIT:.0f}%**\n'
+                f'- 시각: {NOW_KST_LABEL}\n\n'
+                f'### 다음 조치 후보\n'
+                f'- 대량 write 패턴 점검 (bot_moves / game records LPUSH 빈도)\n'
+                f'- `valkey_io_threads` 늘리기 (현 1) — Aiven console 에서 user_config 변경\n'
+                f'- Plan upgrade 후보: Startup-4 (멀티 코어)\n',
+            ))
+    return alerts
 
 
 # ============================================================
@@ -417,9 +454,7 @@ def run_collect():
         alerts.extend(_build_alerts(
             svc_key, services_snapshot[svc_key]['render'], services_raw[svc_key],
             aiven_cpu, aiven_mem, s_iso, e_iso))
-    aiven_alert = _build_aiven_alert(aiven_mem)
-    if aiven_alert:
-        alerts.append(aiven_alert)
+    alerts.extend(_build_aiven_alerts(aiven_mem, aiven_cpu))
     alerts.extend(_build_fail_streak_alerts(state))
 
     for key, title, body in alerts:
