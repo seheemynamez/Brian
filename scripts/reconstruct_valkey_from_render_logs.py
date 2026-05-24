@@ -39,7 +39,10 @@ except ImportError:
 KST = timezone(timedelta(hours=9))
 
 RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
-RENDER_OMOK_SERVICE_ID = 'srv-d84mu23tqb8s73fgcq60'
+RENDER_SERVICE_IDS = {
+    'omok': 'srv-d84mu23tqb8s73fgcq60',
+    '2048': 'srv-d87tvarbc2fs73echpr0',
+}
 RENDER_BASE = 'https://api.render.com/v1'
 
 DAILY_TTL_SEC = 90 * 86400
@@ -107,7 +110,7 @@ def fetch_render_logs(text: str, start_iso: str, end_iso: str, api_key: str,
     end = end_iso
     for _ in range(max_iter):
         qs = urllib.parse.urlencode({
-            'ownerId': RENDER_OWNER_ID, 'resource': RENDER_OMOK_SERVICE_ID,
+            'ownerId': RENDER_OWNER_ID, 'resource': RENDER_SERVICE_IDS['omok'],
             'startTime': start_iso, 'endTime': end,
             'text': text, 'limit': limit, 'direction': 'backward',
         })
@@ -142,9 +145,12 @@ def kst_window_for(date_str: str) -> tuple[str, str]:
 
 
 def reconstruct_date(r: redis.Redis | None, date_str: str, prefix: str,
-                     api_key: str, clean_list: bool, dry_run: bool):
+                     api_key: str, clean_list: bool, dry_run: bool,
+                     skip_hash: bool = False, service_id: str = RENDER_SERVICE_IDS['omok']):
+    """skip_hash=True 일 때 Hash counter 는 안 건드림 (live server 가 이미 정확히 누적 중인 경우).
+    LIST/SET 만 적재."""
     s_iso, e_iso = kst_window_for(date_str)
-    print(f'\n=== {date_str} KST  ({s_iso} ~ {e_iso}) ===')
+    print(f'\n=== {date_str} KST  ({s_iso} ~ {e_iso})  skip_hash={skip_hash} ===')
 
     # 1) game_over → games LIST + active_users SET
     print('  fetching [game_over]...')
@@ -285,24 +291,28 @@ def reconstruct_date(r: redis.Redis | None, date_str: str, prefix: str,
 
     # daily Hash counter — HSET (replace). caller 의 backfill 값과 합쳐 일관성.
     # 기존 active_users_backfill / bot_games / pvp_games 등은 보존. 이번에 명확히 알 수 있는 값만 덮어씀.
-    hash_updates = {}
-    if wt_count > 0: hash_updates['worker_timeout'] = wt_count
-    if nm_count > 0: hash_updates['no_move'] = nm_count
-    if hb_count > 0: hash_updates['heartbeat_terminate'] = hb_count
-    if len(retry_logs) > 0: hash_updates['bot_retry'] = len(retry_logs)
-    if len(skip_logs) > 0: hash_updates['bot_skip'] = len(skip_logs)
-    if len(wsc_logs) > 0: hash_updates['ws_connected'] = len(wsc_logs)
-    if len(wsd_logs) > 0: hash_updates['ws_disconnected'] = len(wsd_logs)
-    # PVP / bot_games 도 game_over 로그에서 정확히 셀 수 있음 — 기존 backfill 값 덮어쓰기.
-    pvp = sum(1 for g in games_parsed if g.get('bot') == 'false')
-    bot = sum(1 for g in games_parsed if g.get('bot') == 'true')
-    if pvp: hash_updates['pvp_games'] = pvp
-    if bot: hash_updates['bot_games'] = bot
-    if moves_parsed: hash_updates['total_bot_moves'] = len(moves_parsed)
-    if hash_updates:
-        r.hset(daily_hash_key, mapping={k: str(v) for k, v in hash_updates.items()})
-        r.expire(daily_hash_key, DAILY_TTL_SEC)
-        print(f'  Hash updated: {hash_updates}')
+    # skip_hash=True 면 Hash 업데이트 자체 안 함 (live server 가 이미 누적 중인 경우).
+    if skip_hash:
+        print(f'  Hash counter update SKIPPED (live server 가 이미 누적 중)')
+    else:
+        hash_updates = {}
+        if wt_count > 0: hash_updates['worker_timeout'] = wt_count
+        if nm_count > 0: hash_updates['no_move'] = nm_count
+        if hb_count > 0: hash_updates['heartbeat_terminate'] = hb_count
+        if len(retry_logs) > 0: hash_updates['bot_retry'] = len(retry_logs)
+        if len(skip_logs) > 0: hash_updates['bot_skip'] = len(skip_logs)
+        if len(wsc_logs) > 0: hash_updates['ws_connected'] = len(wsc_logs)
+        if len(wsd_logs) > 0: hash_updates['ws_disconnected'] = len(wsd_logs)
+        # PVP / bot_games 도 game_over 로그에서 정확히 셀 수 있음 — 기존 backfill 값 덮어쓰기.
+        pvp = sum(1 for g in games_parsed if g.get('bot') == 'false')
+        bot = sum(1 for g in games_parsed if g.get('bot') == 'true')
+        if pvp: hash_updates['pvp_games'] = pvp
+        if bot: hash_updates['bot_games'] = bot
+        if moves_parsed: hash_updates['total_bot_moves'] = len(moves_parsed)
+        if hash_updates:
+            r.hset(daily_hash_key, mapping={k: str(v) for k, v in hash_updates.items()})
+            r.expire(daily_hash_key, DAILY_TTL_SEC)
+            print(f'  Hash updated: {hash_updates}')
 
     print(f'  wrote: games_LIST={len(games_parsed)}, moves_LIST={len(moves_parsed)}, '
           f'active_users_SET={len(active_nicks)}, retry/skip SETs')
@@ -316,6 +326,8 @@ def main():
     ap.add_argument('--url', default=os.environ.get('VALKEY_URL'))
     ap.add_argument('--api-key', default=os.environ.get('SEHEE_RENDER_API_KEY') or os.environ.get('RENDER_API_KEY'))
     ap.add_argument('--clean-list', action='store_true', help='재실행 전 LIST 삭제 (중복 방지)')
+    ap.add_argument('--skip-hash', action='store_true',
+                    help='Hash counter 업데이트 skip (live server 가 이미 누적 중인 today 등)')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
@@ -335,7 +347,8 @@ def main():
     r = None if args.dry_run else redis.from_url(args.url)
     try:
         for d in dates:
-            reconstruct_date(r, d, args.prefix, args.api_key, args.clean_list, args.dry_run)
+            reconstruct_date(r, d, args.prefix, args.api_key,
+                             args.clean_list, args.dry_run, skip_hash=args.skip_hash)
     finally:
         if r: r.close()
 
