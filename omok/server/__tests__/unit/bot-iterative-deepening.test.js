@@ -34,7 +34,7 @@ describe('Bot ID — generateMove 반환 shape + 깊이 도달', () => {
     const r = generateMove(b, 'black', 'easy');
     assert.ok(r.move, 'move 필요');
     assert.equal(r.cfgMaxDepth, 2);
-    assert.equal(r.cfgTopK, 3);
+    assert.equal(r.cfgTopK, 2);   // PR — t3→2 (약화)
     assert.equal(r.reachedDepth, 2);  // easy 는 무조건 d2 까지 — 매우 빠름
     assert.ok(typeof r.elapsedMs === 'number');
     assert.equal(r.aborted, false);
@@ -78,46 +78,46 @@ describe('Bot ID — countMyStones — 자기 색 돌만 카운트', () => {
 });
 
 describe('Bot ID — getDynamicConfig 자기 돌 수 별 매핑', () => {
-  test('easy: 자기 돌 수 무관 — d2×t3×1s 고정', () => {
+  test('easy: 자기 돌 수 무관 — d2×t2×1s 고정 (PR — t3→2 약화)', () => {
     assert.deepEqual(getDynamicConfig(empty(), 'black', 'easy'),
-      { maxDepth: 2, topK: 3, timeoutMs: 1000 });
+      { maxDepth: 2, topK: 2, timeoutMs: 1000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(20, 'black'), 'black', 'easy'),
-      { maxDepth: 2, topK: 3, timeoutMs: 1000 });
+      { maxDepth: 2, topK: 2, timeoutMs: 1000 });
   });
 
-  test('medium: 2단계 통합 — 자기<5 → d3×t10×2s / 자기 5+ → d4×t8×4s', () => {
+  test('medium: 2단계 통합 — 자기<5 → d3×t10×2s / 자기 5+ → d4×t6×4s', () => {
     // 자기 < 5
     assert.deepEqual(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'medium'),
       { maxDepth: 3, topK: 10, timeoutMs: 2000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(4, 'black'), 'black', 'medium'),
       { maxDepth: 3, topK: 10, timeoutMs: 2000 });
-    // 자기 5+ 통합 (이전 5-14 / 15+ 가 단일 단계로)
+    // 자기 5+ 통합 (PR — t8→6, d4 도달율 38→60%+ 목표)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(5, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 8, timeoutMs: 4000 });
+      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(14, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 8, timeoutMs: 4000 });
+      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(15, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 8, timeoutMs: 4000 });
+      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(30, 'black'), 'black', 'medium'),
-      { maxDepth: 4, topK: 8, timeoutMs: 4000 });
+      { maxDepth: 4, topK: 6, timeoutMs: 4000 });
   });
 
-  test('hard: 자기<5 → d4×t8×5s / 5-14 → d5×t8×12s / 15+ → d6×t7×18s', () => {
-    // 자기 < 5: d4 × t8 × 5s
+  test('hard: 자기<5 → d4×t8×5s / 5-14 → d5×t6×12s / 15+ → d6×t5×18s (PR — topK 축소)', () => {
+    // 자기 < 5: d4 × t8 × 5s (초반 도달율 74% 안정 — 그대로)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(0, 'white'), 'white', 'hard'),
       { maxDepth: 4, topK: 8, timeoutMs: 5000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(4, 'white'), 'white', 'hard'),
       { maxDepth: 4, topK: 8, timeoutMs: 5000 });
-    // 자기 5-14: d5 × t8 × 12s
+    // 자기 5-14: d5 × t6 × 12s (PR — t8→6, 도달율 60→75%+ 목표)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(5, 'white'), 'white', 'hard'),
-      { maxDepth: 5, topK: 8, timeoutMs: 12000 });
+      { maxDepth: 5, topK: 6, timeoutMs: 12000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(14, 'white'), 'white', 'hard'),
-      { maxDepth: 5, topK: 8, timeoutMs: 12000 });
-    // 자기 15+: d6 × t7 × 18s
+      { maxDepth: 5, topK: 6, timeoutMs: 12000 });
+    // 자기 15+: d6 × t5 × 18s (PR — t7→5, 도달율 26→50%+ 목표)
     assert.deepEqual(getDynamicConfig(boardWithMyStones(15, 'white'), 'white', 'hard'),
-      { maxDepth: 6, topK: 7, timeoutMs: 18000 });
+      { maxDepth: 6, topK: 5, timeoutMs: 18000 });
     assert.deepEqual(getDynamicConfig(boardWithMyStones(20, 'white'), 'white', 'hard'),
-      { maxDepth: 6, topK: 7, timeoutMs: 18000 });
+      { maxDepth: 6, topK: 5, timeoutMs: 18000 });
   });
 
   test('상대 돌은 분기에 영향 X — 자기 black 0개 + 상대 white 20개 → 초반 cfg', () => {
@@ -130,19 +130,19 @@ describe('Bot ID — getDynamicConfig 자기 돌 수 별 매핑', () => {
     assert.equal(getDynamicConfig(b, 'white', 'hard').timeoutMs, 18000);
   });
 
-  test('topK 정책 — cfgMax 도달율 50%+ 목표로 cfg 별 차등 (PR #83)', () => {
-    // easy = 3
-    assert.equal(getDynamicConfig(empty(), 'black', 'easy').topK, 3);
-    // medium d3 (초반) = 10 (timeout 여유)
+  test('topK 정책 — cfgMax 도달율 50%+ 목표로 cfg 별 차등 (PR — v3 운영 데이터 튜닝)', () => {
+    // easy = 2 (PR — 승률 76% 약화 위해 t3→2, depth 유지)
+    assert.equal(getDynamicConfig(empty(), 'black', 'easy').topK, 2);
+    // medium d3 (초반) = 10 (timeout 여유, 도달율 99%+)
     assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'medium').topK, 10);
-    // medium d4 (자기 5+) = 8
-    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'medium').topK, 8);
-    // hard d4 (초반) = 8
+    // medium d4 (자기 5+) = 6 (PR — t8→6, 도달율 38→60%+ 목표)
+    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'medium').topK, 6);
+    // hard d4 (초반) = 8 (도달율 74% 안정)
     assert.equal(getDynamicConfig(boardWithMyStones(0, 'black'), 'black', 'hard').topK, 8);
-    // hard d5 (자기 5-14) = 8
-    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'hard').topK, 8);
-    // hard d6 (자기 15+) = 7 (가장 깊이 — αβ 가장 큰 효과)
-    assert.equal(getDynamicConfig(boardWithMyStones(20, 'black'), 'black', 'hard').topK, 7);
+    // hard d5 (자기 5-14) = 6 (PR — t8→6, 도달율 60→75%+ 목표)
+    assert.equal(getDynamicConfig(boardWithMyStones(10, 'black'), 'black', 'hard').topK, 6);
+    // hard d6 (자기 15+) = 5 (PR — t7→5, 도달율 26→50%+ 목표)
+    assert.equal(getDynamicConfig(boardWithMyStones(20, 'black'), 'black', 'hard').topK, 5);
   });
 
   test('worker_timeout 22s 안전 margin — 모든 cfg 의 timeoutMs ≤ 18s (margin ≥ 4s)', () => {
