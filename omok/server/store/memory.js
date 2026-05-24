@@ -18,6 +18,7 @@ const createInMemoryStore = () => ({
   botOffer: new Map(),
   users: new Map(),        // clientId → user JSON
   recentGames: [],         // [{ ..., endedAt }]  최신 먼저 (unshift)
+  dailyStats: new Map(),   // date(YYYY-MM-DD) → { pvp_games, bot_games, total_bot_moves }
   // lifecycle no-op (메모리만 사용)
   async connect() {},
   async hydrate() {},
@@ -36,6 +37,17 @@ const createInMemoryStore = () => ({
   persistRecentGame(entry) {
     this.recentGames.unshift(entry);
     if (this.recentGames.length > RECENT_GAMES_CAP) this.recentGames.length = RECENT_GAMES_CAP;
+  },
+  // 일별 카운터 — 프로세스 재시작 시 휘발 (memory backend 한계). prod 에서는 valkey 강제.
+  incrementDailyCounter(date, field, n = 1) {
+    if (!date || !field || !n) return;
+    const obj = this.dailyStats.get(date) || {};
+    obj[field] = (obj[field] || 0) + n;
+    this.dailyStats.set(date, obj);
+  },
+  getDailyStats(date) {
+    if (!date) return null;
+    return this.dailyStats.get(date) || null;
   },
 });
 

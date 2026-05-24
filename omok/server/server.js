@@ -55,9 +55,38 @@ const statsHandler = (req, res) => {
   res.end(JSON.stringify(payload));
 };
 
+// 일별 카운터 endpoint — monitor 가 ?date=YYYY-MM-DD 로 KST 어제 (또는 임의 날짜)
+// 의 authoritative 카운트 (pvp_games / bot_games / total_bot_moves) 가져감.
+// fields 가 없으면 (해당 날짜 게임 없거나 TTL 만료) 0 으로 응답.
+// date 형식 검증 — 잘못된 입력은 400.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const dailyStatsHandler = (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const date = url.searchParams.get('date') || '';
+  if (!DATE_RE.test(date)) {
+    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ error: 'date=YYYY-MM-DD required' }));
+  }
+  const stats = getStore().getDailyStats(date) || {};
+  const payload = {
+    date,
+    pvp_games: stats.pvp_games || 0,
+    bot_games: stats.bot_games || 0,
+    total_bot_moves: stats.total_bot_moves || 0,
+    ts: new Date().toISOString(),
+  };
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
+  res.end(JSON.stringify(payload));
+};
+
 const httpServer = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
   if (urlPath === '/api/stats') return statsHandler(req, res);
+  if (urlPath === '/api/daily-stats') return dailyStatsHandler(req, res);
   if (urlPath.startsWith('/i/')) return shareHandler(req, res);
   return staticHandler(req, res);
 });

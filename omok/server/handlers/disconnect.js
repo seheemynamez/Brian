@@ -18,7 +18,7 @@ const {
 const { removeSpectator } = require('./spectator');
 // pauseTurnTimer : 사용자 끊김 — 남은 시간 보존 (재연결 시 복구).
 // clearTurnTimer : 게임이 진짜 끝나는 흐름 (finalizeAbandon / onLeaveRoom) — timer 취소 + remainMs=0.
-const { pauseTurnTimer, clearTurnTimer, gameOverFields } = require('./game');
+const { pauseTurnTimer, clearTurnTimer, gameOverFields, recordGameOverDailyCounter } = require('./game');
 const { cancelBotTimers } = require('./bot');
 const { recordGameResult } = require('../domain/users');
 const log = require('../infra/log');
@@ -64,6 +64,7 @@ const onLeaveRoom = (ws) => {
     broadcastRankingUpdate();
     broadcastRecentGamesUpdate();
     log.event('game_over', gameOverFields(room, entry, { winner: winnerColor, reason: 'opponent_left' }));
+    recordGameOverDailyCounter(room);
   } else {
     sendToPlayer(room, oppColor, { type: 'opponent_left' });
     forEachSpectatorWs(room, (s) => send(s, { type: 'opponent_left' }));
@@ -172,6 +173,7 @@ const finalizeAbandon = (room, color) => {
     markRoomDirty(room);
     broadcastRoomsList();
     log.event('game_over', gameOverFields(room, entry, { winner: oppColor, reason: 'abandoned' }));
+    recordGameOverDailyCounter(room);
     // 봇대전이면 rematch 의미 없으니 방 자체 폐쇄. 사람 대전은 status='over' 채로 유지
     // (남은 사람이 leave_room 누르거나 grace 만료될 때까지).
     if (room.hasBot) {

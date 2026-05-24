@@ -9,8 +9,9 @@ from monitor_config import (
     RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, THRESHOLD_DOWNTIME_S,
 )
 from monitor_apis import (
-    aiven_metrics, close_issue, create_issue, fetch_server_stats,
-    list_issues_by_label, render_events, render_metric, render_search_logs,
+    aiven_metrics, close_issue, create_issue, fetch_daily_stats,
+    fetch_server_stats, list_issues_by_label, render_events, render_metric,
+    render_search_logs,
 )
 from monitor_data import (
     aiven_stats, bot_perf_stats, bot_stats_by_cfg, compute_recovery_times,
@@ -236,6 +237,28 @@ def run_daily_summary():
     total_games = len(game_started)
     pvp_count = len(pvp_games)
     bot_game_count = total_games - pvp_count
+
+    # Authoritative source: server /api/daily-stats?date=YYYY-MM-DD (PR — A).
+    # Server 가 valkey HINCRBY 로 정확히 누적한 게임/봇 착수 카운터. 로그 fetch
+    # 의 silent loss / pagination cap / 24h 경계 mismatch 영향 없음.
+    #
+    # 결정 규칙:
+    #   - 응답이 None (cold-start/down) 또는 모든 값 0 → 로그 기반 그대로 사용
+    #   - 응답 값 중 하나라도 > 0 → 그 필드는 server 우선 (per-field override)
+    # → 첫 배포 직후 (서버 카운터 아직 비어 있음) 도 로그 기반 자동 폴백 동작.
+    # → 서버가 정상 누적 시작하면 각 필드별로 자연스럽게 authoritative 로 전환.
+    auth = fetch_daily_stats(summary_date, service='omok')
+    src_pvp = src_bot = src_mv = 'log'
+    if auth:
+        if auth.get('pvp_games', 0) > 0:
+            pvp_count = auth['pvp_games']; src_pvp = 'srv'
+        if auth.get('bot_games', 0) > 0:
+            bot_game_count = auth['bot_games']; src_bot = 'srv'
+        if auth.get('total_bot_moves', 0) > 0:
+            bot_total = auth['total_bot_moves']; src_mv = 'srv'
+    total_games = pvp_count + bot_game_count
+    print(f'[daily-stats source] pvp={src_pvp}({pvp_count}) bot={src_bot}({bot_game_count}) moves={src_mv}({bot_total})')
+
     daily_stats[summary_date] = {
         # omok
         'pvp_games': pvp_count,

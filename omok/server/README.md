@@ -165,7 +165,8 @@ local / test 환경 (`NODE_ENV` 미설정) 에서는 무관 — `STORE_BACKEND` 
 ### HTTP endpoint
 - `GET /` — 정적 파일 (omok 클라이언트). [omok/index.html](../index.html) 등.
 - `GET /i/{CODE}?n={NICK}` — 초대 링크. OG 메타 응답 후 canonical URL 로 redirect. [infra/share.js](infra/share.js).
-- `GET /api/stats` — 운영 통계 (monitor.py daily-summary 가 호출). `{ total_human_users, ts }` JSON. 봇 user 제외, 인증 없음, no-store cache.
+- `GET /api/stats` — 운영 통계 (monitor.py daily-summary 가 호출). `{ total_human_users, tiers, bots, ts }` JSON. 인증 없음, no-store cache.
+- `GET /api/daily-stats?date=YYYY-MM-DD` — KST 기준 일별 카운터 (PR — A). 응답: `{ date, pvp_games, bot_games, total_bot_moves, ts }`. valkey HINCRBY 로 누적 (TTL 90일). 잘못된 date 형식은 400. monitor 가 authoritative 소스로 우선 사용 (없으면 로그 폴백).
 - `GET /ws` (upgrade) — WebSocket 진입. 모든 게임 / 매칭 / 봇 / 관전 통신.
 
 ### 보안
