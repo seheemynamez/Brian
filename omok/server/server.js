@@ -140,8 +140,9 @@ const dailyStatsHandler = async (req, res) => {
     bot_retry_clients: await setSize('bot_retry_clients'),
     bot_skip_rooms: await setSize('bot_skip_rooms'),
     bot_skip_clients: await setSize('bot_skip_clients'),
-    // 일별 snapshot (statsHandler 가 매 호출마다 갱신)
-    total_human_users: tiersTotal > 0 ? (Number(c.total_human_users) || 0) : null,
+    // 일별 snapshot (statsHandler 가 매 호출마다 갱신, 또는 backfill)
+    // total_human_users 와 tiers 는 독립 — 옛 backfill 데이터는 total_human_users 만 있을 수 있음.
+    total_human_users: c.total_human_users !== undefined ? (Number(c.total_human_users) || 0) : null,
     tiers: tiersTotal > 0 ? tiers : null,
     // 봇 튜닝 지표 (bot_moves LIST 에서 derive)
     hard_d6_pct,
