@@ -12,7 +12,7 @@ const connections = require('../connections');
 const roomRuntime = require('../domain/room-runtime');
 const {
   send, sendToPlayer, forEachSpectatorWs,
-  playerIdsPayload, broadcastRoomsList,
+  playerIdsPayload, disconnectStatePayload, broadcastRoomsList,
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
 const { removeSpectator } = require('./spectator');
@@ -118,18 +118,26 @@ const onPlayerDisconnect = (ws) => {
   const deadline = Date.now() + DISCONNECT_GRACE_MS;
   // slot 자체는 nullify 하지 않는다 (resume 시 메타 그대로 사용). ws 만 끊겼으니
   // sendToSession 은 자연히 no-op.
-  // graceMs 도 같이 보냄 — 클라이언트가 deadline 을 자기 시계로 normalize 할 때 cap.
-  // (시계 skew 로 deadline-clientNow > graceMs 되어 "61초" 같은 표시 방지)
-  const payload = { type: 'opponent_disconnected', color: myColor, deadline, graceMs: DISCONNECT_GRACE_MS };
-  sendToPlayer(room, otherColor(myColor), payload);
-  forEachSpectatorWs(room, (s) => send(s, payload));
   // deadline 같이 저장 — resume/spectate/game_start msg payload 에서 진행 중
   // grace 정보 전달 (PR — Issue: 관전자 새로고침 시 grace 카운트다운 안 보임 fix).
+  // setDisconnectTimer 를 broadcast 전에 호출해야 disconnectStatePayload 가 이번
+  // disconnect 의 deadline 까지 포함해서 보냄.
   roomRuntime.setDisconnectTimer(
     room.code, myColor,
     setTimeout(() => finalizeAbandon(room, myColor), DISCONNECT_GRACE_MS),
     deadline,
   );
+  // graceMs 도 같이 보냄 — 클라이언트가 deadline 을 자기 시계로 normalize 할 때 cap.
+  // (시계 skew 로 deadline-clientNow > graceMs 되어 "91초" 같은 표시 방지)
+  // disconnectStatePayload spread — 양쪽 동시 끊긴 케이스도 한 msg 로 cover (PR
+  // fix: 한쪽 reconnect 시 다른 쪽 grace UI cancel 되던 버그 의 일관성).
+  const payload = {
+    type: 'opponent_disconnected',
+    color: myColor, deadline, graceMs: DISCONNECT_GRACE_MS,
+    ...disconnectStatePayload(room),
+  };
+  sendToPlayer(room, otherColor(myColor), payload);
+  forEachSpectatorWs(room, (s) => send(s, payload));
 };
 
 const finalizeAbandon = (room, color) => {

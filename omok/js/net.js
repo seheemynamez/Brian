@@ -489,7 +489,16 @@ const onOpponentReconnected = (msg) => {
     state.playerStatus[msg.color] = 'online';
     updatePlayerCards();
   }
-  // grace countdown 종료. 다음 turn_started 가 정상 turn timer 재개.
+  // 색 구분 — server 가 보낸 disconnectDeadlines 가 비어있지 않으면 (= 다른 색이
+  // 여전히 grace 중) UI 유지 + 그 색 카운트다운 새로 시작. (PR — Issue: 한 쪽
+  // reconnect 시 다른 쪽 grace UI 잘못 cancel 되던 버그 fix.)
+  if (msg.disconnectDeadlines && Object.keys(msg.disconnectDeadlines).length > 0) {
+    applyDisconnectInfo(msg);
+    const who = msg.color === 'black' ? '흑' : '백';
+    showToast(`${who} 재연결됨 (다른 쪽 끊김 유지)`);
+    return;
+  }
+  // 양쪽 다 online — grace countdown 종료. 다음 turn_started 가 정상 turn timer 재개.
   resumeTurnTimer();
   showToast('상대 재연결됨');
 };
