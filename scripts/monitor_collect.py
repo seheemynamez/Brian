@@ -409,19 +409,20 @@ def run_collect():
             n = incr_fail_streak(state, f'render:{svc_key}')
             print(f'  [{svc_key}] render fetch 실패 (streak={n}): {e}')
             snap, raw = {}, {}
+        # /api/stats fetch — server cold-start ping + 부수효과 (statsHandler 가 daily
+        # Hash 에 total_human_users / tiers / bots snapshot 적재). 응답 자체는 snapshot 에
+        # 저장 안 함 (daily-stats endpoint 와 100% 중복 — PR — metrics 슬림화).
         try:
             stats = fetch_server_stats(service=svc_key) or {}
             if stats:
                 reset_fail_streak(state, f'stats:{svc_key}')
             else:
-                # /api/stats 가 None (cold-start / network) — fail streak 으로 카운트.
                 n = incr_fail_streak(state, f'stats:{svc_key}')
                 print(f'  [{svc_key}] stats fetch 빈 응답 (streak={n})')
         except Exception as e:
             n = incr_fail_streak(state, f'stats:{svc_key}')
             print(f'  [{svc_key}] stats fetch 실패 (streak={n}): {e}')
-            stats = {}
-        services_snapshot[svc_key] = {'render': snap, 'stats': stats}
+        services_snapshot[svc_key] = {'render': snap}
         services_raw[svc_key] = raw
 
     # Aiven (공유)
@@ -439,7 +440,9 @@ def run_collect():
     aiven_disk = aiven_stats(aiven, 'disk_usage')
     aiven_load = aiven_stats(aiven, 'load_average')
 
-    # snapshot 표준 구조 — services.{omok,2048}.{render,stats} + aiven (공유).
+    # snapshot 표준 구조 — services.{omok,2048}.render + aiven (공유).
+    # (옛: stats 필드도 저장. PR — daily-stats endpoint 중복이라 제거. /api/stats 호출 자체는
+    # 위에서 유지 — server cold-start ping + statsHandler 부수효과 (daily Hash snapshot 적재).)
     snapshot = {
         'ts': NOW.isoformat(),
         'services': services_snapshot,

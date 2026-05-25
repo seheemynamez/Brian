@@ -738,7 +738,8 @@ def player_activity(game_overs):
 
 # ============================================================
 # Snapshot 구조 helper — None-safe deep access.
-# snapshot 표준: { ts, services: { omok: {render, stats}, 2048: {...} }, aiven }
+# snapshot 표준: { ts, services: { omok: {render}, 2048: {render} }, aiven }
+# (PR: stats 필드 제거 — daily-stats endpoint 가 동일 데이터의 frozen source)
 # ============================================================
 def snap_omok_render(snap):
     """snapshot 에서 omok render 부분 추출."""
