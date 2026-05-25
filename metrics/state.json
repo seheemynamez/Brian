@@ -4,7 +4,7 @@
     "bot_retry_burst": "2026-05-22T07:20:18.395124+00:00",
     "worker_timeout": "2026-05-23T02:15:15.716184+00:00",
     "render_cpu_high:omok": "2026-05-24T16:55:12.996720+00:00",
-    "server_slow_recovery:omok": "2026-05-24T06:55:13.339457+00:00",
+    "server_slow_recovery:omok": "2026-05-25T02:35:14.827011+00:00",
     "server_slow_recovery:2048": "2026-05-24T12:20:20.702131+00:00",
     "worker_timeout:omok": "2026-05-24T17:00:24.450963+00:00"
   },
