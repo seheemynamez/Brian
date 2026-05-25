@@ -9,13 +9,13 @@ from monitor_config import (
     RENDER_CPU_LIMIT_M, RENDER_MEM_LIMIT_MB, THRESHOLD_DOWNTIME_S,
 )
 from monitor_apis import (
-    aiven_metrics, close_issue, create_issue,
+    close_issue, create_issue,
     fetch_daily_bot_moves, fetch_daily_games, fetch_daily_stats,
     fetch_online_series, fetch_server_stats, list_issues_by_label,
     render_events, render_metric,
 )
 from monitor_data import (
-    aiven_stats, bot_moves_from_endpoint, bot_perf_stats, bot_stats_by_cfg,
+    bot_moves_from_endpoint, bot_perf_stats, bot_stats_by_cfg,
     compute_recovery_times, games_from_endpoint, hourly_bucket_by_ts,
     hourly_online_from_series, human_turn_stats, kst_window,
     load_recent_metrics, load_state, online_series_from_endpoint, parse_deploys,
@@ -62,8 +62,10 @@ def run_daily_summary():
     state = load_state()
     prev_streaks = dict(state.get('fetch_fail_streak', {}))
 
-    # 1) Render / Aiven 메트릭 (24h KST 캘린더 day)
-    # omok render
+    # 1) Render / Aiven 메트릭
+    # Render CPU/Mem 은 KST window 직접 호출 (이미 frozen — window 가 어제 day 한정).
+    # Bandwidth 30d 도 window end 를 KST 어제 끝으로 fix (frozen). 옛엔 e_iso 자리에
+    # now 가 들어가 발행 시점에 따라 달라졌음 — 이제 e_iso (KST 어제 24:00=UTC 15:00) 까지로 통일.
     cpu = render_metric('cpu', s_iso, e_iso, 300, service='omok')
     mem = render_metric('memory', s_iso, e_iso, 300, service='omok')
     bw_30d_start = to_utc_iso(win_end_kst - timedelta(days=30))
@@ -71,19 +73,43 @@ def run_daily_summary():
     cpu_st = render_cpu_stats(cpu) or {}
     mem_st = render_mem_stats(mem) or {}
     bw_30d = render_bw_sum_mb(bw)
-    # 2048 render — 별 service.
     cpu_2048 = render_metric('cpu', s_iso, e_iso, 300, service='2048')
     mem_2048 = render_metric('memory', s_iso, e_iso, 300, service='2048')
     bw_2048 = render_metric('bandwidth', bw_30d_start, e_iso, 300, service='2048')
     cpu_2048_st = render_cpu_stats(cpu_2048) or {}
     mem_2048_st = render_mem_stats(mem_2048) or {}
     bw_2048_30d = render_bw_sum_mb(bw_2048)
-    # Aiven 은 공유 (omok / 2048 같은 instance, prefix 격리).
-    aiven = aiven_metrics(period='day')
-    aiven_cpu = aiven_stats(aiven, 'cpu_usage') or {}
-    aiven_mem = aiven_stats(aiven, 'mem_usage') or {}
-    aiven_disk = aiven_stats(aiven, 'disk_usage') or {}
-    aiven_load = aiven_stats(aiven, 'load_average') or {}
+    # Aiven 은 공유 (omok / 2048 같은 instance). 어제 day 의 collect snapshot 들 (5분 마다)
+    # 에서 집계 — last snapshot 의 avg + max-over-day. 라이브 aiven_metrics('day') 호출 X.
+    # 의도: 같은 어제 보고를 여러 번 발행해도 값 동일 (frozen).
+    recent = load_recent_metrics(days=7)
+    yday_snaps = [
+        s for s in recent
+        if (s.get('ts') and parse_iso(s['ts']).astimezone(KST).strftime('%Y-%m-%d') == summary_date)
+    ]
+    def _aiven_from_snaps(snaps, avg_key, max_key):
+        """summary_date 의 collect snapshots 에서 frozen aggregate.
+        avg = last snapshot 의 avg (가장 어제 day end 시점에 가까움).
+        max = day 전체 snapshot 중 cpu_pct_max 의 max (그 날 최고치).
+        n = snapshot 수 (참고용)."""
+        if not snaps: return {}
+        last_avg = None
+        for s in reversed(snaps):
+            v = (s.get('aiven') or {}).get(avg_key)
+            if v is not None: last_avg = v; break
+        max_vals = [(s.get('aiven') or {}).get(max_key) for s in snaps]
+        max_vals = [v for v in max_vals if v is not None]
+        return {
+            'avg': last_avg if last_avg is not None else 0,
+            'max': max(max_vals) if max_vals else 0,
+            'n': len(snaps),
+            # p50/p95 는 snapshot 에서 직접 산출 어려움 (각 snapshot 이 24h 롤링) — drop.
+            'p50': None, 'p95': None,
+        }
+    aiven_cpu  = _aiven_from_snaps(yday_snaps, 'cpu_pct_avg', 'cpu_pct_max')
+    aiven_mem  = _aiven_from_snaps(yday_snaps, 'mem_pct_avg', 'mem_pct_max')
+    aiven_disk = _aiven_from_snaps(yday_snaps, 'disk_pct_avg', 'disk_pct_max')
+    aiven_load = _aiven_from_snaps(yday_snaps, 'load_avg',     'load_max')
 
     # 2) omok server-domain 데이터 — valkey-first endpoint 호출.
     # 모든 server-domain 메트릭 (game_over / bot_moves / 카운터 / SET 크기 / online
@@ -190,9 +216,17 @@ def run_daily_summary():
     # game_overs LIST 와 같은 시점에 SADD 됨.
     active_users_24h = int(daily_omok.get('active_users') or 0)
 
-    # 5-b) server /api/stats — 현재 사람 계정 수 (PR #95).
-    server_stats = fetch_server_stats(service='omok')
+    # 5-b) omok 사람 계정 수 / 티어 분포 / 봇 rating — 모두 daily-stats endpoint 의
+    # snapshot 사용 (frozen). 옛엔 server_stats 라이브 호출 → 발행 시점에 따라 값 변동.
+    # daily_omok 응답에 total_human_users / tiers / bots 모두 포함 (server statsHandler
+    # 가 snapshotDailyMeta 부수효과로 적재 — PR — 발행시점 일관화).
+    server_stats = {
+        'total_human_users': daily_omok.get('total_human_users'),
+        'tiers': daily_omok.get('tiers') or {},
+        'bots': daily_omok.get('bots') or {},
+    }
     # 2048 stats — total_users / top_all_time / top_daily / active_ws (PR — 2048 통합).
+    # 2048 는 라이브 stats 유지 (별도 daily snapshot 없음 — 후속 PR 후보).
     stats_2048 = fetch_server_stats(service='2048') or {}
 
     # 5-c) 2048 활성 / 일일 / 신규 사용자 — daily-stats endpoint 의 카운터/SET.
@@ -227,7 +261,6 @@ def run_daily_summary():
     # 8) 7일 trend — metrics/ snapshot + daily-stats.json
     # Timezone 통일 (issue #95 fix): 모든 day key 는 KST 기준.
     # snapshot ts 는 UTC ISO 라 KST 변환 후 date 추출. daily_stats key 도 KST date.
-    recent = load_recent_metrics(days=7)
     trend_days = []
     by_day = defaultdict(list)
     for s in recent:
@@ -254,33 +287,21 @@ def run_daily_summary():
     print(f'[daily-stats source=srv] pvp={pvp_count} bot={bot_game_count} moves={bot_total} active={active_users_authoritative}')
 
     # 발행 당일 (KST 어제) entry — 본문 내 직접 참조 + trend 표 fallback.
-    # total_human_users 는 summary_date 의 last snapshot 값 (= end-of-day 계정 수).
-    # 본문 "현재 사람 계정 수" 는 별도로 server_stats (current 시점) 사용 — 의미가 다름.
-    todays_snaps = by_day.get(summary_date, [])
-    snapshot_total_humans = None
-    snapshot_tiers = None
-    for _s in reversed(todays_snaps):
-        v = _s.get('services', {}).get('omok', {}).get('stats', {}).get('total_human_users')
-        if v is not None and snapshot_total_humans is None:
-            snapshot_total_humans = v
-        t = _s.get('services', {}).get('omok', {}).get('stats', {}).get('tiers')
-        if t and snapshot_tiers is None:
-            snapshot_tiers = t
-        if snapshot_total_humans is not None and snapshot_tiers is not None:
-            break
+    # total_human_users / tiers / bots 는 daily_omok endpoint snapshot 사용 (frozen).
+    # 옛엔 collect snapshot 의 services.omok.stats 또는 server_stats 라이브 사용 →
+    # 발행 시점 의존이었음. 이제 daily-stats 가 단일 source.
     daily_stats[summary_date] = {
         'pvp_games': pvp_count, 'bot_games': bot_game_count, 'total_bot_moves': bot_total,
         'render_cpu_max_m': cpu_st.get('max') or 0,
         'aiven_mem_max_pct': aiven_mem.get('max') or 0,
         'active_users': active_users_24h,
-        # snapshot last value (end-of-day). 5/22 등 옛 snapshot 에 stats 가 없는 날은 None.
-        'total_human_users': snapshot_total_humans,
+        'total_human_users': daily_omok.get('total_human_users'),
         'ws_connected': ws_conn_count,
         'worker_timeout': wt_count,
         'no_move': nm_count,
         'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
         'hard_d6_n':   (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('n'),
-        'tiers': snapshot_tiers or (server_stats or {}).get('tiers') or {},
+        'tiers': daily_omok.get('tiers') or {},
         'r2048_cpu_max_m': cpu_2048_st.get('max') or 0,
         'active_users_2048': int(daily_2048.get('active_users') or 0),
         'daily_submits_2048': daily_submits_2048,
@@ -370,17 +391,16 @@ def run_daily_summary():
     body = []
     body.append(f'## 일일 인프라 요약 — {summary_date} KST (00:00 ~ 익일 00:00)\n')
     body.append(f'_시간 기준: 모두 KST. 측정 window: `{s_iso} ~ {e_iso}` (UTC). '
-                f'일부 metric (Aiven valkey, Bandwidth 30d, 현재 사용자 / 동접) 은 **발행 시점 기준** — '
-                f'각 섹션에 명시. 발행 시점에 다시 실행하면 값이 달라질 수 있음._\n')
+                f'모든 metric 은 어제 day 마감값 (frozen) — 같은 보고를 여러 번 발행해도 값 동일._\n')
 
-    # 자원 사용율 — Bandwidth 30d 와 Aiven 는 발행 시점 기준 (window 무관).
+    # 자원 사용율 — 모두 어제 day 마감값.
     body.append('### 자원 사용율 (한도 대비)\n')
     body.append(gauge_table([
         ('Render CPU peak',  cpu_st.get('max') or 0, RENDER_CPU_LIMIT_M, 'm'),
         ('Render Memory peak', mem_st.get('max') or 0, RENDER_MEM_LIMIT_MB, 'MB'),
-        ('Render Bandwidth 30d _(발행시점-30d)_', bw_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
-        ('Aiven CPU max _(발행시점-24h)_', aiven_cpu.get('max') or 0, 100, '%'),
-        ('Aiven Memory max _(발행시점-24h)_', aiven_mem.get('max') or 0, 100, '%'),
+        ('Render Bandwidth 30d (-30d ~ 어제)', bw_30d / 1024, RENDER_BW_LIMIT_GB, 'GB'),
+        ('Aiven CPU max (어제 day)', aiven_cpu.get('max') or 0, 100, '%'),
+        ('Aiven Memory max (어제 day)', aiven_mem.get('max') or 0, 100, '%'),
     ]))
     body.append('')
 
@@ -389,7 +409,7 @@ def run_daily_summary():
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU (m) | {cpu_st.get("avg",0):.1f} | {cpu_st.get("p50",0):.1f} | {cpu_st.get("p95",0):.1f} | {cpu_st.get("max",0):.1f} |')
     body.append(f'| Memory (MB) | {mem_st.get("avg",0):.1f} | {mem_st.get("p50",0):.1f} | {mem_st.get("p95",0):.1f} | {mem_st.get("max",0):.1f} |')
-    body.append(f'| Bandwidth 30d 누적 _(발행시점-30d)_ | {bw_30d:.1f}MB (한도 100GB) |  |  |  |')
+    body.append(f'| Bandwidth 30d 누적 (-30d ~ 어제) | {bw_30d:.1f}MB (한도 100GB) |  |  |  |')
     body.append('')
     # Aiven valkey 상태 — 3-tier 색 코드 (🟢safe / 🟡warn / 🟠high / 🔴crit / ⚪na).
     # noeviction 정책 + free-1 plan (1GB RAM, disk 0) 기준. max 값으로 상태 판정.
@@ -410,27 +430,24 @@ def run_daily_summary():
     _, load_emo = severity_for(load_max, THRESHOLD_AIVEN_LOAD_WARN, THRESHOLD_AIVEN_LOAD_HIGH, THRESHOLD_AIVEN_LOAD_CRIT)
     # max% → 절대값 MB (메모리만, 한도 1024MB 기준).
     mem_max_mb = mem_max * AIVEN_MEM_LIMIT_MB / 100
-    body.append('### Aiven valkey 메트릭 _(period=day, 발행시점-24h — 측정 window 와 별도)_\n')
-    body.append('| 항목 | avg | p50 | p95 | max | 상태 | 임계 (warn / high / crit) |')
-    body.append('|---|---|---|---|---|---|---|')
+    body.append(f'### Aiven valkey 메트릭 _(어제 day, frozen — collect snapshot {aiven_cpu.get("n",0)}개 집계)_\n')
+    body.append('| 항목 | avg | max | 상태 | 임계 (warn / high / crit) |')
+    body.append('|---|---|---|---|---|')
     body.append(
-        f'| CPU % | {aiven_cpu.get("avg",0):.2f} | {aiven_cpu.get("p50",0):.2f} | '
-        f'{aiven_cpu.get("p95",0):.2f} | **{cpu_max:.2f}** | {cpu_emo} | '
+        f'| CPU % | {aiven_cpu.get("avg",0):.2f} | **{cpu_max:.2f}** | {cpu_emo} | '
         f'{THRESHOLD_AIVEN_CPU_PCT_WARN:.0f} / {THRESHOLD_AIVEN_CPU_PCT_HIGH:.0f} / {THRESHOLD_AIVEN_CPU_PCT_CRIT:.0f} |'
     )
     body.append(
         f'| Memory % _({mem_max_mb:.0f}MB / {AIVEN_MEM_LIMIT_MB:.0f}MB)_ | '
-        f'{aiven_mem.get("avg",0):.2f} | {aiven_mem.get("p50",0):.2f} | '
-        f'{aiven_mem.get("p95",0):.2f} | **{mem_max:.2f}** | {mem_emo} | '
+        f'{aiven_mem.get("avg",0):.2f} | **{mem_max:.2f}** | {mem_emo} | '
         f'{THRESHOLD_AIVEN_MEM_PCT_WARN:.0f} / {THRESHOLD_AIVEN_MEM_PCT_HIGH:.0f} / {THRESHOLD_AIVEN_MEM_PCT_CRIT:.0f} |'
     )
     body.append(
-        f'| Disk % | {aiven_disk.get("avg",0):.3f} | — | — | **{disk_max:.3f}** | {disk_emo} | '
+        f'| Disk % | {aiven_disk.get("avg",0):.3f} | **{disk_max:.3f}** | {disk_emo} | '
         f'{THRESHOLD_AIVEN_DISK_PCT_WARN:.0f} / {THRESHOLD_AIVEN_DISK_PCT_HIGH:.0f} / {THRESHOLD_AIVEN_DISK_PCT_CRIT:.0f} |'
     )
     body.append(
-        f'| Load avg | {aiven_load.get("avg",0):.2f} | — | {aiven_load.get("p95",0):.2f} | '
-        f'**{load_max:.2f}** | {load_emo} | '
+        f'| Load avg | {aiven_load.get("avg",0):.2f} | **{load_max:.2f}** | {load_emo} | '
         f'{THRESHOLD_AIVEN_LOAD_WARN:.1f} / {THRESHOLD_AIVEN_LOAD_HIGH:.1f} / {THRESHOLD_AIVEN_LOAD_CRIT:.1f} |'
     )
     body.append('')
@@ -458,8 +475,8 @@ def run_daily_summary():
 
     total_human_users = server_stats.get('total_human_users') if server_stats else None
     user_count_str = f'**{total_human_users}**{_delta(total_human_users, "total_human_users") if total_human_users is not None else ""}' \
-        if total_human_users is not None else '_(server /api/stats 응답 없음 — cold-start 가능성)_'
-    body.append(f'- 현재 사람 계정 수 _(발행시점)_: {user_count_str}')
+        if total_human_users is not None else '_(daily-stats snapshot 없음 — 그 날 /api/stats 호출 안 됨)_'
+    body.append(f'- 어제 마감 사람 계정 수: {user_count_str}')
     body.append(f'- **24h 활성 사용자**: **{active_users_24h}명**{_delta(active_users_24h, "active_users")} (게임 한 판 이상 둔 unique 닉네임)')
     body.append(f'- 총 게임 시작: **{total_games}건** (PVP {pvp_count}{_delta(pvp_count, "pvp_games")} / 봇 {bot_game_count}{_delta(bot_game_count, "bot_games")})')
     body.append(f'- 봇 착수 총 횟수: **{bot_total}건**{_delta(bot_total, "total_bot_moves")}')
@@ -482,7 +499,7 @@ def run_daily_summary():
             'Iron':     '~1099',
             'Unranked': '10판 미달',
         }
-        body.append('### 오목 티어 분포 _(발행시점)_\n')
+        body.append('### 오목 티어 분포 _(어제 마감, frozen)_\n')
         body.append('| 티어 | rating 구간 | 인원 | 비중 | 전일 Δ |')
         body.append('|---|---|---|---|---|')
         total_now = sum(tiers_now.values()) or 1
@@ -506,7 +523,7 @@ def run_daily_summary():
         else:
             sum_delta_cell = ''
         body.append(f'| **합계** |  | **{sum_now}** | 100% | {sum_delta_cell} |')
-        body.append('\n_각 사용자의 현재 rating 기준. 발행 시점 server `/api/stats` 응답. 전일 Δ = 직전 발행 entry 대비._')
+        body.append('\n_각 사용자의 어제 마감 시점 rating 기준. server `/api/daily-stats?date=어제` 의 tiers snapshot. 전일 Δ = 직전 발행 entry 대비._')
         body.append('')
 
     # 봇 운영 지표 (핵심) — (b) 승률 + 봇 rating Δ 추가.
@@ -526,9 +543,10 @@ def run_daily_summary():
             # 모든 종결을 분모로 (이탈/포기도 보통 봇 승으로 처리되니 합리적).
             wr = (100.0 * s['wins'] / s['total']) if s['total'] else 0
             wr_str = f'{wr:.1f}%'
-            # 봇 rating — server /api/stats.bots[diff].rating 우선 (실시간 정확,
-            # PR — 옛 코드는 24h log 의 마지막 botRating 만 — 24h 외 게임 후 stale).
-            # fallback: 24h log 의 마지막 (server stats 없거나 fetch 실패 시).
+            # 봇 rating — daily-stats endpoint 의 bots snapshot (어제 마감 시점, frozen).
+            # statsHandler 가 매 /api/stats 호출 시 daily Hash 에 적재 — 그 날 마지막 호출
+            # 시점의 봇 rating 이 응답. 옛엔 server_stats 라이브 호출로 발행 시점 의존.
+            # fallback: 24h log 의 마지막 (snapshot 없을 때 — 옛 day backfill 미수행 case).
             server_bot = ((server_stats or {}).get('bots') or {}).get(diff) or {}
             bot_rating = server_bot.get('rating') if server_bot.get('rating') is not None else s.get('bot_last_rating')
             bot_delta = s.get('bot_delta_sum', 0)
@@ -537,7 +555,7 @@ def run_daily_summary():
             else:
                 rating_col = '-'
             body.append(f'| {diff} | {s["total"]} | {s["wins"]}/{s["losses"]}/{s["draws"]} | {wr_str} | {left_total} | {rating_col} | {rating_str} | {stones_str} |')
-        body.append('\n_승률 = 봇 승 / 총. 봇 rating = server `/api/stats.bots` 현재값 (fallback: 24h log 마지막). Δ = 24h 누적 변화 (zero-sum). 상대 rating = 사람 측 분포._')
+        body.append('\n_승률 = 봇 승 / 총. 봇 rating = 어제 마감 시점 (daily-stats.bots snapshot, fallback: 24h log 마지막). Δ = 24h 누적 변화 (zero-sum). 상대 rating = 사람 측 분포._')
     else:
         body.append('- (봇 게임 데이터 없음)')
     body.append('')
