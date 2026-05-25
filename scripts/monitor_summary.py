@@ -225,9 +225,14 @@ def run_daily_summary():
         'tiers': daily_omok.get('tiers') or {},
         'bots': daily_omok.get('bots') or {},
     }
-    # 2048 stats — total_users / top_all_time / top_daily / active_ws (PR — 2048 통합).
-    # 2048 는 라이브 stats 유지 (별도 daily snapshot 없음 — 후속 PR 후보).
-    stats_2048 = fetch_server_stats(service='2048') or {}
+    # 2048 stats — total_users / top_all_time / top_daily 어제 마감 snapshot (frozen).
+    # 2048 server statsHandler 도 snapshotDailyMeta 적재 함 → daily-stats endpoint 응답에 포함.
+    # active_ws (현재 동접) 은 본질적 발행 시점 — 보고에서 제거.
+    stats_2048 = {
+        'total_users': daily_2048.get('total_users'),
+        'top_all_time': daily_2048.get('top_all_time'),
+        'top_daily': daily_2048.get('top_daily'),
+    }
 
     # 5-c) 2048 활성 / 일일 / 신규 사용자 — daily-stats endpoint 의 카운터/SET.
     # active_users SET size = unique nick. submit_score / user_created 카운터 직접.
@@ -297,6 +302,10 @@ def run_daily_summary():
         'active_users': active_users_24h,
         'total_human_users': daily_omok.get('total_human_users'),
         'ws_connected': ws_conn_count,
+        'ws_disconnected': ws_disc_count,
+        'heartbeat_terminate': hb_count,
+        'bot_retry': retry_count_total,
+        'bot_skip': skip_count_total,
         'worker_timeout': wt_count,
         'no_move': nm_count,
         'hard_d6_pct': (bot_by_cfg.get('hard', {}) or {}).get('d6', {}).get('cfgmax_pct'),
@@ -306,30 +315,53 @@ def run_daily_summary():
         'active_users_2048': int(daily_2048.get('active_users') or 0),
         'daily_submits_2048': daily_submits_2048,
         'new_users_2048': new_users_2048,
-        'total_users_2048': stats_2048.get('total_users'),
-        'top_all_time_2048': stats_2048.get('top_all_time'),
-        'top_daily_2048': stats_2048.get('top_daily'),
+        'score_best_count_2048': score_best_count_2048,
+        'ws_connected_2048': ws_conn_count_2048,
+        'ws_disconnected_2048': ws_disc_count_2048,
+        'heartbeat_terminate_2048': hb_count_2048,
+        # 2048 snapshot — daily-stats endpoint (statsHandler 부수효과로 적재)
+        'total_users_2048': daily_2048.get('total_users'),
+        'top_all_time_2048': daily_2048.get('top_all_time'),
+        'top_daily_2048': daily_2048.get('top_daily'),
     }
 
     # 전일 + 7d trend lookup — 모두 valkey /api/daily-stats endpoint 직접 호출.
     # backfill 으로 PR 머지 전 옛 데이터까지 valkey 에 들어와 있어야 정상 출력.
     # endpoint 응답 None → 0 fallback (그 날 데이터 없음).
+    # 본문 _delta() 호출용으로 모든 카운터 / snapshot 필드 포함 (key 누락 = Δ 빈 칸).
     def _fetch_day(d_str):
         omok_r = fetch_daily_stats(d_str, service='omok') or {}
         r2048_r = fetch_daily_stats(d_str, service='2048') or {}
         return {
+            # omok 카운터
             'pvp_games': int(omok_r.get('pvp_games') or 0),
             'bot_games': int(omok_r.get('bot_games') or 0),
             'total_bot_moves': int(omok_r.get('total_bot_moves') or 0),
             'active_users': int(omok_r.get('active_users') or 0),
             'worker_timeout': int(omok_r.get('worker_timeout') or 0),
-            # snapshot fields (server 의 statsHandler 부수효과로 KST day Hash 에 누적)
+            'no_move': int(omok_r.get('no_move') or 0),
+            'bot_retry': int(omok_r.get('bot_retry') or 0),
+            'bot_skip': int(omok_r.get('bot_skip') or 0),
+            'heartbeat_terminate': int(omok_r.get('heartbeat_terminate') or 0),
+            'ws_connected': int(omok_r.get('ws_connected') or 0),
+            'ws_disconnected': int(omok_r.get('ws_disconnected') or 0),
+            # omok snapshot (server statsHandler 부수효과 — daily Hash 누적)
             'total_human_users': omok_r.get('total_human_users'),  # int or None
             'tiers': omok_r.get('tiers'),                          # dict or None
             'hard_d6_pct': omok_r.get('hard_d6_pct'),
             'hard_d6_n': omok_r.get('hard_d6_n'),
+            # 2048 카운터
             'active_users_2048': int(r2048_r.get('active_users') or 0),
             'daily_submits_2048': int(r2048_r.get('submit_score') or 0),
+            'new_users_2048': int(r2048_r.get('user_created') or 0),
+            'score_best_count_2048': int(r2048_r.get('score_best') or 0),
+            'ws_connected_2048': int(r2048_r.get('ws_connected') or 0),
+            'ws_disconnected_2048': int(r2048_r.get('ws_disconnected') or 0),
+            'heartbeat_terminate_2048': int(r2048_r.get('heartbeat_terminate') or 0),
+            # 2048 snapshot (statsHandler 부수효과)
+            'total_users_2048': r2048_r.get('total_users'),     # int or None
+            'top_all_time_2048': r2048_r.get('top_all_time'),   # int or None
+            'top_daily_2048': r2048_r.get('top_daily'),         # int or None
         }
 
     prev_date = (win_start_kst - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -787,27 +819,26 @@ def run_daily_summary():
     body.append('|---|---|---|---|---|')
     body.append(f'| CPU (m) | {cpu_2048_st.get("avg",0):.1f} | {cpu_2048_st.get("p50",0):.1f} | {cpu_2048_st.get("p95",0):.1f} | {cpu_2048_st.get("max",0):.1f} |')
     body.append(f'| Memory (MB) | {mem_2048_st.get("avg",0):.1f} | {mem_2048_st.get("p50",0):.1f} | {mem_2048_st.get("p95",0):.1f} | {mem_2048_st.get("max",0):.1f} |')
-    body.append(f'| Bandwidth 30d 누적 _(발행시점-30d)_ | {bw_2048_30d:.1f}MB (한도 100GB) |  |  |  |')
+    body.append(f'| Bandwidth 30d 누적 (-30d ~ 어제) | {bw_2048_30d:.1f}MB (한도 100GB) |  |  |  |')
     body.append('')
 
+    # 게임 활동 요약 — 오목 와 동일한 표현. 모두 어제 마감값 (frozen) / Δ = 전일 마감 대비.
     body.append('### 2048 게임 활동 요약\n')
     total_users_2048 = stats_2048.get('total_users')
     top_all = stats_2048.get('top_all_time')
     top_daily_2048 = stats_2048.get('top_daily')
-    active_ws_2048 = stats_2048.get('active_ws')
-    count_str = f'**{total_users_2048}**{_delta(total_users_2048, "total_users_2048")}' if total_users_2048 is not None else '_(stats fetch 실패 — cold-start 가능성)_'
-    body.append(f'- 현재 사용자 계정 수 _(발행시점)_: {count_str}')
+    count_str = f'**{total_users_2048}**{_delta(total_users_2048, "total_users_2048")}' if total_users_2048 is not None else '_(daily-stats snapshot 없음 — 그 날 /api/stats 호출 안 됨)_'
+    body.append(f'- 어제 마감 사용자 계정 수: {count_str}')
     body.append(f'- **24h 활성 사용자**: **{active_users_2048_count}명**{_delta(active_users_2048_count, "active_users_2048")} (점수 등록한 unique 닉)')
     body.append(f'- 24h 점수 등록: **{daily_submits_2048}건**{_delta(daily_submits_2048, "daily_submits_2048")}')
     body.append(f'- 24h 신규 사용자: **{new_users_2048}명**{_delta(new_users_2048, "new_users_2048")}')
-    body.append(f'- 24h 새 ws 연결: 대략 **{ws_conn_count_2048}건**')
-    if active_ws_2048 is not None:
-        body.append(f'- 현재 동접 (ws) _(발행시점)_: **{active_ws_2048}명**')
+    body.append(f'- 24h best 갱신 broadcast: **{score_best_count_2048}건**{_delta(score_best_count_2048, "score_best_count_2048")}')
+    body.append(f'- 24h 새 ws 연결: 대략 **{ws_conn_count_2048}건**{_delta(ws_conn_count_2048, "ws_connected_2048")}')
     if top_all is not None:
-        body.append(f'- 전체 최고 점수: **{top_all}**')
-    # 옛 "오늘 최고 점수" 는 발행 시점 KST date 의 best — 5/23 요약 본문에 5/24
-    # 점수가 들어가 혼동 유발. 제거 (전체 최고 와 trend 표로 충분).
-    body.append(f'- 24h best 갱신 broadcast: **{score_best_count_2048}건**\n')
+        body.append(f'- 어제 마감 전체 최고 점수: **{top_all}**{_delta(top_all, "top_all_time_2048")}')
+    if top_daily_2048 is not None:
+        body.append(f'- 어제 best 점수: **{top_daily_2048}**')
+    body.append('')
 
     # 2048 시간대별 활동
     if submits_2048_by_hour:
