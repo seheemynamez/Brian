@@ -67,17 +67,12 @@ def _collect_render(service, s_iso, e_iso):
     recoveries = compute_recovery_times(events)
     slow_recoveries = [r for r in recoveries if r['downtime_s'] > THRESHOLD_DOWNTIME_S]
 
+    # snapshot 은 summary 7d trend 가 일자별 max 집계 용도. cpu_peak_m 만 유지.
+    # 옛엔 cpu_avg_m / mem_peak_mb / deploy_status / server_*_count / downtime_*
+    # / slow_recovery_count 도 저장했으나 모두 alert 즉시 판정 후 dormant — summary 가
+    # 안 읽음 (failures/recoveries 는 render_events 직접 호출로 fresh 계산). PR — slim.
     snap = {
         'cpu_peak_m': cpu_st['max'] if cpu_st else None,
-        'cpu_avg_m':  cpu_st['avg'] if cpu_st else None,
-        'mem_peak_mb': mem_st['max'] if mem_st else None,
-        'deploy_status': deploy['status'] if deploy else None,
-        'server_failed_count': len(failures),
-        'server_oom_count':    len(oom_fails),
-        'server_crash_count':  len(crash_fails),
-        'downtime_count': len(recoveries),
-        'downtime_max_s': max((r['downtime_s'] for r in recoveries), default=None),
-        'slow_recovery_count': len(slow_recoveries),
     }
     raw = {
         'cpu_st': cpu_st, 'mem_st': mem_st, 'deploy': deploy,
