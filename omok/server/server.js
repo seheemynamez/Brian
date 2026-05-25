@@ -59,6 +59,17 @@ const statsHandler = (req, res) => {
       const meta = { total_human_users: userStats.total_human_users || 0 };
       const tiers = userStats.tiers || {};
       for (const [tier, n] of Object.entries(tiers)) meta[`tier_${tier}`] = Number(n) || 0;
+      // 봇 rating/wins/losses snapshot — monitor daily-summary 가 "어제 마감 시점" 의
+      // 봇 rating 을 마감값으로 받기 위해. 직전엔 라이브 /api/stats 호출로 발행 시점 값
+      // 사용 → 같은 day 보고를 여러 번 발행할 때마다 변동되던 문제 해결.
+      const bots = userStats.bots || {};
+      for (const [diff, b] of Object.entries(bots)) {
+        if (!b) continue;
+        meta[`bot_${diff}_rating`] = Number(b.rating) || 0;
+        meta[`bot_${diff}_wins`]   = Number(b.wins)   || 0;
+        meta[`bot_${diff}_losses`] = Number(b.losses) || 0;
+        meta[`bot_${diff}_draws`]  = Number(b.draws)  || 0;
+      }
       store.snapshotDailyMeta(kstDate(), meta);
     }
   } catch {}
@@ -107,6 +118,21 @@ const dailyStatsHandler = async (req, res) => {
   const tiers = {};
   for (const t of TIER_NAMES) tiers[t] = Number(c[`tier_${t}`]) || 0;
   const tiersTotal = Object.values(tiers).reduce((a, b) => a + b, 0);
+  // 봇 rating/wins/losses snapshot — 직전엔 라이브 /api/stats 호출로 발행 시점 값 사용.
+  // 이제 daily Hash 에서 어제 마감 시점 값을 받을 수 있어 monitor 가 발행 시점 무관 일관.
+  // 어느 한 봇이라도 rating snapshot 있으면 bots dict 노출 (없는 봇은 omit).
+  const bots = {};
+  for (const diff of ['easy', 'medium', 'hard']) {
+    if (c[`bot_${diff}_rating`] !== undefined) {
+      bots[diff] = {
+        rating: Number(c[`bot_${diff}_rating`]) || 0,
+        wins:   Number(c[`bot_${diff}_wins`])   || 0,
+        losses: Number(c[`bot_${diff}_losses`]) || 0,
+        draws:  Number(c[`bot_${diff}_draws`])  || 0,
+      };
+    }
+  }
+  const botsHasAny = Object.keys(bots).length > 0;
   // hard_d6 도달율 — bot_moves LIST 에서 hard diff + cfgD=6 항목 비율. 7일 trend 표에
   // 표시되는 봇 튜닝 지표. 매 endpoint 호출마다 계산 (10-50ms, 저빈도라 OK).
   let hard_d6_pct = null;
@@ -145,6 +171,7 @@ const dailyStatsHandler = async (req, res) => {
     // total_human_users 와 tiers 는 독립 — 옛 backfill 데이터는 total_human_users 만 있을 수 있음.
     total_human_users: c.total_human_users !== undefined ? (Number(c.total_human_users) || 0) : null,
     tiers: tiersTotal > 0 ? tiers : null,
+    bots: botsHasAny ? bots : null,
     // 봇 튜닝 지표 (bot_moves LIST 에서 derive)
     hard_d6_pct,
     hard_d6_n,

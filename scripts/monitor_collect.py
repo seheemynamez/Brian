@@ -434,6 +434,10 @@ def run_collect():
         aiven = {}
     aiven_cpu = aiven_stats(aiven, 'cpu_usage')
     aiven_mem = aiven_stats(aiven, 'mem_usage')
+    # disk / load 도 함께 snapshot 화 — daily-summary 가 "어제 마감값" 으로 사용해
+    # 발행 시점에 의존 안 하게 (PR — 발행시점 일관화). 옛엔 summary 가 라이브 호출.
+    aiven_disk = aiven_stats(aiven, 'disk_usage')
+    aiven_load = aiven_stats(aiven, 'load_average')
 
     # snapshot 표준 구조 — services.{omok,2048}.{render,stats} + aiven (공유).
     snapshot = {
@@ -444,6 +448,10 @@ def run_collect():
             'cpu_pct_max': aiven_cpu['max'] if aiven_cpu else None,
             'mem_pct_avg': aiven_mem['avg'] if aiven_mem else None,
             'mem_pct_max': aiven_mem['max'] if aiven_mem else None,
+            'disk_pct_avg': aiven_disk['avg'] if aiven_disk else None,
+            'disk_pct_max': aiven_disk['max'] if aiven_disk else None,
+            'load_avg':     aiven_load['avg'] if aiven_load else None,
+            'load_max':     aiven_load['max'] if aiven_load else None,
         },
     }
     print(json.dumps(snapshot, indent=2, ensure_ascii=False))
