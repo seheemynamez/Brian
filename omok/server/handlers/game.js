@@ -12,7 +12,10 @@ const {
   playerIdsPayload, playerStatusPayload, disconnectStatePayload, broadcastRoomsList,
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
-const { recordGameResult, buildPlayerRatings } = require('../domain/users');
+const {
+  recordGameResult, buildPlayerRatings,
+} = require('../domain/users');
+const { swapSlots, assignColorsByRating } = require('./color-assign');
 const { getSpectatorNames, sendSpectatorState } = require('./spectator');
 const {
   getBotColor, scheduleBotMove, afterSuccessfulMove,
@@ -213,11 +216,18 @@ const onTurnTimeout = (room) => {
 
 // ============================================================
 // 게임 시작/재시작 — 양쪽 플레이어 + 관전자 모두에게 알림
-// ============================================================
+// swapSlots / assignColorsByRating 는 ./color-assign 으로 추출됨 — 단위 테스트가
+// handlers/game.js → bot.js → bot-pool (worker_threads) 까지 끌어들여 test runner 가
+// 종료되지 않는 문제 회피 + 책임 분리.
+
 // startGame 진입 시점: room.players.black / white 가 이미 metadata 로 채워져 있다고 가정
 // (onJoinRoom / onQueueJoin 매칭 / onCreateBotGame / onRematch 가 setup 후 호출).
 // 슬롯 안의 ws 는 이미 set up 되어 있고 connections 에도 바인딩되어 있어야 함 (rematch 외).
-const startGame = (room) => {
+// opts.rematch=true 면 rating swap 안 함 (rematch 는 패자 흑 정책 — rematch.js 가 미리 swap).
+const startGame = (room, opts = {}) => {
+  if (!opts.rematch) {
+    assignColorsByRating(room);
+  }
   room.status = 'playing';
   // 매 게임마다 새 gameId — 차후 DB 랭킹/통계 기록 키로 활용.
   room.gameId = genGameId();
@@ -374,6 +384,8 @@ module.exports = {
   applyMove,
   onMove,
   startGame,
+  swapSlots,           // rematch.js + 테스트 용
+  assignColorsByRating, // 테스트 용 (startGame 안에서 호출)
   gameOverFields,  // disconnect.js 의 game_over 로그도 같은 형식 사용
   ratingsPayload,  // disconnect.js 의 game_over / opponent_abandoned payload 공유
   recordGameOver,  // counter + active_users SET + games LIST

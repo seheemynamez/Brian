@@ -215,6 +215,51 @@ const compareForRanking = (a, b) => {
   return (a.createdAt || Infinity) - (b.createdAt || Infinity);
 };
 
+// 첫 게임 흑백 결정 — 약자 (= 흑, 선공) 우선. compareForRanking 의 정확한 역순.
+//   1차: rating asc (낮은 사람 흑)
+//   2차: wins asc (이긴 게임 적은 사람 흑)
+//   3차: losses desc (진 게임 많은 사람 흑)
+//   4차: draws asc (게임 수 적은 사람 흑)
+//   5차: createdAt desc (나중 가입자 흑 — 신규 user 우대)
+// 음수 = a 가 흑 우선. 봇 user 도 동일 user 객체 형식이라 비교 가능.
+const compareForBlack = (a, b) => {
+  if (a.rating !== b.rating) return a.rating - b.rating;
+  if (a.wins   !== b.wins)   return a.wins   - b.wins;
+  if (b.losses !== a.losses) return b.losses - a.losses;
+  if (a.draws  !== b.draws)  return a.draws  - b.draws;
+  return (b.createdAt || 0) - (a.createdAt || 0);
+};
+
+// slot ({clientId, type, difficulty?, nickname}) → user 객체 형식 ({rating, wins, ...}).
+// 사람: getOrCreateUser 로 internal user 가져옴 (placement 미달도 internal rating
+// 보유). 봇: 봇 user 가 없을 수도 있으니 (recordGameResult 전) BOT_INITIAL_RATING
+// 폴백. compareForBlack 가 직접 사용할 수 있는 shape 반환.
+const userForSlot = (slot) => {
+  if (!slot) return null;
+  if (slot.type === 'bot') {
+    const u = slot.clientId ? users.get(slot.clientId) : null;
+    if (u) return u;
+    // 봇 user 미생성 — INITIAL_RATING 기반 가상 user (createdAt 0 → 가장 옛).
+    return {
+      clientId: slot.clientId,
+      rating: BOT_INITIAL_RATING[slot.clientId] ?? INITIAL_RATING,
+      wins: 0, losses: 0, draws: 0,
+      isBot: true,
+      createdAt: 0,
+    };
+  }
+  // 사람: 룸 들어오는 시점에 user 가 없을 수도 있음 (set_nickname 미호출). 신규 가상 user.
+  const u = slot.clientId ? users.get(slot.clientId) : null;
+  if (u) return u;
+  return {
+    clientId: slot.clientId,
+    rating: INITIAL_RATING,
+    wins: 0, losses: 0, draws: 0,
+    isBot: false,
+    createdAt: Date.now(),  // 신규 → createdAt 최신 → 약자 tiebreak 우선
+  };
+};
+
 // 메모리 cache 의 users 를 정렬 → top N 반환.
 // unranked 사람 user (PLACEMENT_GAMES 미만) 는 완전 제외 — 봇은 포함 (배치 무관).
 const getTopRanking = (limit = 10) => {
@@ -312,5 +357,7 @@ module.exports = {
   getRatingPreview, buildPlayerRatings,
   getUserStats,                     // /api/stats endpoint 용 (PR #95)
   compareForRanking,  // unit test 용 — 정렬 로직 자체 검증
+  compareForBlack,    // 첫 게임 흑백 결정 — 약자 우선
+  userForSlot,        // slot → user 객체 (compareForBlack 입력용)
   isUnranked, playedCount, PLACEMENT_GAMES,  // unranked feature — handlers / tests
 };

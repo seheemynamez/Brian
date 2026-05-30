@@ -178,15 +178,13 @@ const afterSuccessfulMove = (room, movedByBot) => {
 
 // ============================================================
 // 봇 게임 생성 — 사용자 + 봇 즉시 매칭, 곧바로 게임 시작
-// first: 'me' | 'bot' | 'random' (선공 누가)
 // difficulty: 'easy' | 'medium' | 'hard'
+// 흑백 결정: startGame 안의 assignColorsByRating — 약자 (= rating 낮은 쪽) 흑.
+// (옛 msg.first 'me'/'bot'/'random' 옵션 제거 — 사용자 선택 X, 자동.)
 // ============================================================
 const onCreateBotGame = (ws, msg) => {
   if (ws.roomCode) return send(ws, { type: 'error', message: '이미 방에 있어요' });
   const difficulty = VALID_DIFFICULTIES.has(msg.difficulty) ? msg.difficulty : 'medium';
-  let firstChoice = msg.first;
-  if (firstChoice === 'random') firstChoice = Math.random() < 0.5 ? 'me' : 'bot';
-  if (firstChoice !== 'me' && firstChoice !== 'bot') firstChoice = 'me';
   // Lazy require — queue.js 가 emote/spectator/send 등을 통해 간접적으로 우리를 참조.
   const { onQueueLeave } = require('./queue');
   onQueueLeave(ws);
@@ -196,7 +194,9 @@ const onCreateBotGame = (ws, msg) => {
   room.hasBot = true;
   room.botEmoteState = newBotEmoteState();
 
-  const userColor = (firstChoice === 'me') ? 'black' : 'white';
+  // 일단 사람 black / 봇 white 로 채워두고 startGame 의 assignColorsByRating 가 rating
+  // 비교 후 필요시 swap. 봇이 약자 (예: easy 1224 vs Gold 사람 1500) 면 봇이 흑이 됨.
+  const userColor = 'black';
   const botColor  = otherColor(userColor);
 
   // 사용자 배치

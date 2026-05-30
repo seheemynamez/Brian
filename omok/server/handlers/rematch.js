@@ -3,11 +3,10 @@
 // 패자 선공 (black/white slot swap).
 // ============================================================
 
-const { getRoom, getSession } = require('../domain/rooms');
-const connections = require('../connections');
+const { getRoom } = require('../domain/rooms');
 const { newBotEmoteState } = require('../game/bot');
 const { broadcastRoom } = require('./send');
-const { startGame } = require('./game');
+const { startGame, swapSlots } = require('./game');
 const { getBotColor, scheduleBotMove } = require('./bot');
 const { tryBotEmote } = require('./emote');
 
@@ -25,27 +24,12 @@ const onRematch = (ws) => {
     broadcastRoom(room, { type: 'rematch_pending', who: ws.color });
     return;
   }
-  // 패자 선공 — black/white 슬롯을 swap. 옛 sessionId 의 color 정보도 업데이트.
+  // 패자 선공 — black/white 슬롯 swap. rematch 는 rating 정책 무관.
   if (room.loser === 'white') {
-    const blackSlot = room.players.black;
-    const whiteSlot = room.players.white;
-    room.players.black = whiteSlot;
-    room.players.white = blackSlot;
-    // sessions 안의 color 필드도 동기화. ws 의 color 도.
-    if (whiteSlot?.sessionId) {
-      const sess = getSession(whiteSlot.sessionId);
-      if (sess) sess.color = 'black';
-      const w = connections.getWsBySessionId(whiteSlot.sessionId);
-      if (w) w.color = 'black';
-    }
-    if (blackSlot?.sessionId) {
-      const sess = getSession(blackSlot.sessionId);
-      if (sess) sess.color = 'white';
-      const w = connections.getWsBySessionId(blackSlot.sessionId);
-      if (w) w.color = 'white';
-    }
+    swapSlots(room);
   }
-  startGame(room);
+  // rematch=true → startGame 의 assignColorsByRating skip (패자 흑 정책 보존).
+  startGame(room, { rematch: true });
   // 봇이 흑(선공) 이라면 첫 수 스케줄링
   if (room.hasBot) {
     if (room.botEmoteState) room.botEmoteState = newBotEmoteState();  // emote 쿨다운 리셋
