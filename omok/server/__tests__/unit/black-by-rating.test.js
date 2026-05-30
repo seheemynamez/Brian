@@ -10,7 +10,9 @@ const assert = require('node:assert/strict');
 
 const { getStore } = require('../../store');
 const { getOrCreateUser, compareForBlack, userForSlot } = require('../../domain/users');
-const { assignColorsByRating, swapSlots } = require('../../handlers/game');
+// handlers/color-assign 에서 직접 require — handlers/game.js 는 bot-pool (worker_threads)
+// 까지 끌어들여서 단위 테스트 후 test runner 가 종료되지 않음.
+const { assignColorsByRating, swapSlots } = require('../../handlers/color-assign');
 
 const store = getStore();
 
