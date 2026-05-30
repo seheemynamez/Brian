@@ -203,16 +203,16 @@ const setupCopyLinks = () => {
 // 두 경로에서 같은 모달을 띄운다:
 //   1) 로비 "혼자 두기 (AI)" 카드 클릭 → mode='lobby'
 //   2) 랜덤 매칭 큐에서 10초 timeout → 서버가 bot_offer 보냄 → mode='offer'
-// 같은 모달이지만 mode 에 따라 타이틀/부가설명만 다름. 사용자 입력은 동일 (난이도+선공).
+// 같은 모달이지만 mode 에 따라 타이틀/부가설명만 다름. 사용자 입력은 난이도 only —
+// 흑백 (선공) 은 서버가 rating 기준 자동 결정 (PR — 옛 first 'me'/'bot'/'random' 제거).
 const setupBotGame = () => {
   const overlay = $('bot-game-overlay');
   const titleEl = $('bot-game-title');
   const subEl = $('bot-game-sub');
   let mode = 'lobby';
   let difficulty = 'medium';
-  let first = 'me';
 
-  // 토글 버튼 그룹 — active 클래스 갱신 + 선택 값 보관
+  // 토글 버튼 그룹 — 난이도 only.
   overlay.querySelectorAll('.bot-toggle-row').forEach((row) => {
     const group = row.dataset.group;
     row.addEventListener('click', (e) => {
@@ -220,9 +220,7 @@ const setupBotGame = () => {
       if (!btn) return;
       row.querySelectorAll('.bot-toggle-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
-      const value = btn.dataset.value;
-      if (group === 'difficulty') difficulty = value;
-      else if (group === 'first')  first = value;
+      if (group === 'difficulty') difficulty = btn.dataset.value;
     });
   });
 
@@ -233,7 +231,7 @@ const setupBotGame = () => {
       subEl.textContent = '오목봇과 한 판 두시겠어요?';
     } else {
       titleEl.textContent = '🤖 봇과 대전';
-      subEl.textContent = '난이도와 선공을 선택하세요';
+      subEl.textContent = '난이도를 선택하세요';
     }
     overlay.classList.remove('hidden');
   };
@@ -254,8 +252,8 @@ const setupBotGame = () => {
   $('btn-bot-game-start').addEventListener('click', () => {
     const nick = ensureNick();
     initAudio();
-    // offer 모드든 lobby 모드든 동일한 메시지 — 서버 onCreateBotGame 가 큐 정리부터 시작.
-    sendMessage({ type: 'create_bot_game', nickname: nick, difficulty, first });
+    // 흑백 자동 결정 — server onCreateBotGame 가 rating 비교 후 swap.
+    sendMessage({ type: 'create_bot_game', nickname: nick, difficulty });
     hideModal();
   });
 

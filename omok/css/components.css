@@ -293,6 +293,15 @@ button.chip.chip-clickable:hover {
   text-align: center;
 }
 
+/* 봇 대전 모달 — 흑백 자동 결정 안내 */
+.bot-option-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* 접속자 목록 모달 */
 .overlay-card-list { max-width: 320px; width: 100%; }
 .online-list {

@@ -2,8 +2,9 @@
 // 게임 흐름 — startGame / 차례 타이머 / move 검증 + 적용.
 // ============================================================
 
-const { getRoom, markRoomDirty, genGameId } = require('../domain/rooms');
+const { getRoom, getSession, markRoomDirty, genGameId } = require('../domain/rooms');
 const roomRuntime = require('../domain/room-runtime');
+const connections = require('../connections');
 const { emptyBoard, isDraw, BOARD_SIZE } = require('../game/game-logic');
 const { checkForbidden, checkWinRenju, FORBIDDEN_LABEL } = require('../game/renju');
 const log = require('../infra/log');
@@ -12,7 +13,10 @@ const {
   playerIdsPayload, playerStatusPayload, disconnectStatePayload, broadcastRoomsList,
   broadcastRankingUpdate, broadcastRecentGamesUpdate,
 } = require('./send');
-const { recordGameResult, buildPlayerRatings } = require('../domain/users');
+const {
+  recordGameResult, buildPlayerRatings,
+  compareForBlack, userForSlot,
+} = require('../domain/users');
 const { getSpectatorNames, sendSpectatorState } = require('./spectator');
 const {
   getBotColor, scheduleBotMove, afterSuccessfulMove,
@@ -214,10 +218,49 @@ const onTurnTimeout = (room) => {
 // ============================================================
 // 게임 시작/재시작 — 양쪽 플레이어 + 관전자 모두에게 알림
 // ============================================================
+// black/white 슬롯 swap (sessions.color + ws.color 동기화).
+// rematch.js 의 옛 swap 블록 + startGame 의 assignColorsByRating 둘 다 사용.
+const swapSlots = (room) => {
+  const blackSlot = room.players.black;
+  const whiteSlot = room.players.white;
+  room.players.black = whiteSlot;
+  room.players.white = blackSlot;
+  if (whiteSlot?.sessionId) {
+    const sess = getSession(whiteSlot.sessionId);
+    if (sess) sess.color = 'black';
+    const w = connections.getWsBySessionId(whiteSlot.sessionId);
+    if (w) w.color = 'black';
+  }
+  if (blackSlot?.sessionId) {
+    const sess = getSession(blackSlot.sessionId);
+    if (sess) sess.color = 'white';
+    const w = connections.getWsBySessionId(blackSlot.sessionId);
+    if (w) w.color = 'white';
+  }
+};
+
+// 첫 게임 흑백 결정 — rating 약자 우선 (= 흑, 선공). 봇전 / PVP 모두 적용.
+// 룸 만든 사람 / 큐 도착 순서 / 봇 모달 first 무관. tie-break 는 wins / losses / draws /
+// createdAt (compareForBlack). rematch 인 경우 본 함수 안 호출 — 패자 흑 정책 유지.
+const assignColorsByRating = (room) => {
+  if (!room?.players?.black || !room.players.white) return;
+  const blackUser = userForSlot(room.players.black);
+  const whiteUser = userForSlot(room.players.white);
+  if (!blackUser || !whiteUser) return;
+  // compareForBlack(a, b) < 0 이면 a 가 흑. 현재 black 슬롯의 user 가 약자 아니면 swap.
+  if (compareForBlack(blackUser, whiteUser) > 0) {
+    swapSlots(room);
+  }
+};
+
 // startGame 진입 시점: room.players.black / white 가 이미 metadata 로 채워져 있다고 가정
 // (onJoinRoom / onQueueJoin 매칭 / onCreateBotGame / onRematch 가 setup 후 호출).
 // 슬롯 안의 ws 는 이미 set up 되어 있고 connections 에도 바인딩되어 있어야 함 (rematch 외).
-const startGame = (room) => {
+// opts.rematch=true 면 rating swap 안 함 (rematch 는 패자 흑 정책 — rematch.js 가 미리 swap).
+const startGame = (room, opts = {}) => {
+  if (!opts.rematch) {
+    assignColorsByRating(room);
+  }
   room.status = 'playing';
   // 매 게임마다 새 gameId — 차후 DB 랭킹/통계 기록 키로 활용.
   room.gameId = genGameId();
@@ -374,6 +417,8 @@ module.exports = {
   applyMove,
   onMove,
   startGame,
+  swapSlots,           // rematch.js + 테스트 용
+  assignColorsByRating, // 테스트 용 (startGame 안에서 호출)
   gameOverFields,  // disconnect.js 의 game_over 로그도 같은 형식 사용
   ratingsPayload,  // disconnect.js 의 game_over / opponent_abandoned payload 공유
   recordGameOver,  // counter + active_users SET + games LIST
