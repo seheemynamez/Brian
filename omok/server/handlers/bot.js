@@ -113,6 +113,10 @@ const scheduleBotMove = (room) => {
       console.error(`[bot] move applied: bot=${bot.difficulty} stones=${stonesAtStart} (${stonesAtStart+1}번째 수) cfg=d${cfgMax}×t${cfgTopK} reached=d${reached} elapsed=${elapsed}ms move=[${move[0]},${move[1]}] room=${code}`);
       // raw move LIST push — monitor 가 cfgMax 도달율 / elapsed p50/p95 계산.
       // 로그 파싱 대체 (move applied log fetch 제거 가능).
+      // humanCid / humanNick — 그 시점 봇 반대 색 slot (사람 상대). monitor 가
+      // "이 봇이 누구를 상대로 어떤 cfg 로 search 했나" / 봇 별 사용자 분포 분석 (PR).
+      const humanColor = botColor === 'black' ? 'white' : 'black';
+      const humanSlot = room.players?.[humanColor];
       pushTodayListItem('bot_moves', {
         ts: new Date().toISOString(),
         diff: bot.difficulty,
@@ -122,6 +126,8 @@ const scheduleBotMove = (room) => {
         reach: typeof reached === 'number' ? reached : null,
         elap: typeof elapsed === 'number' ? elapsed : null,
         room: code,
+        humanCid: humanSlot?.clientId,
+        humanNick: humanSlot?.nickname,
       });
     }).catch((err) => {
       // worker_timeout 또는 worker crash. ID + AbortController 가 정상 동작하면 매우 드뭄

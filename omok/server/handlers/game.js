@@ -77,6 +77,9 @@ const gameOverFields = (room, entry, extra) => {
     code: room.code, gameId: room.gameId,
     bot: !!room.hasBot, botDiff,
     blackNick: black?.nickname, whiteNick: white?.nickname,
+    // clientId 는 nickname 변경 무관 stable identity. monitor 가 TOP 활동 / Rating
+    // mover 집계 시 같은 사람을 다른 nick 으로 두 명처럼 세지 않게 (PR — issue).
+    blackCid: black?.clientId, whiteCid: white?.clientId,
     blackRating: entry?.black?.rating, whiteRating: entry?.white?.rating,
     blackDelta: entry?.black?.delta, whiteDelta: entry?.white?.delta,
     stones,
@@ -97,13 +100,17 @@ const recordGameOver = (room, entry, extra) => {
   if (!room) return;
   incrementToday(room.hasBot ? 'bot_games' : 'pvp_games');
   // active_users — 봇 slot 의 nick 은 제외 (사람 활성도만 측정).
+  // active_clientIds — 닉네임 변경 무관 stable unique 사람 카운트 (PR).
+  // 둘 다 적재: 옛 monitor 코드 호환 (nick SET) + 새 monitor 가 clientId SET 우선.
   const black = room.players?.black;
   const white = room.players?.white;
-  if (black && black.type !== 'bot' && black.nickname) {
-    addTodaySetMember('active_users', black.nickname);
+  if (black && black.type !== 'bot') {
+    if (black.nickname) addTodaySetMember('active_users', black.nickname);
+    if (black.clientId) addTodaySetMember('active_clientIds', black.clientId);
   }
-  if (white && white.type !== 'bot' && white.nickname) {
-    addTodaySetMember('active_users', white.nickname);
+  if (white && white.type !== 'bot') {
+    if (white.nickname) addTodaySetMember('active_users', white.nickname);
+    if (white.clientId) addTodaySetMember('active_clientIds', white.clientId);
   }
   // game record — gameOverFields 와 같은 필드 + ts. monitor 가 JSON 파싱.
   const record = { ts: new Date().toISOString(), ...gameOverFields(room, entry, extra) };

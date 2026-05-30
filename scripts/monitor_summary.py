@@ -558,11 +558,11 @@ def run_daily_summary():
         body.append('\n_각 사용자의 어제 마감 시점 rating 기준. server `/api/daily-stats?date=어제` 의 tiers snapshot. 전일 Δ = 직전 발행 entry 대비._')
         body.append('')
 
-    # 봇 운영 지표 (핵심) — (b) 승률 + 봇 rating Δ 추가.
+    # 봇 운영 지표 (핵심) — 상대 unique (clientId 별) 컬럼 추가.
     body.append('### 봇 운영 지표 (난이도 별)\n')
     if bot_perf:
-        body.append('| 난이도 | 총 | 승/패/무 | 승률 | 이탈/포기 | 봇 rating (Δ24h) | 상대 rating avg/min/max | 평균 길이 (수) |')
-        body.append('|---|---|---|---|---|---|---|---|')
+        body.append('| 난이도 | 총 | 승/패/무 | 승률 | 이탈/포기 | 봇 rating (Δ24h) | 상대 unique | 상대 rating avg/min/max | 평균 길이 (수) |')
+        body.append('|---|---|---|---|---|---|---|---|---|')
         for diff in ['easy', 'medium', 'hard']:
             s = bot_perf.get(diff)
             if not s: continue
@@ -571,14 +571,8 @@ def run_daily_summary():
             stones = s['stones_list']
             stones_str = f'{sum(stones)/len(stones):.1f}' if stones else '-'
             left_total = s['left'] + s['abandoned']
-            # 승률 — total 에서 이탈/무승부 제외한 결정 게임만 분모로 두는 게 정확. 단순화:
-            # 모든 종결을 분모로 (이탈/포기도 보통 봇 승으로 처리되니 합리적).
             wr = (100.0 * s['wins'] / s['total']) if s['total'] else 0
             wr_str = f'{wr:.1f}%'
-            # 봇 rating — daily-stats endpoint 의 bots snapshot (어제 마감 시점, frozen).
-            # statsHandler 가 매 /api/stats 호출 시 daily Hash 에 적재 — 그 날 마지막 호출
-            # 시점의 봇 rating 이 응답. 옛엔 server_stats 라이브 호출로 발행 시점 의존.
-            # fallback: 24h log 의 마지막 (snapshot 없을 때 — 옛 day backfill 미수행 case).
             server_bot = ((server_stats or {}).get('bots') or {}).get(diff) or {}
             bot_rating = server_bot.get('rating') if server_bot.get('rating') is not None else s.get('bot_last_rating')
             bot_delta = s.get('bot_delta_sum', 0)
@@ -586,11 +580,37 @@ def run_daily_summary():
                 rating_col = f'{bot_rating} ({bot_delta:+d})'
             else:
                 rating_col = '-'
-            body.append(f'| {diff} | {s["total"]} | {s["wins"]}/{s["losses"]}/{s["draws"]} | {wr_str} | {left_total} | {rating_col} | {rating_str} | {stones_str} |')
-        body.append('\n_승률 = 봇 승 / 총. 봇 rating = 어제 마감 시점 (daily-stats.bots snapshot, fallback: 24h log 마지막). Δ = 24h 누적 변화 (zero-sum). 상대 rating = 사람 측 분포._')
+            # 상대 unique — cid 가 있는 것만 정확 count. 옛 entry (cid 없음) 는
+            # opp_breakdown 의 nick fallback key 수까지 합산.
+            opp_unique_cid = len(s['opp_cids'])
+            opp_unique_total = len(s['opp_breakdown'])
+            if opp_unique_cid == opp_unique_total:
+                opp_unique_str = str(opp_unique_total)
+            else:
+                opp_unique_str = f'{opp_unique_total} (cid {opp_unique_cid})'
+            body.append(f'| {diff} | {s["total"]} | {s["wins"]}/{s["losses"]}/{s["draws"]} | {wr_str} | {left_total} | {rating_col} | {opp_unique_str} | {rating_str} | {stones_str} |')
+        body.append('\n_승률 = 봇 승 / 총. 봇 rating = 어제 마감 시점 (daily-stats.bots snapshot, fallback: 24h log 마지막). Δ = 24h 누적 변화 (zero-sum). **상대 unique** = clientId 기준 서로 다른 사람 수 (닉 변경 무관). 옛 entry 폴백시 nickname 까지 합산 표기._')
     else:
         body.append('- (봇 게임 데이터 없음)')
     body.append('')
+
+    # 봇 별 최다 상대 TOP 5 — clientId 기준 게임 수 desc. "이 봇과 누가 가장 많이 두었나".
+    if bot_perf and any(s.get('opp_breakdown') for s in bot_perf.values()):
+        body.append('### 봇 별 최다 상대 TOP 5 (24h)\n')
+        for diff in ['easy', 'medium', 'hard']:
+            s = bot_perf.get(diff)
+            if not s or not s.get('opp_breakdown'): continue
+            top_opps = sorted(s['opp_breakdown'].values(), key=lambda d: -d['games'])[:5]
+            if not top_opps: continue
+            body.append(f'**{diff}**')
+            body.append('| nickname | 게임 | W/L/D (사람 기준) | 사람 Δ | 현재 rating |')
+            body.append('|---|---|---|---|---|')
+            for ob in top_opps:
+                wld = f'{ob["wins"]}/{ob["losses"]}/{ob["draws"]}'
+                body.append(f'| {ob["nickname"] or "(unknown)"} | {ob["games"]} | {wld} | {ob["delta_sum"]:+d} | {ob["last_rating"] or "-"} |')
+            body.append('')
+        body.append('_사람 측 승패 기준 (봇 승은 사람 패 카운트). clientId 별 unique — 닉 변경 무관. 옛 entry (cid 없음) 는 nickname fallback._')
+        body.append('')
 
     # cfgMax 도달율
     if bot_by_cfg:
@@ -677,12 +697,14 @@ def run_daily_summary():
     body.append('')
 
     # 사람 활동 TOP / rating movers
+    # TOP / mover 표 — clientId 별 unique 집계, 표시는 최신 nick.
+    # 옛 entry (cid 없음) 는 'nick:'+닉 fallback key → 동작 동일하게 nick unique.
     body.append('### TOP 활동 사용자 (24h 게임 수)\n')
     if top_active:
         body.append('| # | nickname | 게임 | W/L/D | rating Δ | 현재 rating |')
         body.append('|---|---|---|---|---|---|')
-        for i, (n, d) in enumerate(top_active, 1):
-            body.append(f'| {i} | {n} | {d["games"]} | {d["wins"]}/{d["losses"]}/{d["draws"]} | {d["delta_sum"]:+d} | {d["last_rating"]} |')
+        for i, (_key, d) in enumerate(top_active, 1):
+            body.append(f'| {i} | {d["nickname"]} | {d["games"]} | {d["wins"]}/{d["losses"]}/{d["draws"]} | {d["delta_sum"]:+d} | {d["last_rating"]} |')
     else:
         body.append('- (사람 게임 데이터 없음)')
     body.append('')
@@ -692,18 +714,21 @@ def run_daily_summary():
     if top_movers_up:
         body.append('| nickname | Δ | 게임 | 현재 rating |')
         body.append('|---|---|---|---|')
-        for n, d in top_movers_up:
-            body.append(f'| {n} | {d["delta_sum"]:+d} | {d["games"]} | {d["last_rating"]} |')
+        for _key, d in top_movers_up:
+            body.append(f'| {d["nickname"]} | {d["delta_sum"]:+d} | {d["games"]} | {d["last_rating"]} |')
     else:
         body.append('- 없음')
     body.append('\n**↓ 하락 TOP 5**')
     if top_movers_dn:
         body.append('| nickname | Δ | 게임 | 현재 rating |')
         body.append('|---|---|---|---|')
-        for n, d in top_movers_dn:
-            body.append(f'| {n} | {d["delta_sum"]:+d} | {d["games"]} | {d["last_rating"]} |')
+        for _key, d in top_movers_dn:
+            body.append(f'| {d["nickname"]} | {d["delta_sum"]:+d} | {d["games"]} | {d["last_rating"]} |')
     else:
         body.append('- 없음')
+    body.append(
+        '\n_unique 단위 = clientId (닉네임 변경 무관). 표시 닉은 최근 게임 기준. '
+        '옛 entry (PR — clientId 적재 전) 는 nickname fallback._')
     body.append('')
 
     # 안정성 / 임계 이력 — (d) worker_timeout / no_move 추가.

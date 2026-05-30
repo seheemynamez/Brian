@@ -636,8 +636,13 @@ def hourly_bucket_by_ts(items, ts_field='ts'):
 # ============================================================
 def bot_perf_stats(game_overs):
     """game_over (bot=true only) → {difficulty: {wins, losses, draws, abandoned,
-                                                  left, opp_nicks, opp_ratings,
-                                                  stones_list, total}}"""
+                                                  left, opp_nicks, opp_cids, opp_ratings,
+                                                  opp_breakdown, stones_list, total}}.
+
+    opp_cids: 상대 (사람) unique clientId set — "이 봇이 N 명과 싸웠나" 계산용.
+    opp_breakdown: {cid: {games, wins, losses, draws, nickname, last_rating}} — 봇 별
+      상대 분포 TOP. cid 없는 옛 entry 는 nickname 폴백 key ('nick:'+닉).
+    """
     bot_diffs = {}
     for g in game_overs:
         if g.get('bot') != 'true': continue
@@ -648,7 +653,9 @@ def bot_perf_stats(game_overs):
                 'wins': 0, 'losses': 0, 'draws': 0, 'abandoned': 0, 'left': 0,
                 'total': 0,
                 'opp_nicks': [],
+                'opp_cids': set(),
                 'opp_ratings': [],
+                'opp_breakdown': {},   # cid (or nick fallback) → per-opponent dict
                 'stones_list': [],
                 # 봇 운영 지표 확장: 봇 측 rating delta 누적 + 마지막 rating.
                 'bot_delta_sum': 0,
@@ -662,13 +669,32 @@ def bot_perf_stats(game_overs):
         bot_color = 'black' if bot_is_black else 'white'
         human_color = 'white' if bot_is_black else 'black'
         human_nick = white_nick if bot_is_black else black_nick
+        human_cid = g.get(f'{human_color}Cid')  # 옛 entry 는 None
         try:
             human_rating = int(g.get(f'{human_color}Rating', 0))
         except Exception:
             human_rating = 0
         s['opp_nicks'].append(human_nick)
+        if human_cid:
+            s['opp_cids'].add(human_cid)
         if human_rating > 0:
             s['opp_ratings'].append(human_rating)
+        # 상대 breakdown — cid 우선 key, 없으면 nick fallback.
+        opp_key = human_cid or ('nick:' + (human_nick or ''))
+        ob = s['opp_breakdown'].setdefault(opp_key, {
+            'cid': human_cid, 'nickname': human_nick,
+            'games': 0, 'wins': 0, 'losses': 0, 'draws': 0,
+            'last_rating': 0, 'delta_sum': 0,
+        })
+        ob['games'] += 1
+        ob['nickname'] = human_nick  # 최신 닉 갱신
+        if human_rating > 0:
+            ob['last_rating'] = human_rating
+        try:
+            human_delta = int(str(g.get(f'{human_color}Delta', '0')).replace('+', ''))
+            ob['delta_sum'] += human_delta
+        except Exception:
+            pass
         # 봇 측 rating delta — zero-sum 이라 human_delta 의 음수와 일치. 직접 봇
         # 측 Delta 필드 읽어 정확성 보장. unknown 일 땐 0.
         try:
@@ -691,32 +717,44 @@ def bot_perf_stats(game_overs):
         winner = g.get('winner', '')
         if reason == 'draw':
             s['draws'] += 1
+            ob['draws'] += 1
         elif reason == 'opponent_left':
             s['left'] += 1
         elif reason == 'abandoned':
             s['abandoned'] += 1
         elif winner == bot_color:
             s['wins'] += 1
+            ob['losses'] += 1   # 봇 승 = 사람 패
         elif winner == human_color:
             s['losses'] += 1
+            ob['wins'] += 1     # 사람 승
     return bot_diffs
 
 
 def player_activity(game_overs):
-    """사람 닉네임 별 활동 통계 → {nickname: {games, wins, losses, draws,
-                                              delta_sum, last_rating}}"""
-    by_nick = {}
+    """사람 별 활동 통계 — clientId 기준 unique 집계 + 최신 nickname 추적.
+
+    옛 entry (cid 없음) 는 'nick:'+닉 fallback key. 같은 사람이 닉 바꿔도 같은 cid
+    면 한 entry 로 합산. 결과 dict key 는 cid (또는 nick: prefix) 로 stable.
+
+    return: {key: {cid, nickname, games, wins, losses, draws, delta_sum, last_rating}}
+    """
+    by_key = {}
     for g in game_overs:
         for color in ('black', 'white'):
             nick = g.get(f'{color}Nick')
+            cid = g.get(f'{color}Cid')
             if not nick or nick.startswith('오목봇'): continue
-            if nick not in by_nick:
-                by_nick[nick] = {'games': 0, 'wins': 0, 'losses': 0, 'draws': 0,
-                                  'delta_sum': 0, 'last_rating': 0}
-            d = by_nick[nick]
+            key = cid or ('nick:' + nick)
+            if key not in by_key:
+                by_key[key] = {'cid': cid, 'nickname': nick,
+                               'games': 0, 'wins': 0, 'losses': 0, 'draws': 0,
+                               'delta_sum': 0, 'last_rating': 0}
+            d = by_key[key]
             d['games'] += 1
+            d['nickname'] = nick  # 최신 닉으로 갱신 (변경 history 는 별도 추적 X)
             try:
-                delta_s = g.get(f'{color}Delta', '0').replace('+', '')
+                delta_s = str(g.get(f'{color}Delta', '0')).replace('+', '')
                 delta = int(delta_s)
                 d['delta_sum'] += delta
             except Exception:
@@ -733,7 +771,7 @@ def player_activity(game_overs):
                 d['wins'] += 1
             elif winner != 'draw' and winner:
                 d['losses'] += 1
-    return by_nick
+    return by_key
 
 
 # ============================================================
