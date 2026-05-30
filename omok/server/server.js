@@ -163,6 +163,8 @@ const dailyStatsHandler = async (req, res) => {
     ws_disconnected: c.ws_disconnected || 0,
     // SET 크기 (fresh SCARD, 없으면 backfill counter fallback)
     active_users: await setSize('active_users'),
+    // 같은 nick 으로 두 명처럼 세지 않게 — clientId 별 unique. nick set 도 호환성 유지.
+    active_clientIds: await setSize('active_clientIds'),
     bot_retry_rooms: await setSize('bot_retry_rooms'),
     bot_retry_clients: await setSize('bot_retry_clients'),
     bot_skip_rooms: await setSize('bot_skip_rooms'),
