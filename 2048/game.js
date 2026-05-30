@@ -114,11 +114,14 @@ function render() {
 
   // 각 타일 생성/업데이트
   for (const t of tiles) {
+    // 65536 까지는 CSS 가 .tile-{value} 로 색/font 정의. 그 위 (131072+) 는 'tile-super'
+    // safety class 로 무지개 gradient — 매우 희귀하지만 깨짐 방지.
+    const cls = 'tile tile-' + t.value + (t.value > 65536 ? ' tile-super' : '');
     let el = document.getElementById('t' + t.id);
     if (!el) {
       el = document.createElement('div');
       el.id = 't' + t.id;
-      el.className = 'tile tile-' + t.value;
+      el.className = cls;
       const inner = document.createElement('div');
       inner.className = 'tile-content';
       inner.textContent = t.value;
@@ -126,7 +129,7 @@ function render() {
       setTilePos(el, t.row, t.col);
       layer.appendChild(el);
     } else {
-      el.className = 'tile tile-' + t.value;
+      el.className = cls;
       el.firstElementChild.textContent = t.value;
       setTilePos(el, t.row, t.col);
     }
