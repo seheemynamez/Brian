@@ -212,6 +212,48 @@ button#new-game:active { transform: scale(0.98); }
   box-shadow: 0 0 20px rgba(243, 215, 116, 0.8);
 }
 
+/* 4096 이상 — 옛 CSS 가 2048 까지만 정의해 4-digit 글자 넘침 + 배경 투명 → board grid
+   비쳐 빈 칸처럼 보이는 버그 fix. 다크/퍼플 톤으로 단계 강화, 5-digit 부터 font 축소. */
+.tile-4096  .tile-content {
+  background: #3c3a32;
+  color: var(--tile-ink-light);
+  font-size: calc(var(--tile-size) * 0.30);
+  box-shadow: 0 0 20px rgba(120, 110, 90, 0.7);
+}
+.tile-8192  .tile-content {
+  background: #2f2d28;
+  color: var(--tile-ink-light);
+  font-size: calc(var(--tile-size) * 0.30);
+  box-shadow: 0 0 22px rgba(160, 130, 80, 0.7);
+}
+.tile-16384 .tile-content {
+  background: #5b3f99;
+  color: var(--tile-ink-light);
+  font-size: calc(var(--tile-size) * 0.22);
+  box-shadow: 0 0 24px rgba(140, 95, 220, 0.7);
+}
+.tile-32768 .tile-content {
+  background: #4b2c8b;
+  color: var(--tile-ink-light);
+  font-size: calc(var(--tile-size) * 0.22);
+  box-shadow: 0 0 26px rgba(160, 100, 240, 0.7);
+}
+.tile-65536 .tile-content {
+  background: #3a2078;
+  color: var(--tile-ink-light);
+  font-size: calc(var(--tile-size) * 0.22);
+  box-shadow: 0 0 28px rgba(180, 100, 255, 0.8);
+}
+
+/* 131072+ 안전망 — game.js 가 value>65536 이면 'tile-super' 도 부여.
+   매우 희귀하지만 깨지지 않게 무지개 gradient 로 마감. */
+.tile-super .tile-content {
+  background: linear-gradient(135deg, #ff4d6d, #c77dff, #6a4cff);
+  color: var(--tile-ink-light);
+  font-size: calc(var(--tile-size) * 0.20);
+  box-shadow: 0 0 30px rgba(199, 125, 255, 0.9);
+}
+
 /* ============================================================
    타일 등장/병합 애니메이션
    ============================================================ */
