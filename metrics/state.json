@@ -8,5 +8,7 @@
     "server_slow_recovery:2048": "2026-05-24T12:20:20.702131+00:00",
     "worker_timeout:omok": "2026-05-24T17:00:24.450963+00:00"
   },
-  "fetch_fail_streak": {}
+  "fetch_fail_streak": {
+    "stats:omok": 1
+  }
 }
