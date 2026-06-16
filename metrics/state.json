@@ -6,10 +6,12 @@
     "render_cpu_high:omok": "2026-06-10T09:50:21.782154+00:00",
     "server_slow_recovery:omok": "2026-05-25T02:35:14.827011+00:00",
     "server_slow_recovery:2048": "2026-05-24T12:20:20.702131+00:00",
-    "worker_timeout:omok": "2026-05-24T17:00:24.450963+00:00"
+    "worker_timeout:omok": "2026-05-24T17:00:24.450963+00:00",
+    "fetch_fail:stats:omok": "2026-06-16T15:30:48.576380+00:00",
+    "fetch_fail:stats:2048": "2026-06-16T15:30:48.576380+00:00"
   },
   "fetch_fail_streak": {
-    "stats:omok": 2,
-    "stats:2048": 2
+    "stats:omok": 3,
+    "stats:2048": 3
   }
 }
