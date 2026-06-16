@@ -9,6 +9,7 @@
     "worker_timeout:omok": "2026-05-24T17:00:24.450963+00:00"
   },
   "fetch_fail_streak": {
-    "stats:omok": 0
+    "stats:omok": 1,
+    "stats:2048": 1
   }
 }
