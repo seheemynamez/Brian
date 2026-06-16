@@ -11,7 +11,7 @@
     "fetch_fail:stats:2048": "2026-06-16T21:45:27.801816+00:00"
   },
   "fetch_fail_streak": {
-    "stats:omok": 98,
-    "stats:2048": 98
+    "stats:omok": 99,
+    "stats:2048": 99
   }
 }
