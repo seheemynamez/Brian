@@ -7,11 +7,11 @@
     "server_slow_recovery:omok": "2026-05-25T02:35:14.827011+00:00",
     "server_slow_recovery:2048": "2026-05-24T12:20:20.702131+00:00",
     "worker_timeout:omok": "2026-05-24T17:00:24.450963+00:00",
-    "fetch_fail:stats:omok": "2026-06-18T16:45:32.346431+00:00",
-    "fetch_fail:stats:2048": "2026-06-18T16:45:32.346431+00:00"
+    "fetch_fail:stats:omok": "2026-06-18T18:50:28.369903+00:00",
+    "fetch_fail:stats:2048": "2026-06-18T18:50:28.369903+00:00"
   },
   "fetch_fail_streak": {
-    "stats:omok": 616,
-    "stats:2048": 616
+    "stats:omok": 617,
+    "stats:2048": 617
   }
 }
