@@ -5,7 +5,7 @@
 
 대상 환경:
 - 로컬: `npm start` 또는 `node --env-file-if-exists=.env server.js` → http://localhost:18091
-- Render: https://omok-server-u4rp.onrender.com
+- Render: https://omok-server-dorf.onrender.com
 
 각 시나리오 후 ✅ 표시.
 

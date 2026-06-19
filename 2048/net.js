@@ -11,8 +11,8 @@
   // ---- 서버 URL ----
   // GitHub Pages 에서 켜진 경우는 Render 의 prod 서버, 그 외 (로컬 dev, LAN)
   // 은 같은 origin 으로 가정 (8081 으로 띄운 BE 와 함께 정적 서빙 시).
-  const PROD_WS_URL    = 'wss://two048-server-14x0.onrender.com/ws';
-  const PROD_SHARE_BASE = 'https://two048-server-14x0.onrender.com';
+  const PROD_WS_URL    = 'wss://two048-server-yom9.onrender.com/ws';
+  const PROD_SHARE_BASE = 'https://two048-server-yom9.onrender.com';
 
   const WS_URL = (function () {
     if (location.hostname === 'seheemynamez.github.io') return PROD_WS_URL;

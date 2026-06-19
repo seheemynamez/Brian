@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 import json
 
-DEFAULT_API_BASE = 'https://omok-server-u4rp.onrender.com'
+DEFAULT_API_BASE = 'https://omok-server-dorf.onrender.com'
 DEFAULT_PREFIX = 'omok:prod'
 TARGET_DATES = ['2026-05-22', '2026-05-23', '2026-05-24', '2026-05-25']
 

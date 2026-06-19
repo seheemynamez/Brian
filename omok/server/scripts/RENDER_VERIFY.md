@@ -76,7 +76,7 @@ Render dashboard → Logs (또는 API 로 stream — 단 free plan 은 제한적
 
 브라우저에서:
 
-- [ ] https://omok-server-u4rp.onrender.com 접속 → 로비 표시
+- [ ] https://omok-server-dorf.onrender.com 접속 → 로비 표시
 - [ ] 봇 게임 (easy) 1판 — 정상 종료
 - [ ] PVP 방 만들기 → URL 복사 → 다른 브라우저에서 입장 → 게임 시작
 - [ ] PVP 도중 한쪽 새로고침 → resume 성공, 보드 보존

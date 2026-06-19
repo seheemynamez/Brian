@@ -20,8 +20,8 @@ import { drawBoard } from './board.js';
 // - 그 외(로컬 개발, LAN, Render 직접 접속): 같은 origin
 // ============================================================
 // Render 배포 후 실제 URL로 교체 (예: wss://omok-server-xxxx.onrender.com/ws)
-const PROD_WS_URL     = 'wss://omok-server-u4rp.onrender.com/ws';
-const PROD_SHARE_BASE = 'https://omok-server-u4rp.onrender.com';
+const PROD_WS_URL     = 'wss://omok-server-dorf.onrender.com/ws';
+const PROD_SHARE_BASE = 'https://omok-server-dorf.onrender.com';
 
 const WS_URL = (() => {
   if (location.hostname === 'seheemynamez.github.io') return PROD_WS_URL;

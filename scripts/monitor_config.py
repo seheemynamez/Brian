@@ -24,14 +24,14 @@ SERVICES = {
     'omok': {
         'name': 'omok-server',
         'service_id': 'srv-d84mu23tqb8s73fgcq60',
-        'public_url': 'https://omok-server-u4rp.onrender.com',
+        'public_url': 'https://omok-server-dorf.onrender.com',
         # game-specific 로그 prefix 가 풍부 — 봇/RETRY/SKIP/server_failed 모두 추적.
         'has_bot_logs': True,
     },
     '2048': {
         'name': '2048-server',
         'service_id': 'srv-d87tvarbc2fs73echpr0',
-        'public_url': 'https://two048-server-14x0.onrender.com',
+        'public_url': 'https://two048-server-yom9.onrender.com',
         # 봇 없음 — RETRY/SKIP/worker_timeout/no_move 미해당. submit_score 등은 별도.
         'has_bot_logs': False,
     },
