@@ -23,6 +23,8 @@ import sys
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
+from monitor_config import RENDER_API_KEY  # 단일 소스(targets.json)
+
 KST = timezone(timedelta(hours=9))
 DEFAULT_PREFIX = '2048:prod'
 TARGET_DATES = ['2026-05-22', '2026-05-23', '2026-05-24']
@@ -37,7 +39,7 @@ def get_valkey_url():
     url = os.environ.get('VALKEY_URL', '').strip()
     if url:
         return url
-    api_key = os.environ.get('RENDER_API_KEY') or os.environ.get('SEHEE_RENDER_API_KEY')
+    api_key = RENDER_API_KEY
     if not api_key:
         sys.exit('VALKEY_URL 또는 RENDER_API_KEY env 필요')
     headers = {'Authorization': f'Bearer {api_key}'}

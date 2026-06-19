@@ -1,0 +1,29 @@
+{
+  "_comment": "단일 소스: 어느 Render/Aiven 계정을 쓸지. 'active' 한 줄이 전환 스위치. 비밀 없음(식별자·도메인·env이름만). 변경 후 `python3 deploy/apply.py` 실행.",
+  "active": "brian",
+  "valkey_override": "sehee",
+  "profiles": {
+    "brian": {
+      "render": {
+        "owner_id": "tea-d84g4rjbc2fs73c9ud1g",
+        "api_key_env": "BRIAN_RENDER_API_KEY",
+        "services": {
+          "omok": { "name": "omok-server", "service_id": "srv-d87u5bojs32c73eilfvg", "domain": "omok-server-dorf.onrender.com", "has_bot_logs": true },
+          "2048": { "name": "2048-server", "service_id": "srv-d87u3sgjo6nc73cuuit0", "domain": "two048-server-yom9.onrender.com", "has_bot_logs": false }
+        }
+      },
+      "aiven": { "project": "emfoa23-4031", "service": "valkey-11525e60", "api_token_env": "BRIAN_AIVEN_API_TOKEN" }
+    },
+    "sehee": {
+      "render": {
+        "owner_id": "tea-d84jo8jrjlhs73d9afeg",
+        "api_key_env": "SEHEE_RENDER_API_KEY",
+        "services": {
+          "omok": { "name": "omok-server", "service_id": "srv-d84mu23tqb8s73fgcq60", "domain": "omok-server-u4rp.onrender.com", "has_bot_logs": true },
+          "2048": { "name": "2048-server", "service_id": "srv-d87tvarbc2fs73echpr0", "domain": "two048-server-14x0.onrender.com", "has_bot_logs": false }
+        }
+      },
+      "aiven": { "project": "se2hee-93ed", "service": "valkey-411207c", "api_token_env": "SEHEE_AIVEN_API_TOKEN" }
+    }
+  }
+}

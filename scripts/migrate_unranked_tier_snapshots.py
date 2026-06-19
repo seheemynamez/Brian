@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 import json
 
-DEFAULT_API_BASE = 'https://omok-server-dorf.onrender.com'
+from monitor_config import SERVER_PUBLIC_URL as DEFAULT_API_BASE, RENDER_API_KEY  # 단일 소스(targets.json)
 DEFAULT_PREFIX = 'omok:prod'
 TARGET_DATES = ['2026-05-22', '2026-05-23', '2026-05-24', '2026-05-25']
 
@@ -42,7 +42,7 @@ def get_valkey_url():
     if url:
         return url
     # 없으면 Render env 에서 가져오기 (use-sehee 가 RENDER_API_KEY 설정 가정).
-    api_key = os.environ.get('RENDER_API_KEY') or os.environ.get('SEHEE_RENDER_API_KEY')
+    api_key = RENDER_API_KEY
     if not api_key:
         sys.exit('VALKEY_URL 또는 RENDER_API_KEY 환경변수 필요')
     # omok-server 의 env-vars 에서 가져옴

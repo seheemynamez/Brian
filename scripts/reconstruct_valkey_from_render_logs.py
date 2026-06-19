@@ -38,11 +38,9 @@ except ImportError:
 
 KST = timezone(timedelta(hours=9))
 
-RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
-RENDER_SERVICE_IDS = {
-    'omok': 'srv-d84mu23tqb8s73fgcq60',
-    '2048': 'srv-d87tvarbc2fs73echpr0',
-}
+# 계정 식별자는 deploy/targets.json 단일 소스에서 (monitor_config 경유).
+from monitor_config import RENDER_OWNER_ID, RENDER_API_KEY, SERVICES  # noqa: E402
+RENDER_SERVICE_IDS = {g: s['service_id'] for g, s in SERVICES.items()}
 RENDER_BASE = 'https://api.render.com/v1'
 
 DAILY_TTL_SEC = 90 * 86400
@@ -324,7 +322,7 @@ def main():
     ap.add_argument('--dates', help='comma-separated YYYY-MM-DD,YYYY-MM-DD,...')
     ap.add_argument('--prefix', default=os.environ.get('VALKEY_KEY_PREFIX', 'omok:prod'))
     ap.add_argument('--url', default=os.environ.get('VALKEY_URL'))
-    ap.add_argument('--api-key', default=os.environ.get('SEHEE_RENDER_API_KEY') or os.environ.get('RENDER_API_KEY'))
+    ap.add_argument('--api-key', default=RENDER_API_KEY or None)
     ap.add_argument('--clean-list', action='store_true', help='재실행 전 LIST 삭제 (중복 방지)')
     ap.add_argument('--skip-hash', action='store_true',
                     help='Hash counter 업데이트 skip (live server 가 이미 누적 중인 today 등)')
@@ -332,7 +330,7 @@ def main():
     args = ap.parse_args()
 
     if not args.api_key:
-        print('SEHEE_RENDER_API_KEY 또는 --api-key 필요')
+        print('RENDER_API_KEY(active 계정 토큰) 또는 --api-key 필요')
         sys.exit(1)
     if not args.dry_run and not args.url:
         print('VALKEY_URL 또는 --url 필요 (또는 --dry-run)')

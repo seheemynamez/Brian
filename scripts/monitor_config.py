@@ -1,5 +1,6 @@
 """monitor 의 환경변수 / 상수 / 임계 — 다른 monitor_* 모듈이 import 해서 사용."""
 from __future__ import annotations
+import json
 import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -7,42 +8,47 @@ from pathlib import Path
 # ============================================================
 # 환경
 # ============================================================
-RENDER_API_KEY = os.environ.get('RENDER_API_KEY', '')
-AIVEN_API_TOKEN = os.environ.get('AIVEN_API_TOKEN', '')
+# ============================================================
+# 단일 소스: deploy/targets.json — 어느 Render/Aiven 계정을 쓸지의 유일한 출처.
+# 'active'(render) + 'valkey_override'(aiven, null이면 active) 로 전환.
+# 아래 export 이름들은 그대로 유지 → 다른 monitor_* 모듈은 수정 불필요.
+# ============================================================
+_TARGETS = json.loads((Path(__file__).resolve().parent.parent / 'deploy' / 'targets.json').read_text())
+_ACTIVE = _TARGETS['active']
+_R = _TARGETS['profiles'][_ACTIVE]['render']
+_A = _TARGETS['profiles'][_TARGETS.get('valkey_override') or _ACTIVE]['aiven']
+
+# 토큰: CI(generic RENDER_API_KEY/AIVEN_API_TOKEN, GitHub Secrets) 우선,
+# 로컬은 active 프로필이 가리키는 env 이름(BRIAN_*/SEHEE_*)에서 해석. (.zshenv 무변경)
+RENDER_API_KEY = os.environ.get('RENDER_API_KEY') or os.environ.get(_R['api_key_env'], '')
+AIVEN_API_TOKEN = os.environ.get('AIVEN_API_TOKEN') or os.environ.get(_A['api_token_env'], '')
 GH_TOKEN = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN', '')
 GH_REPO = os.environ.get('GITHUB_REPOSITORY', 'seheemynamez/Brian')
 MODE = os.environ.get('MODE', 'collect')
 DRY_RUN = os.environ.get('DRY_RUN', '0') == '1' or not GH_TOKEN
 
 # Render workspace (omok 과 2048 같은 owner 사용).
-RENDER_OWNER_ID = 'tea-d84jo8jrjlhs73d9afeg'
+RENDER_OWNER_ID = _R['owner_id']
 
 # Render services — omok-server, 2048-server. monitor 가 5분/일간 cron 에서
 # 두 service 모두 같은 임계 / cooldown 정책으로 fetch + alert.
 # key 는 alert suffix / 본문 prefix / metrics snapshot key 로 사용 — 짧고 안정적.
 SERVICES = {
-    'omok': {
-        'name': 'omok-server',
-        'service_id': 'srv-d84mu23tqb8s73fgcq60',
-        'public_url': 'https://omok-server-dorf.onrender.com',
-        # game-specific 로그 prefix 가 풍부 — 봇/RETRY/SKIP/server_failed 모두 추적.
-        'has_bot_logs': True,
-    },
-    '2048': {
-        'name': '2048-server',
-        'service_id': 'srv-d87tvarbc2fs73echpr0',
-        'public_url': 'https://two048-server-yom9.onrender.com',
-        # 봇 없음 — RETRY/SKIP/worker_timeout/no_move 미해당. submit_score 등은 별도.
-        'has_bot_logs': False,
-    },
+    game: {
+        'name': svc['name'],
+        'service_id': svc['service_id'],
+        'public_url': f"https://{svc['domain']}",
+        'has_bot_logs': svc['has_bot_logs'],
+    }
+    for game, svc in _R['services'].items()
 }
 
 # 기존 호출자 호환 (단일 service 가정 코드 — fetch_server_stats 등). omok 을 디폴트로.
 RENDER_SERVICE_ID = SERVICES['omok']['service_id']
 SERVER_PUBLIC_URL = SERVICES['omok']['public_url']
 
-AIVEN_PROJECT = 'se2hee-93ed'
-AIVEN_SERVICE = 'valkey-411207c'
+AIVEN_PROJECT = _A['project']
+AIVEN_SERVICE = _A['service']
 
 # 한도
 RENDER_CPU_LIMIT_M = 100.0   # millicore
