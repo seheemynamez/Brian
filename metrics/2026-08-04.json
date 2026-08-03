@@ -73,5 +73,30 @@
       "load_avg": 0.07900826446280992,
       "load_max": 0.13
     }
+  },
+  {
+    "ts": "2026-08-03T21:00:35.336009+00:00",
+    "services": {
+      "omok": {
+        "render": {
+          "cpu_peak_m": null
+        }
+      },
+      "2048": {
+        "render": {
+          "cpu_peak_m": null
+        }
+      }
+    },
+    "aiven": {
+      "cpu_pct_avg": 8.50533443941677,
+      "cpu_pct_max": 9.742216270967944,
+      "mem_pct_avg": 67.91083635150002,
+      "mem_pct_max": 69.30864411179371,
+      "disk_pct_avg": 0.4427969586174614,
+      "disk_pct_max": 0.4427969586174614,
+      "load_avg": 0.093125,
+      "load_max": 0.11
+    }
   }
 ]
