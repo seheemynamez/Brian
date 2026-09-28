@@ -12,6 +12,6 @@
   },
   "fetch_fail_streak": {
     "stats:omok": 0,
-    "stats:2048": 0
+    "stats:2048": 1
   }
 }
